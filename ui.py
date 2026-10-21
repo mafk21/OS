@@ -4468,6 +4468,18 @@ class MainWindow(QMainWindow):
         vis_hdr.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
         vis_hdr.setStyleSheet(f"color:{C.PRI_DIM}; background:transparent;")
         lay.addWidget(vis_hdr)
+        self._provider_btn = _row(QPushButton())
+        self._provider_btn.clicked.connect(self._toggle_provider)
+        self._refresh_provider_btn()
+        self._offline_btn = _row(QPushButton())
+        self._offline_btn.clicked.connect(self._toggle_offline)
+        self._refresh_offline_btn()
+        self._local_stt_btn = _row(QPushButton())
+        self._local_stt_btn.clicked.connect(self._toggle_local_stt)
+        self._refresh_local_stt_btn()
+        self._local_tts_btn = _row(QPushButton())
+        self._local_tts_btn.clicked.connect(self._toggle_local_tts)
+        self._refresh_local_tts_btn()
         self._region_btn = _row(QPushButton("□  SELECT REGION"), self._BTN_DIM)
         self._region_btn.clicked.connect(self._start_region_pick)
         self._region_btn.setToolTip("Drag a rectangle — JARVIS will see only that area")
@@ -5525,6 +5537,84 @@ class MainWindow(QMainWindow):
                 self._grace_lbl.hide()
         except Exception:
             pass
+
+    def _refresh_provider_btn(self):
+        if not hasattr(self, '_provider_btn'): return
+        try:
+            from memory.config_manager import get_provider
+            prov = get_provider()
+        except Exception: prov='auto'
+        label = {"auto":"AUTO","gemini":"GEMINI","openai":"OPENAI","local":"LOCAL","ollama":"LOCAL","lmstudio":"LOCAL"}.get(prov, prov.upper())
+        self._provider_btn.setText(f"◈  PROVIDER: {label}")
+        self._provider_btn.setStyleSheet(self._BTN_DIM)
+        self._provider_btn.setToolTip("Tap to cycle provider (auto→gemini→openai→local)")
+    def _toggle_provider(self):
+        try:
+            from memory.config_manager import get_provider, save_provider
+            order=["auto","gemini","openai","local"]
+            cur=get_provider()
+            nxt=order[(order.index(cur) + 1) % len(order)] if cur in order else "auto"
+            save_provider(nxt)
+        except Exception: pass
+        self._refresh_provider_btn()
+    def _refresh_offline_btn(self):
+        if not hasattr(self, '_offline_btn'): return
+        try:
+            from memory.config_manager import get_offline_fallback_enabled
+            on=get_offline_fallback_enabled()
+        except Exception: on=True
+        self._offline_btn.setText(f"OFFLINE FALLBACK: {'ON' if on else 'OFF'}")
+        on_style=f"QPushButton{{background:#001a08;color:{C.GREEN};border:1px solid {C.GREEN_D};border-radius:3px;text-align:left;padding:0 8px;}}QPushButton:hover{{background:#002010;}}"
+        self._offline_btn.setStyleSheet(on_style if on else self._BTN_DIM)
+    def _toggle_offline(self):
+        try:
+            from memory.config_manager import get_offline_fallback_enabled, save_offline_fallback_enabled
+            save_offline_fallback_enabled(not get_offline_fallback_enabled())
+        except Exception: pass
+        self._refresh_offline_btn()
+    def _refresh_local_stt_btn(self):
+        if not hasattr(self, '_local_stt_btn'): return
+        try:
+            from memory.config_manager import get_local_stt_enabled
+            on=get_local_stt_enabled()
+        except Exception: on=False
+        self._local_stt_btn.setText(f"LOCAL STT: {'ON' if on else 'OFF'}")
+        on_style=f"QPushButton{{background:#001a08;color:{C.GREEN};border:1px solid {C.GREEN_D};border-radius:3px;text-align:left;padding:0 8px;}}QPushButton:hover{{background:#002010;}}"
+        self._local_stt_btn.setStyleSheet(on_style if on else self._BTN_DIM)
+        self._local_stt_btn.setToolTip("Use local Whisper for transcription when offline")
+    def _toggle_local_stt(self):
+        try:
+            from memory.config_manager import get_local_stt_enabled, save_local_stt_enabled
+            save_local_stt_enabled(not get_local_stt_enabled())
+        except Exception: pass
+        self._refresh_local_stt_btn()
+    def _refresh_local_tts_btn(self):
+        if not hasattr(self, '_local_tts_btn'): return
+        try:
+            from memory.config_manager import get_local_tts_enabled
+            on=get_local_tts_enabled()
+        except Exception: on=False
+        self._local_tts_btn.setText(f"LOCAL TTS: {'ON' if on else 'OFF'}")
+        on_style=f"QPushButton{{background:#001a08;color:{C.GREEN};border:1px solid {C.GREEN_D};border-radius:3px;text-align:left;padding:0 8px;}}QPushButton:hover{{background:#002010;}}"
+        self._local_tts_btn.setStyleSheet(on_style if on else self._BTN_DIM)
+        self._local_tts_btn.setToolTip("Speak offline replies via local TTS (pyttsx3/edge-tts)")
+    def _toggle_local_tts(self):
+        try:
+            from memory.config_manager import get_local_tts_enabled, save_local_tts_enabled
+            save_local_tts_enabled(not get_local_tts_enabled())
+        except Exception: pass
+        self._refresh_local_tts_btn()
+    def set_offline(self, offline: bool, detail: str = ""):
+        if not hasattr(self, '_offline_dot'):
+            return
+        if offline:
+            self._offline_dot.setText(f"◉  OFFLINE  {detail[:18]}".strip())
+            self._offline_dot.setStyleSheet(f"color:{C.ACC}; background:rgba(255,107,0,22); border:1px solid {C.ACC}; border-radius:2px; padding:1px 5px;")
+            self._offline_dot.show()
+            self.write_log(f"SYS: Offline mode — {detail or 'using local LLM'}")
+        else:
+            self._offline_dot.hide()
+            self.write_log("SYS: Back online.")
 
     def _toggle_wake_word(self):
         st = self._wake_state()

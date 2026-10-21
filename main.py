@@ -667,6 +667,14 @@ class JarvisLive:
         self.ui.get_pause_state  = lambda: self._paused
         self.ui.get_grace_remaining = lambda: max(0.0, self._grace_until - __import__('time').monotonic()) if self._grace_until else 0.0
         self.ui._on_region_capture = self._ui_region_capture
+        # ── Phase 2: Offline & multi-provider ──────────────────────────────
+        self._offline_mode = False
+        self._offline_q: object = None  # asyncio.Queue when offline
+        try:
+            from memory.config_manager import get_provider as _gp
+            self._provider_name = _gp()
+        except Exception:
+            self._provider_name = "auto"
 
         # Restore the saved push-to-talk preference. Doing it here rather than
         # in __init__ means the hotkey thread only exists once there is a
@@ -825,6 +833,102 @@ class JarvisLive:
         except Exception as e:
             print(f"[Region] capture failed: {e}")
 
+
+    async def _run_offline_mode(self, reason: str = "network error") -> None:
+        """Local-LLM fallback when Live is unreachable. Text I/O; voice if STT/TTS installed."""
+        self._offline_mode = True
+        self._offline_q: asyncio.Queue = asyncio.Queue()
+        try:
+            from memory.config_manager import get_offline_fallback_enabled
+            if not get_offline_fallback_enabled():
+                self._offline_mode = False
+                return
+        except Exception:
+            pass
+        try:
+            self.ui.set_offline(True, reason[:18])
+            self.ui.set_state("LISTENING")
+        except Exception:
+            pass
+        print(f"[JARVIS] OFFLINE MODE — {reason} — type to chat via local LLM")
+        system_prompt = ""
+        try:
+            from pathlib import Path as _P
+            for cand in [Path("core/prompt.txt"), Path(__file__).parent / "core" / "prompt.txt"]:
+                if cand.exists():
+                    system_prompt = cand.read_text(encoding="utf-8")[:4000]
+                    break
+        except Exception:
+            pass
+        history: list[dict] = []
+        if system_prompt:
+            history.append({"role": "system", "content": system_prompt})
+        try:
+            from core.llm_client import ensure_ollama_running
+            ensure_ollama_running(timeout=8)
+        except Exception:
+            pass
+        consecutive_fails = 0
+        while getattr(self, '_offline_mode', False):
+            try:
+                text = await asyncio.wait_for(self._offline_q.get(), timeout=18.0)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            text = (text or "").strip()
+            if not text:
+                continue
+            history.append({"role": "user", "content": text})
+            self.ui.set_state("THINKING")
+            reply = ""
+            try:
+                try:
+                    from core.provider import text as _pt
+                    reply = _pt([text], tier="smart", config={"system_instruction": system_prompt}, timeout_ms=20000, default="")
+                except Exception:
+                    reply = ""
+                if not reply:
+                    from core.llm_client import call_llm
+                    raw = call_llm(history, timeout=60)
+                    reply = (raw.get("content") or "").strip()
+                if reply:
+                    history.append({"role": "assistant", "content": reply})
+                    self.ui.write_log(f"JARVIS (offline): {reply}")
+                    self.ui.set_state("SPEAKING")
+                    try:
+                        from memory.config_manager import get_local_tts_enabled
+                        if get_local_tts_enabled():
+                            from core.local_voice import speak_text
+                            import threading as _th
+                            _th.Thread(target=lambda: speak_text(reply), daemon=True).start()
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.2)
+                    self.ui.set_state("LISTENING")
+                    consecutive_fails = 0
+                else:
+                    self.ui.write_log("SYS: (offline) No reply — local model may be down. Try: ollama serve && ollama pull llama3.2")
+                    consecutive_fails += 1
+            except Exception as e:
+                self.ui.write_log(f"SYS: Offline error — {e}")
+                consecutive_fails += 1
+            if len(history) > 12:
+                history = history[:1] + history[-10:]
+            if consecutive_fails >= 3:
+                self.ui.write_log("SYS: Offline model failing — waiting 15s…")
+                await asyncio.sleep(15)
+                consecutive_fails = 0
+
+    def _exit_offline_mode(self):
+        if getattr(self, '_offline_mode', False):
+            self._offline_mode = False
+            try:
+                self.ui.set_offline(False)
+            except Exception:
+                pass
+            print("[JARVIS] Exiting offline mode — reconnecting to Live")
+
     async def _run_sleep_watch(self) -> None:
         """Auto-sleep after the configured silence window (wake-word mode only)."""
         while True:
@@ -961,7 +1065,24 @@ class JarvisLive:
         return url, key, f"{url}/auto-login?key={key}", manual
 
     def _on_text_command(self, text: str):
+        # Offline mode: queue for local LLM
+        if getattr(self, '_offline_mode', False):
+            try:
+                if self._loop and hasattr(self, '_offline_q'):
+                    asyncio.run_coroutine_threadsafe(self._offline_q.put(text), self._loop)
+                self.ui.write_log(f"You (offline): {text}")
+                return
+            except Exception:
+                pass
         if not self._loop or not self.session:
+            # No Live session and not offline — maybe we can still try offline LLM
+            try:
+                from memory.config_manager import get_offline_fallback_enabled
+                if get_offline_fallback_enabled():
+                    # stash and trigger offline entry on next loop iteration
+                    self.ui.write_log("SYS: Not connected — message queued for offline LLM (reconnecting…)")
+            except Exception:
+                pass
             return
         # Respect wake-word sleep: a typed command must not be answered while
         # asleep either (the sleep gate is not just for the mic). Wake first with
@@ -2309,6 +2430,11 @@ class JarvisLive:
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
 
+                    # Leaving offline? clear banner before new session
+                    try:
+                        self._exit_offline_mode()
+                    except Exception:
+                        pass
                     print("[JARVIS] Connected.")
                     if _resumed_with:
                         # Say it plainly: the difference between "it reconnected"
@@ -2458,6 +2584,28 @@ class JarvisLive:
                     "ConnectionRefusedError", "OSError", "Cannot connect",
                 ))
                 if is_net_err:
+                    # Phase 2.1 — offer local LLM instead of just backing off
+                    try:
+                        from memory.config_manager import get_offline_fallback_enabled as _gofe
+                        if _gofe():
+                            try:
+                                self.ui.set_offline(True, "no cloud — trying local LLM")
+                            except Exception:
+                                pass
+                            try:
+                                await asyncio.wait_for(self._run_offline_mode(reason=err_str[:48] or "network error"), timeout=600)
+                            except asyncio.TimeoutError:
+                                pass
+                            except Exception as e:
+                                print(f"[JARVIS] Offline mode ended: {e}")
+                            try:
+                                self._exit_offline_mode()
+                            except Exception:
+                                pass
+                            self._conn_backoff = 3
+                            continue
+                    except Exception:
+                        pass
                     _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
                     self._conn_backoff = _conn_backoff
                     self.ui.write_log(

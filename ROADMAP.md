@@ -72,8 +72,9 @@ Each phase → isolated commit + manual test before next.
 
 | Phase | Status | Commit |
 |-------|--------|--------|
-| 1     | ✅ DONE | Phase 1 commit (barge-in + grace + pause/stop + region) |
-| 2     | ⬜ Pending | — |
+| 1     | ✅ DONE | Phase 1 — barge-in + grace + pause/stop + region |
+| 2     | ✅ DONE | Phase 2 — provider abstraction + offline fallback + local STT/TTS scaffold |
+| 3     | 🟡 IN PROGRESS | — |
 | 3     | ⬜ Pending | — |
 | 4     | ⬜ Pending | — |
 | 5     | ⬜ Pending | — |
