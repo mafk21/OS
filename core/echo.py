@@ -75,17 +75,17 @@ _MIN_LEVEL = 0.03     # below this the mic is room noise; nothing to decide — 
 # quiet setup even a voice whose formants sit close to ours stands clear of the
 # echo, and in a bad one nothing reliably does. The right response to the last
 # row is to say so — not to interrupt at random.
-_MIN_USER = 0.09      # never call anything below this a voice — lower = easier to trigger barge
-_HEAD_Q = 94          # percentile of observed echo the threshold must clear — slightly lower = less strict
-_HEAD_MULT = 1.05     # ...with this much headroom above it — was 1.15, now 1.05 for faster barge
+_MIN_USER = 0.07      # was 0.09 — lower = easier to trigger barge, per user 'make it work'
+_HEAD_Q = 92          # was 94 — need to clear fewer outliers
+_HEAD_MULT = 1.02     # was 1.05 — almost no headroom, user prefers false positive over missed interrupt
 
 # Above this echo floor, content separates the two poorly. Loudness cannot
 # rescue it — in exactly those rooms the echo already saturates the level meter,
 # so a level test can never be passed. Time can: echo wobbles around its median
 # while a person talking holds above it, so such rooms hold the evidence longer.
-_UNRELIABLE_FLOOR = 0.22
-_BLOCKS_NORMAL = 3    # ~200 ms of sustained evidence — was 5, now faster barge
-_BLOCKS_NOISY = 6    # ~380 ms when the room is this hard — was 12, halved for responsiveness
+_UNRELIABLE_FLOOR = 0.30  # was 0.22 — fewer rooms now count as 'noisy' so we need fewer blocks
+_BLOCKS_NORMAL = 2    # ~130 ms — was 3, now instant barge as requested
+_BLOCKS_NOISY = 3    # ~200 ms when the room is hard — was 6, halved again
 
 _FLOOR_WINDOW = 40    # blocks kept to characterise the room's echo — shorter window = adapts faster
 _FLOOR_Q = 35         # percentile taken as "typical echo here"
