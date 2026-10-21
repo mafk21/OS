@@ -390,8 +390,12 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
 # Pause: listening off but reply/task continues (distinct from Stop).
 
 def get_barge_in_enabled() -> bool:
-    """Voice barge-in — talk over Jarvis to cut it short. Off by default until room calibrated."""
-    return bool(load_api_keys().get("barge_in_enabled", False))
+    """Voice barge-in — talk over Jarvis to cut it short. ON by default; user can toggle off in ⚙ → CONTROLS."""
+    v = load_api_keys().get("barge_in_enabled", None)
+    # New installs: default ON. Existing installs that never set it: migrate to ON.
+    if v is None:
+        return True
+    return bool(v)
 
 
 def save_barge_in_enabled(enabled: bool) -> None:
