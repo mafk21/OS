@@ -99,6 +99,35 @@ def _capture_screen() -> tuple[bytes, str]:
     return _compress(png, "PNG")
 
 
+def _capture_region(x: int, y: int, w: int, h: int) -> tuple[bytes, str]:
+    """Capture a screen region (x,y origin top-left). Used for 'ask about part of screen'."""
+    if not _MSS:
+        raise RuntimeError("mss is not installed. Run: pip install mss")
+    # sanitize
+    x, y = max(0, int(x)), max(0, int(y))
+    w, h = max(10, int(w)), max(10, int(h))
+    # clamp to primary monitor to avoid grab outside bounds
+    with mss.mss() as sct:
+        mon = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+        # mss expects absolute screen coords; mon already at (left,top)
+        # if caller passed window-relative, convert via mss mon offset
+        # we trust absolute
+        bbox = {"left": x, "top": y, "width": w, "height": h}
+        # clamp inside monitor
+        bbox["width"] = min(bbox["width"], mon["width"] - (bbox["left"] - mon["left"]))
+        bbox["height"] = min(bbox["height"], mon["height"] - (bbox["top"] - mon["top"]))
+        if bbox["width"] <= 0 or bbox["height"] <= 0:
+            raise RuntimeError(f"Region outside screen: {bbox}")
+        shot = sct.grab(bbox)
+        png = mss.tools.to_png(shot.rgb, shot.size)
+    return _compress(png, "PNG")
+
+
+# Alias for dashboard / CLI trigger `jarvis --region`
+def capture_region_bbox(bbox: dict) -> tuple[bytes, str]:
+    return _capture_region(bbox.get("x", 0), bbox.get("y", 0), bbox.get("w", 800), bbox.get("h", 600))
+
+
 def _cv2_backend() -> int:
     """Return the best OpenCV camera backend for the current OS."""
     if not _CV2:

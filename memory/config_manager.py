@@ -382,3 +382,131 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
     plugins_cfg[plugin_name] = enabled
     data["plugins_enabled"] = plugins_cfg
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+# ── Phase 1: Voice Foundations ───────────────────────────────────────────────
+# Grace window: follow-ups don't need wake word for N seconds after Jarvis stops.
+# Barge-in: voice can interrupt while Jarvis is speaking (uses EchoGuard).
+# Pause: listening off but reply/task continues (distinct from Stop).
+
+def get_barge_in_enabled() -> bool:
+    """Voice barge-in — talk over Jarvis to cut it short. Off by default until room calibrated."""
+    return bool(load_api_keys().get("barge_in_enabled", False))
+
+
+def save_barge_in_enabled(enabled: bool) -> None:
+    _save_flag("barge_in_enabled", bool(enabled))
+
+
+def get_grace_period() -> int:
+    """Seconds after Jarvis stops that wake word is not required (0 to disable)."""
+    try:
+        v = int(load_api_keys().get("wake_grace_period", 8))
+        return max(0, min(30, v))
+    except Exception:
+        return 8
+
+
+def save_grace_period(seconds: int) -> None:
+    _save_flag("wake_grace_period", max(0, min(30, int(seconds))))
+
+
+def get_pause_enabled() -> bool:
+    """Internal — whether Pause control is available (always true once Phase 1 ships)."""
+    return True
+# ── Phase 2: Offline & Multi-Provider ───────────────────────────────────────
+# Provider abstraction + offline fallback controls. All additive; existing
+# gemini_api_key install keeps behaving exactly as before (provider=auto).
+
+PROVIDERS = ("auto", "gemini", "openai", "local", "ollama", "lmstudio")
+
+def get_provider() -> str:
+    v = str(load_api_keys().get("provider", "auto")).strip().lower()
+    return v if v in PROVIDERS else "auto"
+
+def save_provider(name: str) -> None:
+    v = str(name or "auto").strip().lower()
+    _save_flag("provider", v if v in PROVIDERS else "auto")
+
+def get_offline_fallback_enabled() -> bool:
+    return bool(load_api_keys().get("offline_fallback", True))
+
+def save_offline_fallback_enabled(enabled: bool) -> None:
+    _save_flag("offline_fallback", bool(enabled))
+
+def get_openai_cfg() -> dict:
+    cfg = load_api_keys()
+    return {
+        "api_key":  str(cfg.get("openai_api_key", "") or "").strip(),
+        "base_url": str(cfg.get("openai_base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1").rstrip("/"),
+        "model":    str(cfg.get("openai_model", "gpt-4o-mini") or "gpt-4o-mini").strip(),
+    }
+
+def save_openai_cfg(api_key: str = None, base_url: str = None, model: str = None) -> None:
+    cur = get_openai_cfg()
+    if api_key is not None:
+        cur["api_key"] = str(api_key or "").strip()
+    if base_url is not None:
+        cur["base_url"] = str(base_url or "https://api.openai.com/v1").rstrip("/")
+    if model is not None:
+        cur["model"] = str(model or "gpt-4o-mini").strip()
+    ensure_config_dir()
+    import json
+    data = {}
+    if CONFIG_FILE.exists():
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    data["openai_api_key"]  = cur["api_key"]
+    data["openai_base_url"] = cur["base_url"]
+    data["openai_model"]    = cur["model"]
+    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+def get_local_llm_cfg() -> dict:
+    cfg = load_api_keys()
+    return {
+        "provider": str(cfg.get("llm_provider", "ollama") or "ollama").strip().lower(),
+        "url":      str(cfg.get("llm_url", "http://localhost:11434") or "http://localhost:11434").rstrip("/"),
+        "model":    str(cfg.get("llm_model", "llama3.2") or "llama3.2").strip(),
+    }
+
+# ── Phase 2b: Local Voice Loop ────────────────────────────────────────────
+# Flow/Dictate hotkeys + local STT/TTS toggles. Graceful degrade when deps missing.
+
+def get_local_stt_enabled() -> bool:
+    return bool(load_api_keys().get("local_stt_enabled", False))
+
+def save_local_stt_enabled(enabled: bool) -> None:
+    _save_flag("local_stt_enabled", bool(enabled))
+
+def get_local_tts_enabled() -> bool:
+    return bool(load_api_keys().get("local_tts_enabled", False))
+
+def save_local_tts_enabled(enabled: bool) -> None:
+    _save_flag("local_tts_enabled", bool(enabled))
+
+def get_flow_hotkey() -> str:
+    return str(load_api_keys().get("flow_hotkey", "ctrl+ctrl") or "ctrl+ctrl").strip().lower()
+
+def get_dictate_hotkey() -> str:
+    return str(load_api_keys().get("dictate_hotkey", "ctrl+shift+d") or "ctrl+shift+d").strip().lower()
+
+# ── Phase 4: Accounts & Remote ────────────────────────────────────────────
+def get_telegram_cfg() -> dict:
+    cfg=load_api_keys()
+    return {
+        "bot_token": str(cfg.get("telegram_bot_token","") or "").strip(),
+        "allowed": cfg.get("telegram_allowed_users", []),
+        "pairing_code": str(cfg.get("telegram_pairing_code","") or "").strip(),
+    }
+def save_telegram_token(token: str):
+    _patch_config(telegram_bot_token=str(token or "").strip())
+def get_composio_key() -> str:
+    return str(load_api_keys().get("composio_api_key","") or "").strip()
+def save_composio_key(k: str):
+    _patch_config(composio_api_key=str(k or "").strip())
+def get_relay_enabled() -> bool:
+    return bool(load_api_keys().get("relay_enabled", False))
+def save_relay_enabled(v: bool):
+    _save_flag("relay_enabled", bool(v))
