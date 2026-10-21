@@ -74,9 +74,8 @@ Each phase → isolated commit + manual test before next.
 |-------|--------|--------|
 | 1     | ✅ DONE | Phase 1 — barge-in + grace + pause/stop + region |
 | 2     | ✅ DONE | Phase 2 — provider abstraction + offline fallback + local STT/TTS scaffold |
-| 3     | 🟡 IN PROGRESS | — |
-| 3     | ⬜ Pending | — |
-| 4     | ⬜ Pending | — |
+| 3     | ✅ DONE | Phase 3 — tasks/notes/lecture/routines/checkpoints (productivity.db) |
+| 4     | 🟡 IN PROGRESS | — |
 | 5     | ⬜ Pending | — |
 | 6     | ⬜ Pending | — |
 | 7     | ⬜ Pending | — |

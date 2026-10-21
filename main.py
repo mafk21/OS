@@ -1064,6 +1064,15 @@ class JarvisLive:
         manual = self._dashboard.get_manual_url()
         return url, key, f"{url}/auto-login?key={key}", manual
 
+    def _try_lecture_append(self, text: str):
+        try:
+            import memory.productivity as _prod
+            st=_prod.lecture_status()
+            if st.get('active'):
+                _prod.lecture_append(text)
+        except Exception:
+            pass
+
     def _on_text_command(self, text: str):
         # Offline mode: queue for local LLM
         if getattr(self, '_offline_mode', False):
@@ -1071,6 +1080,7 @@ class JarvisLive:
                 if self._loop and hasattr(self, '_offline_q'):
                     asyncio.run_coroutine_threadsafe(self._offline_q.put(text), self._loop)
                 self.ui.write_log(f"You (offline): {text}")
+                self._try_lecture_append(text)
                 return
             except Exception:
                 pass
@@ -1097,6 +1107,7 @@ class JarvisLive:
             ),
             self._loop
         )
+        self._try_lecture_append(text)
 
     def _tail_active(self) -> bool:
         """True while the speakers may still be finishing our last sentence."""
