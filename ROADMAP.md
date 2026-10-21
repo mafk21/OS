@@ -78,7 +78,7 @@ Each phase → isolated commit + manual test before next.
 | 4     | ✅ DONE | Phase 4 — accounts/remote/telegram/relay/calendar heads-ups |
 | 5     | ✅ DONE | Phase 5 — accessibility/shell BG agent/smart home/diagnostics/music |
 | 6     | ✅ DONE | Phase 6 — web studio/github/browser/RAG/image/career |
-| 7     | 🟡 IN PROGRESS | — |
+| 7     | ✅ DONE | Phase 7 — MCP adapter/marketplace/hosted auth |
 
 ## Notes
 - No skill removed; all additive.
