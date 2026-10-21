@@ -76,8 +76,8 @@ Each phase → isolated commit + manual test before next.
 | 2     | ✅ DONE | Phase 2 — provider abstraction + offline fallback + local STT/TTS scaffold |
 | 3     | ✅ DONE | Phase 3 — tasks/notes/lecture/routines/checkpoints (productivity.db) |
 | 4     | ✅ DONE | Phase 4 — accounts/remote/telegram/relay/calendar heads-ups |
-| 5     | 🟡 IN PROGRESS | — |
-| 6     | ⬜ Pending | — |
+| 5     | ✅ DONE | Phase 5 — accessibility/shell BG agent/smart home/diagnostics/music |
+| 6     | 🟡 IN PROGRESS | — |
 | 7     | ⬜ Pending | — |
 
 ## Notes
