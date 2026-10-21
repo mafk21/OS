@@ -56,7 +56,7 @@
 
 ```bash
 git clone https://github.com/mafk21/OS.git
-cd Mark-LV
+cd OS
 python setup.py        # installs deps for YOUR OS + the browser automation engine
 python main.py
 ```
