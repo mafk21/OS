@@ -390,12 +390,15 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
 # Pause: listening off but reply/task continues (distinct from Stop).
 
 def get_barge_in_enabled() -> bool:
-    """Voice barge-in — talk over Jarvis to cut it short. ON by default; user can toggle off in ⚙ → CONTROLS."""
-    v = load_api_keys().get("barge_in_enabled", None)
-    # New installs: default ON. Existing installs that never set it: migrate to ON.
-    if v is None:
-        return True
-    return bool(v)
+    """Voice barge-in — talk over Jarvis to cut it short. FORCED ON this build.
+
+    Previous releases defaulted to OFF / migrated existing `false` values.
+    Users reported 'won't stop when I talk' because the saved `false` stuck.
+    For reliability barge-in is now always ON — toggle in ⚙ still persists but
+    the getter never returns False so a stale config can never silence interrupt.
+    """
+    # Always ON — ignore stored value. UI toggle still writes but we override.
+    return True
 
 
 def save_barge_in_enabled(enabled: bool) -> None:
