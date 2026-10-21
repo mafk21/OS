@@ -1626,12 +1626,27 @@ class JarvisLive:
                 return
 
             # ── Barge-in (voice interrupt) ───────────────────────────────────
+            # Fixed: always check barge even when EchoGuard is still warming up.
+            # Loud "STOP!" bypasses the spectral check — user expectation is that
+            # shouting over JARVIS always works, regardless of room acoustics.
             if jarvis_speaking:
                 if not self._barge_enabled:
                     return
-                # Classify this block — echo vs real voice — via EchoGuard
                 try:
                     lvl = _pcm_level(indata)
+                    # Loudness fast-path: if mic is really hot, interrupt immediately
+                    # even if EchoGuard thinks it's echo. 0.30 ≈ loud voice at 30cm.
+                    if lvl > 0.28:
+                        self._barge_blocks += 1
+                        if self._barge_blocks >= 2:
+                            self._barge_blocks = 0
+                            try:
+                                loop.call_soon_threadsafe(lambda: self.interrupt())
+                                print(f"[Barge] LOUD interrupt lvl={lvl:.2f}")
+                            except Exception:
+                                pass
+                            return
+                    # Normal spectral check via EchoGuard
                     is_user = self._echo.is_user_speech(indata, SEND_SAMPLE_RATE, lvl)
                     if is_user:
                         self._barge_blocks += 1

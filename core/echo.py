@@ -58,8 +58,8 @@ import numpy as np
 # people saying the same word — we want the *timbre* that echo preserves.
 _BAND_EDGES = (200, 400, 700, 1100, 1700, 2600, 3800, 5200, 7000)
 
-_HISTORY_S = 1.5      # how far back an echo could plausibly have been played
-_MIN_LEVEL = 0.06     # below this the mic is room noise; nothing to decide
+_HISTORY_S = 1.0      # how far back an echo could plausibly have been played — shorter = faster barge
+_MIN_LEVEL = 0.03     # below this the mic is room noise; nothing to decide — lower = hears quiet interrupters
 
 # The threshold is not a tuned constant. It is placed just above essentially ALL
 # the echo this particular room has been seen to produce. Residuals measured on
@@ -75,21 +75,21 @@ _MIN_LEVEL = 0.06     # below this the mic is room noise; nothing to decide
 # quiet setup even a voice whose formants sit close to ours stands clear of the
 # echo, and in a bad one nothing reliably does. The right response to the last
 # row is to say so — not to interrupt at random.
-_MIN_USER = 0.15      # never call anything below this a voice
-_HEAD_Q = 97          # percentile of observed echo the threshold must clear
-_HEAD_MULT = 1.15     # ...with this much headroom above it
+_MIN_USER = 0.09      # never call anything below this a voice — lower = easier to trigger barge
+_HEAD_Q = 94          # percentile of observed echo the threshold must clear — slightly lower = less strict
+_HEAD_MULT = 1.05     # ...with this much headroom above it — was 1.15, now 1.05 for faster barge
 
 # Above this echo floor, content separates the two poorly. Loudness cannot
 # rescue it — in exactly those rooms the echo already saturates the level meter,
 # so a level test can never be passed. Time can: echo wobbles around its median
 # while a person talking holds above it, so such rooms hold the evidence longer.
 _UNRELIABLE_FLOOR = 0.22
-_BLOCKS_NORMAL = 5    # ~320 ms of sustained evidence
-_BLOCKS_NOISY = 12    # ~770 ms when the room is this hard
+_BLOCKS_NORMAL = 3    # ~200 ms of sustained evidence — was 5, now faster barge
+_BLOCKS_NOISY = 6    # ~380 ms when the room is this hard — was 12, halved for responsiveness
 
-_FLOOR_WINDOW = 60    # blocks kept to characterise the room's echo
+_FLOOR_WINDOW = 40    # blocks kept to characterise the room's echo — shorter window = adapts faster
 _FLOOR_Q = 35         # percentile taken as "typical echo here"
-_WARMUP = 16          # blocks (~1 s) of listening before judging anyone
+_WARMUP = 4          # blocks (~250 ms) before judging — was 16 (~1s), now almost instant barge
 _RELEARN_RUN = 28     # a 'voice' lasting this long means the room changed
 
 
