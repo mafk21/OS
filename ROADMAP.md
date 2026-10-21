@@ -77,8 +77,8 @@ Each phase → isolated commit + manual test before next.
 | 3     | ✅ DONE | Phase 3 — tasks/notes/lecture/routines/checkpoints (productivity.db) |
 | 4     | ✅ DONE | Phase 4 — accounts/remote/telegram/relay/calendar heads-ups |
 | 5     | ✅ DONE | Phase 5 — accessibility/shell BG agent/smart home/diagnostics/music |
-| 6     | 🟡 IN PROGRESS | — |
-| 7     | ⬜ Pending | — |
+| 6     | ✅ DONE | Phase 6 — web studio/github/browser/RAG/image/career |
+| 7     | 🟡 IN PROGRESS | — |
 
 ## Notes
 - No skill removed; all additive.
