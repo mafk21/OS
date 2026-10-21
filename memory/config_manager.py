@@ -382,3 +382,35 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
     plugins_cfg[plugin_name] = enabled
     data["plugins_enabled"] = plugins_cfg
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+# ── Phase 1: Voice Foundations ───────────────────────────────────────────────
+# Grace window: follow-ups don't need wake word for N seconds after Jarvis stops.
+# Barge-in: voice can interrupt while Jarvis is speaking (uses EchoGuard).
+# Pause: listening off but reply/task continues (distinct from Stop).
+
+def get_barge_in_enabled() -> bool:
+    """Voice barge-in — talk over Jarvis to cut it short. Off by default until room calibrated."""
+    return bool(load_api_keys().get("barge_in_enabled", False))
+
+
+def save_barge_in_enabled(enabled: bool) -> None:
+    _save_flag("barge_in_enabled", bool(enabled))
+
+
+def get_grace_period() -> int:
+    """Seconds after Jarvis stops that wake word is not required (0 to disable)."""
+    try:
+        v = int(load_api_keys().get("wake_grace_period", 8))
+        return max(0, min(30, v))
+    except Exception:
+        return 8
+
+
+def save_grace_period(seconds: int) -> None:
+    _save_flag("wake_grace_period", max(0, min(30, int(seconds))))
+
+
+def get_pause_enabled() -> bool:
+    """Internal — whether Pause control is available (always true once Phase 1 ships)."""
+    return True

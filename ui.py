@@ -1390,6 +1390,111 @@ class _CameraPreview(QWidget):
         self._timer.start(6_000)   # auto-dismiss after 6 s
 
 
+class RegionOverlay(QWidget):
+    """Full-screen rubber-band selector for region capture.
+
+    Shown as a Frameless translucent window covering the virtual desktop.
+    Drag to draw a rectangle; release -> bbox emitted.
+    ESC cancels, double-click captures full screen.
+    """
+    picked = pyqtSignal(int, int, int, int)  # x,y,w,h
+    cancelled = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(None, Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        self.setWindowState(Qt.WindowState.WindowFullScreen)
+        self._start = None
+        self._end = None
+        self._hint = "Drag to select region  •  ESC to cancel"
+        self.hide()
+
+    def start_pick(self):
+        # cover virtual desktop
+        try:
+            geo = QApplication.primaryScreen().virtualGeometry()
+            self.setGeometry(geo)
+        except Exception:
+            pass
+        self._start = None
+        self._end = None
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.setFocus()
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._start = e.globalPosition().toPoint() if hasattr(e, 'globalPosition') else e.globalPos()
+            # fallback to local pos converted
+            if self._start is None:
+                self._start = e.pos()
+            self._end = self._start
+            self.update()
+
+    def mouseMoveEvent(self, e):
+        if self._start is not None:
+            self._end = e.globalPosition().toPoint() if hasattr(e, 'globalPosition') else e.globalPos()
+            if self._end is None:
+                self._end = e.pos()
+            self.update()
+
+    def mouseReleaseEvent(self, e):
+        if self._start is None or self._end is None:
+            return
+        x1, y1 = self._start.x(), self._start.y()
+        x2, y2 = self._end.x(), self._end.y()
+        x, y = min(x1,x2), min(y1,y2)
+        w, h = abs(x2-x1), abs(y2-y1)
+        self.hide()
+        if w < 8 or h < 8:
+            self.cancelled.emit()
+            return
+        self.picked.emit(int(x), int(y), int(w), int(h))
+
+    def mouseDoubleClickEvent(self, e):
+        # full screen
+        try:
+            scr = QApplication.primaryScreen().geometry()
+            self.hide()
+            self.picked.emit(scr.x(), scr.y(), scr.width(), scr.height())
+        except Exception:
+            self.hide()
+            self.cancelled.emit()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key.Key_Escape:
+            self.hide()
+            self.cancelled.emit()
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # dim
+        p.fillRect(self.rect(), QColor(0, 6, 10, 110))
+        # hint
+        p.setPen(QPen(QColor("#00d4ff"), 1))
+        p.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        p.drawText(QRectF(12, 12, self.width()-24, 20), Qt.AlignmentFlag.AlignLeft, self._hint)
+        if self._start and self._end:
+            x1,y1 = self._start.x()-self.x(), self._start.y()-self.y()
+            x2,y2 = self._end.x()-self.x(), self._end.y()-self.y()
+            # clamp to widget coords if fullscreen window offset
+            # use global coords already
+            rx, ry = min(x1,x2), min(y1,y2)
+            rw, rh = abs(x2-x1), abs(y2-y1)
+            # selection rect
+            p.setPen(QPen(QColor("#00d4ff"), 1.5, Qt.PenStyle.DashLine))
+            p.setBrush(QBrush(QColor(0, 212, 255, 28)))
+            p.drawRoundedRect(QRectF(rx, ry, rw, rh), 3, 3)
+            # size label
+            p.setPen(QPen(QColor("#ffffff"), 1))
+            p.setFont(QFont("Courier New", 8))
+            p.drawText(QRectF(rx, max(0, ry-14), 120, 14), f"{rw} x {rh}")
+        p.end()
+
+
 class SetupOverlay(QWidget):
     done = pyqtSignal(str, str)
 
@@ -4314,6 +4419,68 @@ class MainWindow(QMainWindow):
         self._hud_btn.clicked.connect(self._toggle_hud_style)
         self._refresh_hud_btn()
 
+        # ── Phase 1: Voice foundations ──────────────────────────────────
+        sep1 = QFrame(); sep1.setFrameShape(QFrame.Shape.HLine)
+        sep1.setStyleSheet(f"color:{C.BORDER};"); lay.addWidget(sep1)
+        vox_hdr = QLabel("VOICE")
+        vox_hdr.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        vox_hdr.setStyleSheet(f"color:{C.PRI_DIM}; background:transparent;")
+        lay.addWidget(vox_hdr)
+
+        self._barge_btn = _row(QPushButton())
+        self._barge_btn.clicked.connect(self._toggle_barge)
+        self._refresh_barge_btn()
+
+        # grace row: label + spin
+        grace_row = QHBoxLayout(); grace_row.setSpacing(4)
+        glab = QLabel("GRACE")
+        glab.setFont(QFont("Courier New", 7))
+        glab.setStyleSheet(f"color:{C.TEXT_DIM}; background:transparent;")
+        glab.setFixedWidth(42)
+        grace_row.addWidget(glab)
+        self._grace_spin = QSpinBox()
+        self._grace_spin.setRange(0,30)
+        self._grace_spin.setSuffix(" s")
+        self._grace_spin.setFont(QFont("Courier New", 8))
+        self._grace_spin.setFixedHeight(26)
+        self._grace_spin.setStyleSheet(f"QSpinBox{{background:#000d14;color:{C.TEXT};border:1px solid {C.BORDER};border-radius:3px;padding:2px 4px;}}")
+        self._grace_spin.valueChanged.connect(self._change_grace)
+        self._grace_spin.setToolTip("Seconds after speaking where you don't need the wake word")
+        try:
+            from memory.config_manager import get_grace_period as _ggp
+            self._grace_spin.setValue(int(_ggp()))
+        except Exception:
+            self._grace_spin.setValue(8)
+        grace_row.addWidget(self._grace_spin, 1)
+        lay.addLayout(grace_row)
+
+        self._pause_btn = _row(QPushButton())
+        self._pause_btn.clicked.connect(self._toggle_pause)
+        self._refresh_pause_btn()
+
+        self._stop_all_btn = _row(QPushButton("■  STOP ALL"), self._BTN_DIM)
+        self._stop_all_btn.clicked.connect(self._do_stop_all)
+        self._stop_all_btn.setToolTip("Stop speaking, cancel tasks, clear grace")
+
+        sep2 = QFrame(); sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet(f"color:{C.BORDER};"); lay.addWidget(sep2)
+        vis_hdr = QLabel("VISION")
+        vis_hdr.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        vis_hdr.setStyleSheet(f"color:{C.PRI_DIM}; background:transparent;")
+        lay.addWidget(vis_hdr)
+        self._region_btn = _row(QPushButton("□  SELECT REGION"), self._BTN_DIM)
+        self._region_btn.clicked.connect(self._start_region_pick)
+        self._region_btn.setToolTip("Drag a rectangle — JARVIS will see only that area")
+
+        self._grace_lbl = QLabel("")
+        self._grace_lbl.setFont(QFont("Courier New", 7))
+        self._grace_lbl.setStyleSheet(f"color:{C.ACC2}; background:transparent;")
+        self._grace_lbl.hide()
+        lay.addWidget(self._grace_lbl)
+        self._grace_tmr = QTimer(self)
+        self._grace_tmr.timeout.connect(self._tick_grace)
+        self._grace_tmr.start(500)
+
         w.adjustSize()
         return w
 
@@ -5231,6 +5398,133 @@ class MainWindow(QMainWindow):
                 cb(bool(held))
             except Exception:
                 pass
+
+    # ── Phase 1: barge-in / grace / pause / region ───────────────────────
+    def _refresh_barge_btn(self):
+        try:
+            from memory.config_manager import get_barge_in_enabled
+            on = bool(get_barge_in_enabled())
+        except Exception:
+            on = False
+        if not hasattr(self, "_barge_btn"):
+            return
+        if on:
+            self._barge_btn.setText("◉  BARGE-IN: ON")
+            self._barge_btn.setStyleSheet(f"QPushButton{{background:#001a08;color:{C.GREEN};border:1px solid {C.GREEN_D};border-radius:3px;text-align:left;padding:0 8px;}}QPushButton:hover{{background:#002010;}}")
+            self._barge_btn.setToolTip("JARVIS will stop speaking when you start talking over it")
+        else:
+            self._barge_btn.setText("◉  BARGE-IN: OFF")
+            self._barge_btn.setStyleSheet(self._BTN_DIM)
+            self._barge_btn.setToolTip("Talking while JARVIS speaks will not interrupt it")
+
+    def _toggle_barge(self):
+        want = None
+        if getattr(self, "on_barge_toggle", None):
+            try:
+                want = self.on_barge_toggle()
+            except Exception as e:
+                self.write_log(f"ERR: Barge toggle — {e}")
+        if want is None:
+            try:
+                from memory.config_manager import get_barge_in_enabled, save_barge_in_enabled
+                want = not get_barge_in_enabled()
+                save_barge_in_enabled(want)
+            except Exception:
+                pass
+        self._refresh_barge_btn()
+
+    def _change_grace(self, v: int):
+        if getattr(self, "on_grace_change", None):
+            try:
+                self.on_grace_change(int(v))
+            except Exception:
+                pass
+        else:
+            try:
+                from memory.config_manager import save_grace_period
+                save_grace_period(int(v))
+            except Exception:
+                pass
+
+    def _refresh_pause_btn(self):
+        if not hasattr(self, "_pause_btn"):
+            return
+        paused = bool(getattr(self, "_paused_ui", False))
+        if paused:
+            self._pause_btn.setText("⏸  PAUSED — TAP TO RESUME")
+            self._pause_btn.setStyleSheet(f"QPushButton{{background:{C.ACC2};color:#00060a;border:none;border-radius:3px;text-align:left;padding:0 8px;font-weight:bold;}}")
+        else:
+            self._pause_btn.setText("⏸  PAUSE LISTENING")
+            self._pause_btn.setStyleSheet(self._BTN_DIM)
+
+    def _toggle_pause(self):
+        want = None
+        if getattr(self, "on_pause_toggle", None):
+            try:
+                want = self.on_pause_toggle()
+            except Exception as e:
+                self.write_log(f"ERR: Pause — {e}")
+        if want is None:
+            want = not bool(getattr(self, "_paused_ui", False))
+            self._paused_ui = want
+        else:
+            self._paused_ui = bool(want)
+        self._refresh_pause_btn()
+
+    def _do_stop_all(self):
+        if getattr(self, "on_stop_all", None):
+            try:
+                self.on_stop_all()
+            except Exception as e:
+                self.write_log(f"ERR: Stop — {e}")
+        self._paused_ui = False
+        self._refresh_pause_btn()
+        self.write_log("SYS: Stopped.")
+
+    def _start_region_pick(self):
+        if not hasattr(self, "_region_overlay") or self._region_overlay is None:
+            self._region_overlay = RegionOverlay()
+            self._region_overlay.picked.connect(self._on_region_picked)
+            self._region_overlay.cancelled.connect(lambda: self.write_log("SYS: Region cancelled."))
+        self._region_overlay.start_pick()
+        self.write_log("SYS: Drag to select a region…")
+
+    def _on_region_picked(self, x, y, w, h):
+        self.write_log(f"SYS: Region {x},{y} {w}x{h} — capturing…")
+        # store last region for repeat
+        self._last_region = (int(x), int(y), int(w), int(h))
+        # ask JarvisLive to capture it via screen_process tool path
+        # We synthesize the tool call if the LLM path is not available, otherwise just log a hint
+        try:
+            # Prefer: inject as a user turn that triggers screen_process with region
+            if getattr(self, "_on_region_capture", None):
+                self._on_region_capture(int(x), int(y), int(w), int(h))
+            else:
+                # fallback: capture locally and show preview
+                from actions.screen_processor import capture_region_bbox as _crb
+                b, mt = _crb(int(x), int(y), int(w), int(h))
+                self._cam_preview.show_frame(b)
+                cw = self.centralWidget()
+                pw = _CameraPreview._W; ph = self._cam_preview.height()
+                self._cam_preview.setGeometry(cw.width() - _RIGHT_W - pw - 12, cw.height() - ph - 28, pw, ph)
+                self._cam_preview.show(); self._cam_preview.raise_()
+        except Exception as e:
+            self.write_log(f"ERR: Region capture — {e}")
+
+    def _tick_grace(self):
+        if not hasattr(self, "_grace_lbl"):
+            return
+        try:
+            gp = None
+            if getattr(self, "get_grace_remaining", None):
+                gp = self.get_grace_remaining()
+            if gp and gp > 0:
+                self._grace_lbl.setText(f"◐  GRACE  {gp:.1f}s — say anything")
+                self._grace_lbl.show()
+            else:
+                self._grace_lbl.hide()
+        except Exception:
+            pass
 
     def _toggle_wake_word(self):
         st = self._wake_state()

@@ -72,6 +72,7 @@ from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
     get_push_to_talk_enabled, get_thinking_enabled, get_turn_tuning, get_voice,
     get_wake_word_enabled, save_wake_word_enabled,    get_input_device, get_output_device,
+    get_barge_in_enabled, get_grace_period, save_barge_in_enabled, save_grace_period,
 )
 from core                     import gemini as _gemini
 from core.plugin_loader        import discover_plugins
@@ -360,8 +361,13 @@ TOOL_DECLARATIONS = [
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "angle": {"type": "STRING", "description": "'screen' to capture display, 'camera' for webcam. Default: 'screen'"},
-                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
+                "angle": {"type": "STRING", "description": "'screen' for display, 'camera' for webcam, 'region' for a cropped bounding box. Default: 'screen'"},
+                "text":  {"type": "STRING", "description": "The question or instruction about the captured image"},
+                "region": {"type": "OBJECT", "description": "Optional bounding box {x,y,w,h} in screen pixels for region capture.", "properties": {"x": {"type": "NUMBER"}, "y": {"type": "NUMBER"}, "w": {"type": "NUMBER"}, "h": {"type": "NUMBER"}}},
+                "x": {"type": "NUMBER", "description": "Region left (alt to region object)"},
+                "y": {"type": "NUMBER", "description": "Region top"},
+                "w": {"type": "NUMBER", "description": "Region width"},
+                "h": {"type": "NUMBER", "description": "Region height"}
             },
             "required": ["text"]
         }
@@ -644,6 +650,23 @@ class JarvisLive:
         self._awake            = not self._wake_enabled
         self._wake_detector: WakeWordDetector | None = None
         self._wake_sleep_timeout = WAKE_SLEEP_TIMEOUT
+        # ── Phase 1: Voice Foundations ───────────────────────────────────
+        self._barge_enabled     = get_barge_in_enabled()
+        self._grace_until      = 0.0        # monotonic deadline for follow-up without wake word
+        self._grace_period      = float(get_grace_period())
+        self._paused           = False      # Pause = deaf but reply/task continues
+        self._barge_blocks     = 0          # consecutive barge-in positive blocks
+        self._barge_notified   = False      # log once per barge session
+        # UI hooks for Phase 1 controls
+        self.ui.on_barge_toggle  = self._ui_barge_toggle
+        self.ui.on_grace_change  = self._ui_grace_change
+        self.ui.on_pause_toggle  = self._ui_pause_toggle
+        self.ui.on_stop_all      = self._ui_stop_all
+        self.ui.get_barge_state  = lambda: self._barge_enabled
+        self.ui.get_grace_period = lambda: self._grace_period
+        self.ui.get_pause_state  = lambda: self._paused
+        self.ui.get_grace_remaining = lambda: max(0.0, self._grace_until - __import__('time').monotonic()) if self._grace_until else 0.0
+        self.ui._on_region_capture = self._ui_region_capture
 
         # Restore the saved push-to-talk preference. Doing it here rather than
         # in __init__ means the hotkey thread only exists once there is a
@@ -685,9 +708,12 @@ class JarvisLive:
         self.wake(reason="wake word")
 
     def wake(self, reason: str = "wake word") -> None:
+        # Grace window also wakes — follow-up doesn't need "Hey Jarvis"
         if self._awake:
             return
         self._awake = True
+        self._paused = False
+        self._grace_until = 0.0
         self._last_user_speech = time.monotonic()   # start the auto-sleep clock now
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
@@ -697,9 +723,107 @@ class JarvisLive:
         if not self._awake:
             return
         self._awake = False
+        self._paused = False
+        self._grace_until = 0.0
         self.set_speaking(False)
         self.ui.set_state("SLEEPING")
         self.ui.write_log(f"SYS: Sleeping — {reason}. Say 'Hey Jarvis' to wake me.")
+
+    # ── Phase 1: Pause vs Stop, Barge-in, Grace ──────────────────────────
+    def _ui_barge_toggle(self, enable=None) -> str:
+        if enable is None:
+            self._barge_enabled = not self._barge_enabled
+        else:
+            self._barge_enabled = bool(enable)
+        try:
+            save_barge_in_enabled(self._barge_enabled)
+        except Exception:
+            pass
+        self.ui.write_log(f"SYS: Barge-in {'on' if self._barge_enabled else 'off'}.")
+        return self._barge_enabled
+
+    def _ui_grace_change(self, seconds: int) -> None:
+        try:
+            seconds = int(seconds)
+        except Exception:
+            return
+        self._grace_period = float(max(0, min(30, seconds)))
+        try:
+            save_grace_period(int(self._grace_period))
+        except Exception:
+            pass
+        if hasattr(self.ui, '_grace_spin'):
+            try:
+                if int(self.ui._grace_spin.value()) != int(self._grace_period):
+                    self.ui._grace_spin.setValue(int(self._grace_period))
+            except Exception:
+                pass
+
+    def _ui_pause_toggle(self) -> str:
+        """Pause = deaf but keep replying/working. Resume = listen again."""
+        if not self._awake:
+            self.wake(reason="pause toggle")
+            return "listening"
+        self._paused = not self._paused
+        if self._paused:
+            self.ui.set_state("PAUSED")
+            self.ui.write_log("SYS: Paused — listening off, tasks continue. Tap again to resume.")
+            return "paused"
+        else:
+            self.ui.set_state("LISTENING" if not self._is_speaking else "SPEAKING")
+            self.ui.write_log("SYS: Resumed — listening.")
+            return "listening"
+
+    def _ui_stop_all(self) -> None:
+        """Stop = hard stop: drain audio, clear queues, end turn."""
+        self._paused = False
+        self._grace_until = 0.0
+        self.interrupt()
+        # also clear pending vision / grace
+        self._pending_vision = None
+        self._vision_busy = False
+        self.ui.write_log("SYS: Stopped — all tasks and audio cleared.")
+        try:
+            self.ui.set_state("LISTENING" if self._awake else "SLEEPING")
+        except Exception:
+            pass
+
+    def _ui_region_capture(self, x: int, y: int, w: int, h: int) -> None:
+        """Called from UI thread when user drags a region. Injects a vision turn."""
+        try:
+            import asyncio as _aio
+            from actions.screen_processor import _capture_region as _cr
+            img_b, mime_t = _cr(int(x), int(y), int(w), int(h))
+            self._pending_vision = (img_b, mime_t, f"What do you see in this region ({x},{y} {w}x{h})?", "region")
+            # show preview
+            try:
+                self.ui._cam_preview.show_frame(img_b)
+                from PyQt6.QtCore import QSizeF as _QS
+                cw = self.ui.centralWidget()
+                pw = 244
+                ph = self.ui._cam_preview.height()
+                self.ui._cam_preview.setGeometry(cw.width() - 420 - pw - 12, cw.height() - ph - 28, pw, ph)
+                self.ui._cam_preview.show(); self.ui._cam_preview.raise_()
+            except Exception:
+                pass
+            # send as a turn if session exists
+            async def _send():
+                if getattr(self, 'session', None):
+                    try:
+                        await self.session.send_client_content(
+                            turns={"role": "user", "parts": [{"inline_data": {"data": img_b, "mime_type": mime_t}}, {"text": self._pending_vision[2]}]},
+                            turn_complete=True,
+                        )
+                    except Exception as e:
+                        print(f"[Region] send failed: {e}")
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(_send())
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[Region] capture failed: {e}")
 
     async def _run_sleep_watch(self) -> None:
         """Auto-sleep after the configured silence window (wake-word mode only)."""
@@ -857,17 +981,25 @@ class JarvisLive:
         """True while the speakers may still be finishing our last sentence."""
         return time.monotonic() < self._tail_until
 
+    def _in_grace(self) -> bool:
+        """Follow-up window after Jarvis stops where wake word is not needed."""
+        return self._wake_enabled and not self._awake and time.monotonic() < self._grace_until
+
     def set_speaking(self, value: bool):
         with self._speaking_lock:
             self._is_speaking = value
         if value:
             self._tail_until = 0.0
+            self._barge_blocks = 0
         else:
             # Hold the guard open across the device's own output latency plus a
             # margin for the room. The microphone is NOT muted during it — the
             # guard still lets a genuine reply through, so answering instantly
             # still works. Only our own echo is dropped.
             self._tail_until = time.monotonic() + self._out_latency + _TAIL_MARGIN
+            # Grace window: stay reachable for follow-ups without "Hey Jarvis"
+            if self._wake_enabled and self._grace_period > 0:
+                self._grace_until = time.monotonic() + self._grace_period
         if not value:
             # The echo history is deliberately NOT cleared here: the tail above
             # still needs it to recognise our own voice. It is dropped when the
@@ -875,6 +1007,8 @@ class JarvisLive:
             self._out_level = 0.0
         if value:
             self.ui.set_state("SPEAKING")
+        elif self._paused:
+            self.ui.set_state("PAUSED")
         elif not self.ui.muted:
             self.ui.set_state("LISTENING")
 
@@ -1178,7 +1312,37 @@ class JarvisLive:
                     self._vision_last_time = _now
                     angle     = args.get("angle", "screen").lower()
                     user_text = args.get("text", "What do you see?")
-                    if angle == "camera":
+                    # Region capture: angle="region" + region dict or model can pass x/y/w/h flat
+                    region = args.get("region")
+                    if angle == "region" or region:
+                        try:
+                            from actions.screen_processor import _capture_region as _cap_reg
+                            # support both dict and flat args
+                            bx = region if isinstance(region, dict) else {}
+                            # also accept flat x,y,w,h top-level
+                            for k in ("x","y","w","width","h","height"):
+                                if k in args and k not in bx:
+                                    bx[k] = args[k]
+                            # string "x,y,w,h"
+                            if isinstance(region, str) and "," in region:
+                                try:
+                                    xs = [int(s.strip()) for s in region.split(",")]
+                                    if len(xs) == 4:
+                                        bx = {"x": xs[0], "y": xs[1], "w": xs[2], "h": xs[3]}
+                                except Exception:
+                                    pass
+                            rx = int(bx.get("x", bx.get("left", 0)))
+                            ry = int(bx.get("y", bx.get("top", 0)))
+                            rw = int(bx.get("w", bx.get("width", bx.get("h", 800))))
+                            rh = int(bx.get("h", bx.get("height", 600)))
+                            img_b, mime_t = await loop.run_in_executor(None, lambda: _cap_reg(rx, ry, rw, rh))
+                            print(f"[Vision] 🖼️ Region {rx},{ry} {rw}x{rh}: {len(img_b):,} bytes")
+                            _stall = "region"
+                        except Exception as e:
+                            print(f"[Vision] Region failed ({e}) — falling back to full screen")
+                            img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
+                            _stall = "screen"
+                    elif angle == "camera":
                         img_b, mime_t = await loop.run_in_executor(None, _capture_camera)
                         self.ui.start_camera_stream()
                         self._vision_cam_active = True
@@ -1311,39 +1475,53 @@ class JarvisLive:
         loop = asyncio.get_event_loop()
 
         def callback(indata, frames, time_info, status):
-            # ── Wake-word gate ───────────────────────────────────────────────
-            # While asleep, the mic audio NEVER goes to Gemini (nothing is
-            # streamed, so JARVIS can't respond to speech not addressed to it and
-            # nothing leaves the machine). Frames are instead handed to the local
-            # detector, which runs its model in ITS OWN thread — the cost here is
-            # only a queue push, so the audio path is never slowed. When wake word
-            # is off (default) or we're awake, this is a single boolean check.
+            # ── Wake-word gate + Grace window ───────────────────────────────
             if self._wake_enabled and not self._awake:
-                det = self._wake_detector
-                if det is not None:
-                    det.feed(indata)
-                return
+                # Grace period: follow-ups within N seconds don't need wake word
+                if time.monotonic() < self._grace_until:
+                    # treat as awake for this utterance
+                    pass
+                else:
+                    det = self._wake_detector
+                    if det is not None:
+                        det.feed(indata)
+                    return
             with self._speaking_lock:
                 jarvis_speaking = self._is_speaking
 
-            # ── Barge-in ─────────────────────────────────────────────────────
-            # While JARVIS talks the mic is not streamed, but it is still worth
-            # listening to locally: if the user starts speaking, cut the answer
-            # short the way a person would stop when interrupted.
-            #
-            # The whole difficulty is echo — on speakers the mic hears JARVIS.
-            # So the test is not "is the mic loud" but "is the mic louder than
-            # the echo of what we are playing right now", sustained long enough
-            # that a cough or a keystroke cannot trigger it.
+            # ── Pause gate ───────────────────────────────────────────────────
+            if self._paused:
+                return
+
+            # ── Barge-in (voice interrupt) ───────────────────────────────────
             if jarvis_speaking:
-                # Nothing is streamed while JARVIS talks.
-                #
-                # Interrupting by voice used to live here: `EchoGuard` can pick a
-                # user out from under our own echo, and `core/echo.py` still does
-                # that for the tail below. Re-enabling is small — classify each
-                # block here and call interrupt() after `required_blocks` of
-                # agreement — but it depends on the listener's room, so it stays
-                # out until it can be tried on real hardware.
+                if not self._barge_enabled:
+                    return
+                # Classify this block — echo vs real voice — via EchoGuard
+                try:
+                    lvl = _pcm_level(indata)
+                    is_user = self._echo.is_user_speech(indata, SEND_SAMPLE_RATE, lvl)
+                    if is_user:
+                        self._barge_blocks += 1
+                        need = getattr(self._echo, "required_blocks", 5)
+                        if self._barge_blocks >= need:
+                            # sustained evidence — real interruption
+                            self._barge_blocks = 0
+                            # Run interrupt off the audio thread to avoid deadlock
+                            try:
+                                loop.call_soon_threadsafe(lambda: self.interrupt())
+                                if not self._barge_notified:
+                                    print(f"[Barge] Voice interrupt — {need} blocks, residual {self._echo.threshold:.2f}")
+                                    self._barge_notified = True
+                            except Exception:
+                                pass
+                            return
+                    else:
+                        # echo or silence — decay barge counter
+                        if self._barge_blocks > 0:
+                            self._barge_blocks -= 1
+                except Exception:
+                    pass
                 return
 
             # ── Echo tail ────────────────────────────────────────────────────
