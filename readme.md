@@ -55,7 +55,7 @@
 ## ⚡ Quick Start
 
 ```bash
-git clone https://github.com/FatihMakes/Mark-LV.git
+git clone https://github.com/mafk21/OS.git
 cd Mark-LV
 python setup.py        # installs deps for YOUR OS + the browser automation engine
 python main.py
