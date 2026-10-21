@@ -491,3 +491,22 @@ def get_flow_hotkey() -> str:
 
 def get_dictate_hotkey() -> str:
     return str(load_api_keys().get("dictate_hotkey", "ctrl+shift+d") or "ctrl+shift+d").strip().lower()
+
+# ── Phase 4: Accounts & Remote ────────────────────────────────────────────
+def get_telegram_cfg() -> dict:
+    cfg=load_api_keys()
+    return {
+        "bot_token": str(cfg.get("telegram_bot_token","") or "").strip(),
+        "allowed": cfg.get("telegram_allowed_users", []),
+        "pairing_code": str(cfg.get("telegram_pairing_code","") or "").strip(),
+    }
+def save_telegram_token(token: str):
+    _patch_config(telegram_bot_token=str(token or "").strip())
+def get_composio_key() -> str:
+    return str(load_api_keys().get("composio_api_key","") or "").strip()
+def save_composio_key(k: str):
+    _patch_config(composio_api_key=str(k or "").strip())
+def get_relay_enabled() -> bool:
+    return bool(load_api_keys().get("relay_enabled", False))
+def save_relay_enabled(v: bool):
+    _save_flag("relay_enabled", bool(v))
