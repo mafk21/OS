@@ -413,4 +413,6 @@ TOOL = {
         ]
     },
     "handler": web_search,
+    "behavior": "NON_BLOCKING",
+    "scheduling": "WHEN_IDLE",
 }

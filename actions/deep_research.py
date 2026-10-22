@@ -226,6 +226,8 @@ TOOL = {
         "required": ["query"],
     },
     "handler": None,  # set below so the module-level name is defined first
+    "behavior": "NON_BLOCKING",
+    "scheduling": "WHEN_IDLE",
 }
 
 

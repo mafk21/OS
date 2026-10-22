@@ -345,4 +345,6 @@ TOOL = {
         ]
     },
     "handler": send_message,
+    "behavior": "NON_BLOCKING",
+    "scheduling": "WHEN_IDLE",
 }

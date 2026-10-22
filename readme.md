@@ -1,7 +1,8 @@
 ## 🚀 Capabilities
 ### Core Features
 | Feature | Description |
-|---|---|
+|
+---|---|
 | 🧑‍🎤 Holographic Avatar | An animated human head in the HUD — real facial geometry, lit and drawn in software, no GPU or extra packages |
 | 👄 Real Lip-Sync | ~50 mouth shapes a second from the audio's formants **and** the transcript — closures, spreads and rounds, not a volume meter |
 | 🌍 Language-Free Mouth | Articulation is derived by Unicode reduction, so Latin, Cyrillic and Greek scripts all work from one rule set — and scripts that hide pronunciation fall back cleanly |
@@ -36,6 +37,7 @@
 | 🌅 Morning Briefing | On first boot: greets you, reads the time, recaps yesterday, and fetches live news |
 | 🔔 Proactive 2.0 | Time-aware, context-aware check-ins — knows the time of day, your projects, and what you've been discussing |
 | 🔍 Deep Research | Multi-wave sourced reports with citations — compares options, verifies facts, delivers bottom-line-first answers |
+| ⚡ Per-tool scheduling | Slow tools (web search, deep research, file processor, browser, messaging) run NON_BLOCKING with WHEN_IDLE delivery — results arrive in speech gaps, never cutting you off |
 | 💓 Heartbeat Autonomy | Observe/suggest/act levels with HEARTBEAT_OK silence and never-nag-twice — proactive suggestions that respect your quiet time |
 | 🗓️ Session Memory | Summarises each conversation and mentions it naturally next morning — consumed after use, never repeats |
 | 👁️‍🗨️ Background Monitoring | User-configured topic watching — checks for new headlines once a day and alerts naturally |
@@ -140,3 +142,11 @@ Mark LV/
 ```
 
 ---
+
+## ⚡️ Per-Tool Scheduling
+
+Slow, network-backed tools (`web_search`, `deep_research`, `file_processor`,
+`browser_control`, `send_message`) declare `behavior: NON_BLOCKING` +
+`scheduling: WHEN_IDLE`. The model is never held up waiting for them —
+results are delivered in a natural gap in speech instead of cutting in.
+Fast tools (memory, system status, skills) keep the default blocking behavior.
