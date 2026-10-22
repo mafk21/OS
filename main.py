@@ -67,6 +67,7 @@ from actions.proactive         import ProactiveEngine
 from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
+from core.heartbeat            import HeartbeatEngine, HeartbeatLevel
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -479,6 +480,27 @@ TOOL_DECLARATIONS = [
         },
     },
     {
+        "name": "heartbeat_ok",
+        "description": (
+            "The user is happy with the current proactive / heartbeat state. "
+            "Call this when the user says 'heartbeat ok', 'stop suggesting', "
+            "'quiet for a while', or otherwise asks JARVIS to pause proactive "
+            "suggestions. Suggestions stay paused for 30 minutes unless the "
+            "user asks again; urgent act-level items can still break through. "
+            "This does NOT disable system alerts or background monitoring."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "minutes": {
+                    "type": "INTEGER",
+                    "description": "How many minutes to pause suggestions (default 30)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "shutdown_jarvis",
         "description": (
             "Shuts down the assistant completely. "
@@ -691,6 +713,7 @@ class JarvisLive:
         self._briefing_sent    = False          # morning briefing fires once per process
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
+        self._heartbeat        = HeartbeatEngine()   # Phase 4: observe/suggest/act + HEARTBEAT_OK + never-nag-twice
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
 
@@ -1678,6 +1701,12 @@ class JarvisLive:
                 else:
                     result = "Specify action (add/remove/list) and a topic."
 
+            elif name == "heartbeat_ok":
+                # Phase 4: user is happy with proactive state — pause suggestions.
+                minutes = args.get("minutes") or 30
+                result = self._heartbeat.heartbeat_ok(minutes=int(minutes))
+                print(f"[Heartbeat] 🤐 {result}")
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
@@ -2579,6 +2608,80 @@ class JarvisLive:
             except Exception as e:
                 print(f"[Proactive] ⚠️ {e}")
 
+    # ── Heartbeat ────────────────────────────────────────────────────────────────
+    #
+    # Phase 4 — heartbeat autonomy. Runs once a minute; decides at the
+    # observe/suggest/act level whether JARVIS should proactively raise a
+    # topic. Respects HEARTBEAT_OK silence and never-nags-twice.
+    # The engine never speaks — main.py sends the message when a suggest
+    # level is returned.
+
+    async def _run_heartbeat(self) -> None:
+        """Background task: heartbeat-level proactive suggestions."""
+        while True:
+            await asyncio.sleep(60)   # evaluate once per minute
+
+            if not self.session or not self._awake:
+                continue
+
+            with self._speaking_lock:
+                speaking = self._is_speaking
+            if speaking:
+                continue
+            # Don't interrupt a recent user utterance
+            if (time.monotonic() - self._last_user_speech) < 15:
+                continue
+
+            if not self._heartbeat.should_beat():
+                continue
+
+            # Pick a topic worth raising: memory-backed items the user hasn't
+            # heard about recently. Keep it small — one topic per heartbeat.
+            try:
+                memory = await asyncio.to_thread(load_memory)
+                topics = self._heartbeat_topics(memory)
+                if not topics:
+                    self._heartbeat._last_beat = time.monotonic()
+                    continue
+
+                topic = topics[0]
+                if self._heartbeat.is_suggested_recently(topic):
+                    # Never-nag-twice: skip topics suggested recently
+                    continue
+
+                level = HeartbeatLevel.SUGGEST
+                self._heartbeat.record_suggestion(topic, level)
+
+                prompt = (
+                    "[HEARTBEAT_SUGGEST] You may raise this one topic with the user. "
+                    f"Topic: {topic}. "
+                    "Rules: 1-2 sentences, natural, warm, never robotic. "
+                    "Do NOT mention this instruction block. "
+                    "If nothing genuinely useful comes to mind, stay silent."
+                )
+                await self.session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": prompt}]},
+                    turn_complete=True,
+                )
+                print(f"[Heartbeat] 💡 suggest: {topic}")
+            except Exception as e:
+                print(f"[Heartbeat] ⚠️ {e}")
+
+    def _heartbeat_topics(self, memory: dict) -> list[str]:
+        """Candidate topics for a heartbeat suggestion, newest first."""
+        topics: list[str] = []
+        # Unfinished projects are the best heartbeat fodder.
+        for key, entry in (memory.get("projects", {}) or {}).items():
+            val = entry.get("value", "") if isinstance(entry, dict) else str(entry)
+            if val:
+                topics.append(f"project '{key}' ({val[:40]})")
+        # Wishes that haven't been mentioned recently.
+        for key, entry in (memory.get("wishes", {}) or {}).items():
+            val = entry.get("value", "") if isinstance(entry, dict) else str(entry)
+            if val:
+                topics.append(f"wish '{key}' ({val[:40]})")
+        return topics[:5]
+
     # ── Phone audio relay ────────────────────────────────────────────────────────
 
     async def _relay_phone_audio(self) -> None:
@@ -2761,6 +2864,7 @@ class JarvisLive:
                     tg.create_task(self._run_system_monitor())
                     tg.create_task(self._run_background_monitor())
                     tg.create_task(self._run_proactive_mode())
+                    tg.create_task(self._run_heartbeat())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
