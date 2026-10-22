@@ -1,4 +1,4 @@
-# ⚡ OS — Mark LV
+# ⚡ OS —  
 
 **A full-duplex desktop AI operating layer with real-time voice, a 3D software-rendered holographic avatar, Set-of-Mark visual computer use, FTS5 screen memory, self-writing procedural skills, scoped subagents, an omnichannel messaging gateway, and seamless offline fallback.**
 
@@ -55,7 +55,7 @@
 
 ---
 
-## 🔥 The 7 Pillars of Mark LV
+## 🔥 The 7 Pillars
 
 ### 1. Real-Time Voice, Barge-In & 3D Holographic Presence
 Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`) that feels alive rather than turn-locked:
@@ -75,7 +75,7 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 ---
 
 ### 2. Multi-Provider Ladder & 100% Offline Local Mode
-Mark LV never bricks when an API key hits quota or Wi-Fi drops:
+  never bricks when an API key hits quota or Wi-Fi drops:
 
 - **9-Rung Gemini Model Ladder (`core/gemini.py`)**: Every Live and one-shot call walks a measured fallback ladder with automatic per-model cooldowns on quota (`429`), timeout, or preview deprecation.
 - **Universal Provider Abstraction (`core/provider.py`)**: Unified failover across **Gemini**, **Anthropic**, **OpenAI**, **xAI (Grok)**, **DeepSeek**, **Groq**, **Together**, and local **Ollama / LM Studio** (`core/llm_client.py`).
@@ -172,7 +172,7 @@ pytest tests/ -q
 
 > 💡 **Optional Add-ons:**
 > - **Wake Word (`"Hey Jarvis"`)**: One-click install inside the HUD under **⚙ → WAKE WORD** (`openwakeword`, runs 100% locally).
-> - **Offline Mode**: Install [Ollama](https://ollama.com) or LM Studio locally — Mark LV detects and falls back to it automatically if cloud Live is unavailable.
+> - **Offline Mode**: Install [Ollama](https://ollama.com) or LM Studio locally —   detects and falls back to it automatically if cloud Live is unavailable.
 
 ---
 
