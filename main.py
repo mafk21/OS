@@ -72,6 +72,7 @@ from core.screen_memory        import (get_screen_memory, screen_memory_search,
                                        CAPTURE_INTERVAL_SEC)
 from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
                                        multi_channel)
+from core.subagents            import get_subagent_manager, subagent
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -611,6 +612,47 @@ TOOL_DECLARATIONS = [
                 "recipient": {
                     "type": "STRING",
                     "description": "Recipient (phone, chat_id, username, ...)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "subagent",
+        "description": (
+            "Delegate complex multi-step tasks to a subagent. Use subagent when "
+            "a task needs 5+ sequential steps, careful planning, or independent "
+            "verification. Actions: 'spawn' (create a subagent with a goal and "
+            "optional tool whitelist), 'list' (show all subagents), 'status' "
+            "(check a subagent's progress), 'result' (get a completed "
+            "subagent's output), 'cancel' (stop a subagent), 'remove' "
+            "(delete a finished subagent). The parent (JARVIS) executes all "
+            "tools — the subagent provides structure, goal tracking, and "
+            "result isolation."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "spawn | list | status | result | cancel | remove",
+                },
+                "agent_id": {
+                    "type": "STRING",
+                    "description": "Subagent ID (from spawn) — required for status/result/cancel/remove",
+                },
+                "goal": {
+                    "type": "STRING",
+                    "description": "spawn: the goal/task for the subagent",
+                },
+                "tools": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "spawn: optional whitelist of tool names the subagent may use",
+                },
+                "max_steps": {
+                    "type": "INTEGER",
+                    "description": "spawn: maximum steps before auto-complete (default 10)",
                 },
             },
             "required": ["action"],
@@ -1842,6 +1884,10 @@ class JarvisLive:
             elif name == "multi_channel":
                 # Phase 10: multi-channel gateway.
                 result = multi_channel(args)
+
+            elif name == "subagent":
+                # Phase 11: subagent task decomposition.
+                result = subagent(args)
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
