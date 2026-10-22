@@ -40,6 +40,7 @@
 | ⚡ Per-tool scheduling | Slow tools (web search, deep research, file processor, browser, messaging) run NON_BLOCKING with WHEN_IDLE delivery — results arrive in speech gaps, never cutting you off |
 | 🖱️ Computer Use | Set-of-Mark visual grounding — capture screen, detect numbered elements, click/type by element ID |
 | 🌐 97-Language Switching | Mid-turn language switching across 97 languages — Gemini 3.8 Live detects and responds in the user's language automatically; set_language stores preference |
+| 🌍 Multi-channel gateway | WhatsApp/Telegram/Discord/Slack/iMessage via webhook inbound + desktop outbound; channel registry + routing rules |
 | 💓 Heartbeat Autonomy | Observe/suggest/act levels with HEARTBEAT_OK silence and never-nag-twice — proactive suggestions that respect your quiet time |
 | 🗓️ Session Memory | Summarises each conversation and mentions it naturally next morning — consumed after use, never repeats |
 | 👁️‍🗨️ Background Monitoring | User-configured topic watching — checks for new headlines once a day and alerts naturally |
@@ -139,7 +140,8 @@ Mark LV/
 │   ├── action_loader.py      # Bundled-action engine — the built-in twin of plugin_loader
 │   ├── wake_word.py          # Local "Hey Jarvis" detector — own thread, offline, opt-in
 │   ├── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
-│   └── screen_memory.py      # Phase 7: event-driven screen capture, OCR, FTS5 search
+│   ├── screen_memory.py      # Phase 7: event-driven screen capture, OCR, FTS5 search
+│   └── multi_channel.py      # Phase 10: multi-channel gateway — webhook inbound + channel registry
 └── config/
     ├── api_keys.json         # API key, name, voice, colour, toggles — created on first launch (git-ignored)
     └── certs/                # Self-signed TLS pair for the phone dashboard — generated locally (git-ignored)

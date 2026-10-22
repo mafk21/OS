@@ -70,6 +70,8 @@ from actions.background_monitor import (
 from core.heartbeat            import HeartbeatEngine, HeartbeatLevel
 from core.screen_memory        import (get_screen_memory, screen_memory_search,
                                        CAPTURE_INTERVAL_SEC)
+from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
+                                       multi_channel)
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -333,10 +335,41 @@ def _is_repeat_chunk(txt: str, buf: list) -> bool:
     joined = " ".join(buf)
     return txt in joined
 
-def _clean_transcript(text: str) -> str:    
+def _clean_transcript(text: str) -> str:
     text = _CTRL_RE.sub("", text)
     text = re.sub(r"[\x00-\x08\x0b-\x1f]", "", text)
     return text.strip()
+
+
+def _inject_inbound(jarvis, channel_id: str, sender: str, text: str) -> None:
+    """Inject an inbound multi-channel message into JARVIS's Live session.
+
+    Called from the webhook server thread — uses run_coroutine_threadsafe to
+    schedule on the main event loop.
+    """
+    session = jarvis.session
+    if not session:
+        print(f"[MultiChannel] Dropped inbound (no session): {channel_id}/{sender}")
+        return
+
+    prefixed = f"[{channel_id}] {sender}: {text}"
+
+    async def _deliver():
+        try:
+            await session.send_client_content(
+                turns={"role": "user", "parts": [{"text": prefixed}]},
+                turn_complete=True,
+            )
+            jarvis.ui.write_log(f"[{channel_id}] {sender}: {text[:60]}")
+        except Exception as e:
+            print(f"[MultiChannel] Inject error: {e}")
+
+    try:
+        loop = jarvis._loop
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(_deliver(), loop)
+    except Exception as e:
+        print(f"[MultiChannel] Inject schedule error: {e}")
 
 TOOL_DECLARATIONS = [
     # ── Inline tools ─────────────────────────────────────────────────────────
@@ -546,6 +579,41 @@ TOOL_DECLARATIONS = [
                 },
             },
             "required": ["language"],
+        },
+    },
+    {
+        "name": "multi_channel",
+        "description": (
+            "Multi-channel messaging gateway — send/receive across WhatsApp, "
+            "Telegram, Discord, Slack, iMessage and desktop apps. "
+            "Actions: 'send' (send via a channel), 'channels' (list registered "
+            "channels), 'webhook' (get inbound webhook URL), 'broadcast' (send "
+            "to all enabled channels). "
+            "Channel IDs: 'desktop' (opens WhatsApp/Telegram desktop app), "
+            "'telegram' (Telegram bot). Configure channel webhooks to receive "
+            "inbound messages."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "send | channels | webhook | broadcast",
+                },
+                "channel": {
+                    "type": "STRING",
+                    "description": "Channel ID (desktop, telegram, ...)",
+                },
+                "text": {
+                    "type": "STRING",
+                    "description": "Message text to send",
+                },
+                "recipient": {
+                    "type": "STRING",
+                    "description": "Recipient (phone, chat_id, username, ...)",
+                },
+            },
+            "required": ["action"],
         },
     },
     {
@@ -1771,6 +1839,10 @@ class JarvisLive:
                     result = f"Language set to {lang}. I'll respond in {lang} from now on (and remember it for next session)."
                     print(f"[Language] 🗣️ {result}")
 
+            elif name == "multi_channel":
+                # Phase 10: multi-channel gateway.
+                result = multi_channel(args)
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
@@ -2867,6 +2939,19 @@ class JarvisLive:
         except Exception as e:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
+
+        # Start multi-channel webhook server (inbound from WhatsApp, Discord,
+        # Slack, etc.). Injects inbound messages into the Live session.
+        try:
+            webhook_url = start_webhook()
+            get_gateway().set_inbound_inject(
+                lambda channel_id, sender, text: _inject_inbound(
+                    self, channel_id, sender, text
+                )
+            )
+            print(f"[MultiChannel] 🌐 Webhook: {webhook_url}")
+        except Exception as e:
+            print(f"[MultiChannel] Webhook disabled: {e}")
 
         while True:
             try:
