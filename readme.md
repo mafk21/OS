@@ -1,7 +1,8 @@
 ## 🚀 Capabilities
 ### Core Features
 | Feature | Description |
-|---|---|
+|
+---|---|
 | 🧑‍🎤 Holographic Avatar | An animated human head in the HUD — real facial geometry, lit and drawn in software, no GPU or extra packages |
 | 👄 Real Lip-Sync | ~50 mouth shapes a second from the audio's formants **and** the transcript — closures, spreads and rounds, not a volume meter |
 | 🌍 Language-Free Mouth | Articulation is derived by Unicode reduction, so Latin, Cyrillic and Greek scripts all work from one rule set — and scripts that hide pronunciation fall back cleanly |
@@ -35,6 +36,13 @@
 | ⌨️ Hybrid Input | Seamlessly switch between keyboard typing and voice commands |
 | 🌅 Morning Briefing | On first boot: greets you, reads the time, recaps yesterday, and fetches live news |
 | 🔔 Proactive 2.0 | Time-aware, context-aware check-ins — knows the time of day, your projects, and what you've been discussing |
+| 🔍 Deep Research | Multi-wave sourced reports with citations — compares options, verifies facts, delivers bottom-line-first answers |
+| ⚡ Per-tool scheduling | Slow tools (web search, deep research, file processor, browser, messaging) run NON_BLOCKING with WHEN_IDLE delivery — results arrive in speech gaps, never cutting you off |
+| 🖱️ Computer Use | Set-of-Mark visual grounding — capture screen, detect numbered elements, click/type by element ID |
+| 🌐 97-Language Switching | Mid-turn language switching across 97 languages — Gemini 3.8 Live detects and responds in the user's language automatically; set_language stores preference |
+| 🌍 Multi-channel gateway | WhatsApp/Telegram/Discord/Slack/iMessage via webhook inbound + desktop outbound; channel registry + routing rules |
+| 🤖 Subagents | Task decomposition — spawn specialized subagents with scoped tool access, goal tracking, result isolation |
+| 📦 GWS Pack | Google Workspace automation via computer_use — Gmail/Docs/Drive/Calendar through web UIs, no API keys or OAuth |
 | 💓 Heartbeat Autonomy | Observe/suggest/act levels with HEARTBEAT_OK silence and never-nag-twice — proactive suggestions that respect your quiet time |
 | 🗓️ Session Memory | Summarises each conversation and mentions it naturally next morning — consumed after use, never repeats |
 | 👁️‍🗨️ Background Monitoring | User-configured topic watching — checks for new headlines once a day and alerts naturally |
@@ -97,6 +105,7 @@ Mark LV/
 │                             #   Everything here drives the COMPUTER, which is what decides
 │                             #   whether a new skill belongs in this folder at all.
 │   ├── web_search.py         # Gemini + DDG parallel search (news, research, price, compare)
+│   ├── deep_research.py      # Phase 5: multi-wave sourced research reports with citations
 │   ├── screen_processor.py   # Screen & webcam capture for vision
 │   ├── background_monitor.py # User-configured topic watching — daily DDG check
 │   ├── proactive.py          # Proactive 2.0 — time/context/rotation-aware check-ins
@@ -104,6 +113,7 @@ Mark LV/
 │   ├── system_monitor.py     # CPU / RAM / GPU / temperature telemetry
 │   ├── computer_settings.py  # Volume, brightness, WiFi, power (per-OS)
 │   ├── computer_control.py   # Keyboard shortcuts, mouse, window management
+│   ├── computer_use.py       # Phase 8: Set-of-Mark visual agent — element IDs + click/type
 │   ├── open_app.py           # Application launcher (per-OS name map)
 │   ├── browser_control.py    # Web browser control
 │   ├── file_controller.py    # File system operations
@@ -131,10 +141,22 @@ Mark LV/
 │   ├── plugin_loader.py      # Plugin engine — discovery, validation, crash isolation
 │   ├── action_loader.py      # Bundled-action engine — the built-in twin of plugin_loader
 │   ├── wake_word.py          # Local "Hey Jarvis" detector — own thread, offline, opt-in
-│   └── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
+│   ├── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
+│   ├── screen_memory.py      # Phase 7: event-driven screen capture, OCR, FTS5 search
+│   ├── multi_channel.py      # Phase 10: multi-channel gateway — webhook inbound + channel registry
+│   ├── subagents.py      # Phase 11: subagents — task decomposition, scoped tools, result isolation
+│   └── gws_pack.py      # Phase 12: gws_pack — GWS Pack — Gmail/Docs/Drive/Calendar via computer_use
 └── config/
     ├── api_keys.json         # API key, name, voice, colour, toggles — created on first launch (git-ignored)
     └── certs/                # Self-signed TLS pair for the phone dashboard — generated locally (git-ignored)
 ```
 
 ---
+
+## ⚡️ Per-Tool Scheduling
+
+Slow, network-backed tools (`web_search`, `deep_research`, `file_processor`,
+`browser_control`, `send_message`) declare `behavior: NON_BLOCKING` +
+`scheduling: WHEN_IDLE`. The model is never held up waiting for them —
+results are delivered in a natural gap in speech instead of cutting in.
+Fast tools (memory, system status, skills) keep the default blocking behavior.

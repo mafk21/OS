@@ -920,4 +920,6 @@ TOOL = {
         "required": []
     },
     "handler": file_processor,
+    "behavior": "NON_BLOCKING",
+    "scheduling": "WHEN_IDLE",
 }

@@ -68,6 +68,12 @@ from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
 from core.heartbeat            import HeartbeatEngine, HeartbeatLevel
+from core.screen_memory        import (get_screen_memory, screen_memory_search,
+                                       CAPTURE_INTERVAL_SEC)
+from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
+                                       multi_channel)
+from core.subagents            import get_subagent_manager, subagent
+from core.gws_pack             import gws_pack
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -331,10 +337,41 @@ def _is_repeat_chunk(txt: str, buf: list) -> bool:
     joined = " ".join(buf)
     return txt in joined
 
-def _clean_transcript(text: str) -> str:    
+def _clean_transcript(text: str) -> str:
     text = _CTRL_RE.sub("", text)
     text = re.sub(r"[\x00-\x08\x0b-\x1f]", "", text)
     return text.strip()
+
+
+def _inject_inbound(jarvis, channel_id: str, sender: str, text: str) -> None:
+    """Inject an inbound multi-channel message into JARVIS's Live session.
+
+    Called from the webhook server thread — uses run_coroutine_threadsafe to
+    schedule on the main event loop.
+    """
+    session = jarvis.session
+    if not session:
+        print(f"[MultiChannel] Dropped inbound (no session): {channel_id}/{sender}")
+        return
+
+    prefixed = f"[{channel_id}] {sender}: {text}"
+
+    async def _deliver():
+        try:
+            await session.send_client_content(
+                turns={"role": "user", "parts": [{"text": prefixed}]},
+                turn_complete=True,
+            )
+            jarvis.ui.write_log(f"[{channel_id}] {sender}: {text[:60]}")
+        except Exception as e:
+            print(f"[MultiChannel] Inject error: {e}")
+
+    try:
+        loop = jarvis._loop
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(_deliver(), loop)
+    except Exception as e:
+        print(f"[MultiChannel] Inject schedule error: {e}")
 
 TOOL_DECLARATIONS = [
     # ── Inline tools ─────────────────────────────────────────────────────────
@@ -498,6 +535,198 @@ TOOL_DECLARATIONS = [
                 },
             },
             "required": [],
+        },
+    },
+    {
+        "name": "screen_memory_search",
+        "description": (
+            "Search JARVIS's screen memory — full-text search over OCR text and "
+            "accessibility trees captured from your screen. Use when the user asks "
+            "about something they saw earlier ('what was that article I was reading', "
+            "'find the error message from before', 'what was on my screen at 3pm'). "
+            "Leave query empty for the most recent captures."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Text to search for in screen captures",
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Maximum results to return (default 10)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "set_language",
+        "description": (
+            "Set or switch the conversation language. Gemini 3.8 Live natively "
+            "supports mid-turn switching across 97 languages — the model detects "
+            "the user's language and responds in it automatically. Call this to "
+            "explicitly set a language preference (stored in memory for future "
+            "sessions) or when the user asks to switch languages. Pass a language "
+            "name or code (e.g. 'Turkish', 'tr', 'Spanish', 'es', 'Arabic', 'ar') "
+            "or 'auto' for automatic detection."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "language": {
+                    "type": "STRING",
+                    "description": "Language name, code, or 'auto' for auto-detect",
+                },
+            },
+            "required": ["language"],
+        },
+    },
+    {
+        "name": "multi_channel",
+        "description": (
+            "Multi-channel messaging gateway — send/receive across WhatsApp, "
+            "Telegram, Discord, Slack, iMessage and desktop apps. "
+            "Actions: 'send' (send via a channel), 'channels' (list registered "
+            "channels), 'webhook' (get inbound webhook URL), 'broadcast' (send "
+            "to all enabled channels). "
+            "Channel IDs: 'desktop' (opens WhatsApp/Telegram desktop app), "
+            "'telegram' (Telegram bot). Configure channel webhooks to receive "
+            "inbound messages."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "send | channels | webhook | broadcast",
+                },
+                "channel": {
+                    "type": "STRING",
+                    "description": "Channel ID (desktop, telegram, ...)",
+                },
+                "text": {
+                    "type": "STRING",
+                    "description": "Message text to send",
+                },
+                "recipient": {
+                    "type": "STRING",
+                    "description": "Recipient (phone, chat_id, username, ...)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "subagent",
+        "description": (
+            "Delegate complex multi-step tasks to a subagent. Use subagent when "
+            "a task needs 5+ sequential steps, careful planning, or independent "
+            "verification. Actions: 'spawn' (create a subagent with a goal and "
+            "optional tool whitelist), 'list' (show all subagents), 'status' "
+            "(check a subagent's progress), 'result' (get a completed "
+            "subagent's output), 'cancel' (stop a subagent), 'remove' "
+            "(delete a finished subagent). The parent (JARVIS) executes all "
+            "tools — the subagent provides structure, goal tracking, and "
+            "result isolation."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "spawn | list | status | result | cancel | remove",
+                },
+                "agent_id": {
+                    "type": "STRING",
+                    "description": "Subagent ID (from spawn) — required for status/result/cancel/remove",
+                },
+                "goal": {
+                    "type": "STRING",
+                    "description": "spawn: the goal/task for the subagent",
+                },
+                "tools": {
+                    "type": "ARRAY",
+                    "items": {"type": "STRING"},
+                    "description": "spawn: optional whitelist of tool names the subagent may use",
+                },
+                "max_steps": {
+                    "type": "INTEGER",
+                    "description": "spawn: maximum steps before auto-complete (default 10)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "gws_pack",
+        "description": (
+            "Google Workspace automation via computer_use (Set-of-Mark visual "
+            "grounding). Automates Gmail, Google Docs, Google Drive, Google "
+            "Calendar through their web UIs — no API keys, no OAuth. Actions: "
+            "'gmail_send' (to, subject, body), 'gmail_search' (query), "
+            "'docs_create' (title), 'docs_write' (content), 'drive_upload' "
+            "(file_path), 'calendar_add' (title, when, description), "
+            "'gws_open' (app: gmail|docs|drive|calendar), 'workflow' (name: "
+            "send_meeting_notes|save_research_to_drive|schedule_meeting). "
+            "Each action captures the screen, detects clickable elements by ID, "
+            "and interacts with them. Falls back to human-readable SOPs when "
+            "visual grounding is unavailable."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "gmail_send | gmail_search | docs_create | docs_write | drive_upload | calendar_add | gws_open | workflow",
+                },
+                "to": {
+                    "type": "STRING",
+                    "description": "gmail_send: recipient email address",
+                },
+                "subject": {
+                    "type": "STRING",
+                    "description": "gmail_send: email subject",
+                },
+                "body": {
+                    "type": "STRING",
+                    "description": "gmail_send: email body / docs_write: content",
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "gmail_search: Gmail search query",
+                },
+                "title": {
+                    "type": "STRING",
+                    "description": "docs_create: document title / calendar_add: event title",
+                },
+                "content": {
+                    "type": "STRING",
+                    "description": "docs_write: text to write into the document",
+                },
+                "file_path": {
+                    "type": "STRING",
+                    "description": "drive_upload: path to file to upload",
+                },
+                "when": {
+                    "type": "STRING",
+                    "description": "calendar_add: event time (e.g. 'tomorrow 3pm')",
+                },
+                "description": {
+                    "type": "STRING",
+                    "description": "calendar_add: event description",
+                },
+                "app": {
+                    "type": "STRING",
+                    "description": "gws_open: gmail | docs | drive | calendar",
+                },
+                "name": {
+                    "type": "STRING",
+                    "description": "workflow: send_meeting_notes | save_research_to_drive | schedule_meeting",
+                },
+            },
+            "required": ["action"],
         },
     },
     {
@@ -714,6 +943,7 @@ class JarvisLive:
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
         self._heartbeat        = HeartbeatEngine()   # Phase 4: observe/suggest/act + HEARTBEAT_OK + never-nag-twice
+        self._screen_memory    = get_screen_memory()   # Phase 7: screen memory (event-driven capture + FTS5 search)
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
 
@@ -1707,6 +1937,35 @@ class JarvisLive:
                 result = self._heartbeat.heartbeat_ok(minutes=int(minutes))
                 print(f"[Heartbeat] 🤐 {result}")
 
+            elif name == "screen_memory_search":
+                # Phase 7: search screen memory (OCR + a11y + FTS5).
+                result = screen_memory_search(args)
+
+            elif name == "set_language":
+                # Phase 9: 97-language switching. Store preference in memory;
+                # Gemini 3.8 Live handles native mid-turn switching.
+                lang = str(args.get("language", "")).strip()
+                if not lang:
+                    result = "set_language: no language specified."
+                else:
+                    update_memory({"identity": {"language": {"value": lang}}})
+                    result = f"Language set to {lang}. I'll respond in {lang} from now on (and remember it for next session)."
+                    print(f"[Language] 🗣️ {result}")
+
+            elif name == "multi_channel":
+                # Phase 10: multi-channel gateway.
+                result = multi_channel(args)
+
+            elif name == "subagent":
+                # Phase 11: subagent task decomposition.
+                result = subagent(args)
+
+            elif name == "gws_pack":
+                # Phase 12: GWS Pack — Google Workspace via computer_use.
+                result = gws_pack(args)
+                if result and not result.startswith("gws_pack:"):
+                    self.ui.show_content("GWS PACK — " + args.get("action", ""), result)
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
@@ -1733,12 +1992,17 @@ class JarvisLive:
                 r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
                 result = r or "Done."
                 # web_search: mirror results to the on-screen content panel
-                if (name == "web_search" and r
+                if (name in ("web_search", "deep_research", "computer_use",
+                             "gws_pack") and r
                         and not r.startswith("No results")
                         and not r.startswith("Search failed")):
-                    _mode  = args.get("mode", "search")
-                    _query = args.get("query") or ", ".join(args.get("items", []))
-                    _label = f"{_mode.upper()} — {_query[:38]}" if _query else _mode.upper()
+                    _query = args.get("query") or args.get("element_id") or ""
+                    if name == "deep_research":
+                        _label = "RESEARCH — " + _query[:38]
+                    elif name == "computer_use":
+                        _label = "COMPUTER USE — " + args.get("action", "som_capture")[:38]
+                    else:
+                        _label = f"{args.get('mode', 'search').upper()} — {_query[:38]}"
                     self.ui.show_content(_label, r)
 
             else:
@@ -2682,6 +2946,27 @@ class JarvisLive:
                 topics.append(f"wish '{key}' ({val[:40]})")
         return topics[:5]
 
+    # ── Screen Memory capture ──────────────────────────────────────────────────
+    # Phase 7 — background screen capture. Runs every CAPTURE_INTERVAL_SEC,
+    # captures the screen, extracts OCR + a11y, stores in FTS5. The model
+    # queries via screen_memory_search.
+
+    async def _run_screen_memory_capture(self) -> None:
+        """Background task: periodic screen capture into screen memory."""
+        while True:
+            await asyncio.sleep(CAPTURE_INTERVAL_SEC)
+
+            if not self._awake:
+                continue
+
+            try:
+                event = self._screen_memory.capture()
+                if event:
+                    print(f"[ScreenMemory] 📸 captured ({event['duration_ms']}ms, "
+                          f"{len(event.get('ocr_text', ''))} OCR chars)")
+            except Exception as e:
+                print(f"[ScreenMemory] ⚠️ {e}")
+
     # ── Phone audio relay ────────────────────────────────────────────────────────
 
     async def _relay_phone_audio(self) -> None:
@@ -2779,6 +3064,19 @@ class JarvisLive:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
 
+        # Start multi-channel webhook server (inbound from WhatsApp, Discord,
+        # Slack, etc.). Injects inbound messages into the Live session.
+        try:
+            webhook_url = start_webhook()
+            get_gateway().set_inbound_inject(
+                lambda channel_id, sender, text: _inject_inbound(
+                    self, channel_id, sender, text
+                )
+            )
+            print(f"[MultiChannel] 🌐 Webhook: {webhook_url}")
+        except Exception as e:
+            print(f"[MultiChannel] Webhook disabled: {e}")
+
         while True:
             try:
                 print("[JARVIS] Connecting...")
@@ -2865,6 +3163,7 @@ class JarvisLive:
                     tg.create_task(self._run_background_monitor())
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_heartbeat())
+                    tg.create_task(self._run_screen_memory_capture())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())

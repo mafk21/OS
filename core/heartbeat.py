@@ -68,7 +68,7 @@ class HeartbeatEngine:
         self.backoff_cap_sec = backoff_cap_sec
 
         self._entries: dict[str, HeartbeatEntry] = {}
-        self._last_beat: float = 0.0
+        self._last_beat: float | None = None    # None = never beaten
         self._heartbeat_ok_until: float = 0.0   # silence until this timestamp
 
     # ── HEARTBEAT_OK silence ─────────────────────────────────────────────
@@ -131,6 +131,9 @@ class HeartbeatEngine:
         """True if a heartbeat is due right now (respects silence + backoff)."""
         now = now or time.monotonic()
         if self.is_silenced():
+            return False
+        # Never beaten: nothing is due yet.
+        if self._last_beat is None:
             return False
         if now - self._last_beat < self.base_interval_sec:
             return False

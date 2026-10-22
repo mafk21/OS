@@ -1129,4 +1129,6 @@ TOOL = {
         ]
     },
     "handler": browser_control,
+    "behavior": "NON_BLOCKING",
+    "scheduling": "WHEN_IDLE",
 }

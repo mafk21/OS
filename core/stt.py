@@ -52,6 +52,16 @@ class WhisperSTT:
         self._language = None if (not language or language.strip().lower() == "auto") else language.strip().lower()
         print(f"[STT] Whisper '{model_name}' ready ({device})")
 
+    def set_language(self, language: str | None) -> None:
+        """Change the Whisper language hint without reloading the model.
+
+        Pass None or 'auto' for automatic language detection (Whisper's default,
+        supports 97 languages). Pass a language code (e.g. 'tr', 'es', 'ar')
+        to force that language for subsequent transcriptions.
+        """
+        self._language = None if (not language or language.strip().lower() == "auto") else language.strip().lower()
+        print(f"[STT] Language hint set to: {self._language or 'auto (97 languages)'}")
+
     def transcribe(self, audio: np.ndarray) -> str:
         """Transcribe a float32 mono 16 kHz numpy array. Returns transcript string."""
         try:
