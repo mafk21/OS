@@ -1,0 +1,34 @@
+---
+name: second-brain
+description: Personal knowledge vault and screen-memory recall — use when searching past notes, local docs, or what was on screen earlier, or synthesizing grounded docs.
+---
+
+# Second brain & screen recall
+
+Search across all three local memory layers — personal facts, saved notes/vault documents, and historical screen captures — before answering questions about the user's past work or generating grounded documents.
+
+## When to use
+
+"What was that link/error I saw on screen earlier?", "search my notes/Obsidian vault for…", "what did we decide about project X?", "index my docs folder", or "write a spec based on my notes".
+
+## Procedure
+
+1. **Pick the right recall layer (run 2+ when uncertain where it lives)**:
+   - **Personal facts & past sessions**: Call `recall_memory` (`query="..."`).
+   - **What appeared visually on screen (OCR + window titles)**: Call `screen_memory_search` (`query="..."`) for error messages, URLs, slides, code snippets, or chats the user viewed earlier.
+   - **Saved notes**: Call `manage_notes` (`action="search"`, `query="..."`).
+   - **Local folders / Obsidian vaults**: Call `rag_docs` (`action="search"`, `query="..."`). If no RAG index exists yet or the user specifies a folder, run `rag_docs` (`action="index"`, `path="<folder>"`) first, then `action="search"`.
+   - **Single known file**: Call `file_processor` (`file_path="..."`) directly.
+2. **Synthesize with provenance**:
+   - Name where each fact came from (e.g. *"from Note #14"*, *"from `docs/architecture.md`"*, or *"from your VS Code window at 14:20"*).
+   - When asked to produce a polished artifact, call `rag_docs` (`action="generate"`, `prompt=...`, `out=...`) or `manage_notes` (`action="add"`).
+3. **Store durable facts**: If the user shares a new enduring project decision or preference, persist it silently via `save_memory`.
+
+## Pitfalls
+
+- Never tell the user "I don't have access to what you were looking at earlier" without checking `screen_memory_search` first.
+- Never conflate retrieved local notes with guesses — if a detail is missing from all memory layers, state that plainly.
+
+## Verification
+
+Did you check the matching memory layer (`recall_memory`, `screen_memory_search`, `manage_notes`, `rag_docs`)? Is every retrieved claim attributed to its local source?

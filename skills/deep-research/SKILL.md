@@ -1,52 +1,35 @@
 ---
 name: deep-research
-description: Multi-source research report with citations — use when the user asks to compare options, research a topic, "dig into", "find out everything about", weigh alternatives, or wants a thorough backed-up answer instead of a quick fact.
+description: Multi-wave cited research synthesis — use when comparing options, investigating a topic in depth, weighing trade-offs, or verifying claims across sources.
 ---
 
 # Deep research
 
-Turn a vague question into a short, sourced report. This is a PROCEDURE, not
-a search — a single `web_search` call is never enough for this skill.
+Turn an open-ended or high-stakes question into a concise, cited, bottom-line-first report. Single-query lookups are not deep research — verify decisive claims across independent sources.
 
 ## When to use
 
-Comparison questions ("which laptop…", "X vs Y"), purchase/advice decisions,
-"research …", "find out everything about …", anything where the user expects
-evidence rather than a one-liner. For a quick fact, just answer normally.
+Comparisons ("X vs Y", "best laptop under…"), architecture/library evaluations, market or technical investigations, purchase advice, or whenever the user says "research", "dig into", or "find out everything about".
 
 ## Procedure
 
-1. **Scope** (one round max): if the request is missing budget, purpose, or
-   constraints that would change the recommendation, ask ONE compact question.
-   Otherwise proceed with the most reasonable reading.
-2. **Plan**: silently pick 3–5 sub-questions that must be answered (price,
-   key specs/reviews, risks/cons, recency). Do not read the plan aloud.
-3. **Search, in waves**: run `web_search` with one sub-question per call,
-   batching 2–3 calls in parallel when they are independent. Follow up only
-   the sub-questions whose first wave was thin — cap total searches at ~8.
-4. **Record as you go**: keep a running list of (claim → source). Never carry
-   a number or quote forward without the source that produced it.
-5. **Verify the decisive facts**: anything the recommendation hinges on gets a
-   second, differently-worded search. If two sources disagree, say so rather
-   than picking the convenient one.
-6. **Synthesize**: write the answer as — one-paragraph bottom line first
-   (the actual recommendation), then 3–6 bullets of supporting findings, each
-   ending with its source in parentheses, then a one-line "what I could not
-   verify".
-7. **Deliver**: `show_content` with the full report so the user can read it,
-   and speak only the bottom line plus the two strongest findings. Long
-   reports read aloud are worse than useless.
+1. **Scope (at most one question)**: If a missing constraint (budget, platform, deadline) would flip the recommendation, ask ONE compact question. Otherwise state your assumption in one clause and proceed.
+2. **Check local context first**: If the topic relates to the user's projects or notes, run `recall_memory` or `rag_docs` (`action="search"`) so the report builds on their actual stack and constraints.
+3. **Run multi-wave synthesis**:
+   - Call `deep_research` (`query`, `depth="standard"` or `"deep"`) to run parallel grounded sub-queries and gather initial cited waves.
+   - Follow up on thin or contested numbers (pricing, benchmarks, release dates) with targeted `web_search` calls (`mode="compare"`, `"price"`, `"news"`, or `"research"`). Cap total searches at ~8.
+4. **Cross-verify decisive facts**: Every number, price, or version the recommendation turns on must be backed by a named source; if two credible sources disagree, report the discrepancy explicitly (see `references/source-rubric.md` via `skill_read` when evaluating conflicting evidence).
+5. **Synthesize for dual delivery**:
+   - `deep_research` and `web_search` automatically mirror detailed results to the HUD Content Panel (do NOT call `show_content` as a tool — it is handled by the HUD).
+   - **Spoken reply**: Lead with a 1–2 sentence bottom-line recommendation, followed by only the 2–3 decisive trade-offs and any key unverified gap. Never read URLs or walls of bullet points aloud.
+6. **Persist if requested**: If the user wants to keep the report, save it via `manage_notes` (`action="add"`) or `rag_docs` (`action="generate"`).
 
 ## Pitfalls
 
-- Do not stream findings as they arrive — the user gets one report, not a
-  running commentary of half-facts.
-- A search result is not a fact. If you cannot name the source, do not state
-  the claim.
-- If every wave fails (network/search errors), say that plainly and answer
-  from what you know, labelled as unverified. Never invent citations.
+- Do not narrate intermediate search waves aloud — acknowledge once at the start, then deliver one finished synthesis.
+- Never fabricate citations, dates, or prices. Label unverified claims plainly.
+- Do not call `show_content` directly; HUD mirroring is automatic on `deep_research` and `web_search`.
 
 ## Verification
 
-Before answering: 3+ distinct sources? Bottom line present? Every number
-traceable? Anything unverifiable named as such?
+Before speaking: 3+ distinct sources consulted? Clear first-sentence recommendation? Every decisive number traceable to a source? Disagreements or unverifiable items called out?
