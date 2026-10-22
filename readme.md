@@ -9,7 +9,7 @@
 | **Live Voice Engine** | **Gemini 3.8 Live** bidirectional audio + **9-rung model ladder** + **97-language** mid-turn switching |
 | **Provider & Offline Stack** | **8 cloud/local LLM providers** (Gemini, Anthropic, OpenAI, xAI, DeepSeek, Groq, Together, Ollama) + local **Whisper STT / Piper-Kokoro TTS** |
 | **Rendering** | **Zero GPU required** — 3D MediaPipe canonical head mesh, lighting, rig & ~50 Hz formant/transcript lip-sync rendered pure in software (`QPainter`) |
-| **Verification** | **158+ automated `pytest` tests** covering voice, scheduling, memory, skills, subagents, computer use, screen memory, gateway & GWS automation |
+| **Verification** | **170+ automated `pytest` tests** covering voice, session recycling, scheduling, memory, skills, subagents, computer use, screen memory, gateway & GWS automation |
 
 ---
 
@@ -26,7 +26,7 @@
                                            ▼
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
 │                     REAL-TIME ORCHESTRATION & PROVIDER KERNEL                        │
-│  • Gemini 3.8 Live WebSocket  ──► SessionResumption + ContextWindowCompression       │
+│  • Gemini 3.8 Live WebSocket  ──► SessionResumption + Compression + 15m Auto-Recycle │
 │  • Per-Tool Scheduling        ──► NON_BLOCKING + WHEN_IDLE speech-gap delivery       │
 │  • 9-Rung Gemini Ladder       ──► Auto-failover on quota / timeout / deprecation     │
 │  • Universal Provider Ladder  ──► Anthropic · OpenAI · xAI · DeepSeek · Groq · Ollama│
@@ -70,6 +70,7 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 | ⚡ **Non-Blocking `WHEN_IDLE` Tools** | Slow network/UI tools (`web_search`, `deep_research`, `file_processor`, `browser_control`, `send_message`, `computer_use`, `multi_channel`, `gws_pack`) execute `NON_BLOCKING` and inject results during natural speech gaps — never freezing conversation. |
 | 🌐 **97-Language Live Switching** | Native mid-turn detection and response across **97 languages** on `gemini-3.8-live`, backed by `set_language` persistent preference storage and `WhisperSTT.set_language()` hints. |
 | 🔗 **Resilient Bounded Streaming** | Drop-oldest mic ring buffer (`out_put_drop_oldest`, 64-block / ~4s ceiling) prevents WebSocket ping-timeouts under backpressure; `SessionResumptionConfig` + `ContextWindowCompressionConfig` preserve context across reconnects and multi-hour sessions. |
+| ♻️ **Proactive 15-Min Session Recycle** | `core/session_recycle.py` beats Gemini Live's ~15-minute WebSocket hard cutoff (and server `GoAway` notices) by waiting for an idle speech gap with zero active audio, tools, or vision frames and silently rebuilding a resumed connection before Google severs the socket mid-sentence. |
 
 ---
 
@@ -212,6 +213,7 @@ OS/
 │   ├── hotkey.py                  # Global/windowed Push-to-Talk chord handler
 │   ├── audio_devices.py           # Filtered, measured microphone & speaker enumeration
 │   ├── loop_safety.py             # Drop-oldest bounded audio queues & throttled asyncio loop guards
+│   ├── session_recycle.py         # Proactive 15-min WebSocket recycler + GoAway speech-gap handoff
 │   ├── skill_loader.py            # Open Agent Skills (SKILL.md) loader + self-writing skill_manage
 │   ├── subagents.py               # Scoped subagent manager (spawn/list/status/result/cancel/remove)
 │   ├── heartbeat.py               # Observe/suggest/act autonomy, HEARTBEAT_OK & never-nag-twice
@@ -292,5 +294,5 @@ OS/
 ├── auth/                          # Opt-in email OTP + quota hosted authentication client
 ├── plugins/                       # Drop-in user plugins (_template.py starter included)
 ├── config/                        # Local runtime keys & self-signed TLS certs (git-ignored)
-└── tests/                         # 158+ pytest unit & integration tests across all phases
+└── tests/                         # 170+ pytest unit & integration tests across all phases
 ```
