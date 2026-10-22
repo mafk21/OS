@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from threading import Lock
 from pathlib import Path
 import sys
@@ -44,6 +44,128 @@ PROMPT_INDEX_CHARS = 420
 # with forty stored preferences still gets their sister into the prompt.
 PROMPT_MAX_PER_CATEGORY = 6
 
+# ── Memory hygiene: TTL / forgetting ────────────────────────────────────────
+# Per-category time-to-live in days, measured from each entry's "updated"
+# date. Identity never expires — a name or city is a standing fact, not a
+# passing impression. Wishes decay fastest: a "dream car" from three years
+# ago is noise, not a preference.
+_TTL_DAYS = {
+    "identity":     None,   # never expires
+    "relationships":730,    # 2 years — people change slowly
+    "preferences":  365,    # 1 year
+    "projects":     180,    # 6 months — active goals finish
+    "notes":        180,    # 6 months
+    "wishes":        90,    # 3 months — plans come and go
+}
+
+
+def _is_expired(entry: dict, category: str, now: date) -> bool:
+    ttl = _TTL_DAYS.get(category)
+    if ttl is None:
+        return False
+    updated = (entry or {}).get("updated", "")
+    try:
+        updated_date = date.fromisoformat(updated)
+    except ValueError:
+        return False                      # unparseable date → keep, don't destroy
+    return (now - updated_date).days > ttl
+
+
+def expire_memory(memory: dict, now: date | None = None) -> list[str]:
+    """Remove entries whose per-category TTL has passed.
+
+    Returns the list of removed "category/key" ids. Callers persist the
+    cleaned store themselves (save_memory / load_memory do).
+    """
+    now = now or date.today()
+    removed: list[str] = []
+    for cat, ttl in _TTL_DAYS.items():
+        if ttl is None:
+            continue
+        items = memory.get(cat)
+        if not isinstance(items, dict):
+            continue
+        for key in list(items.keys()):
+            if _is_expired(items[key], cat, now):
+                del items[key]
+                removed.append(f"{cat}/{key}")
+    return removed
+
+
+def dedup_memory(memory: dict) -> list[tuple]:
+    """Merge cross-category duplicates of the same fact.
+
+    Two entries with the same normalized value (case/whitespace-insensitive)
+    in different categories are duplicates — e.g. preferences/color=blue and
+    notes/fav_color=blue. The more recently updated copy wins; the other is
+    removed. Returns (removed_cat, removed_key, kept_cat, kept_key) tuples.
+    """
+    seen: dict[str, tuple[str, str, str]] = {}  # norm -> (cat, key, updated)
+    removed: list[tuple] = []
+    cats = ("identity", "preferences", "projects", "relationships",
+            "wishes", "notes")
+    for cat in cats:
+        items = memory.get(cat)
+        if not isinstance(items, dict):
+            continue
+        for key in list(items.keys()):
+            val = _entry_value(items[key])
+            if not val:
+                continue
+            norm = val.strip().lower()
+            updated = items[key].get("updated", "0000-00-00")
+            if norm in seen:
+                old_cat, old_key, old_updated = seen[norm]
+                if updated >= old_updated:
+                    # keep this (newer), remove the old one
+                    old_entry = memory.get(old_cat, {}).get(old_key, {})
+                    del memory[old_cat][old_key]
+                    removed.append((old_cat, old_key, cat, key))
+                    seen[norm] = (cat, key, updated)
+                else:
+                    del items[key]
+                    removed.append((cat, key, old_cat, old_key))
+            else:
+                seen[norm] = (cat, key, updated)
+    return removed
+
+
+def hygiene_memory(memory: dict | None = None,
+                   now: date | None = None) -> dict:
+    """Run every hygiene pass: expire TTL, then dedup duplicates.
+
+    Returns the cleaned store. Persist with save_memory() when you want the
+    cleanup written to disk.
+    """
+    if memory is None:
+        memory = load_memory()
+    expire_memory(memory, now)
+    dedup_memory(memory)
+    return memory
+
+
+def user_profile(memory: dict | None = None) -> dict:
+    """Consolidated view of what JARVIS knows about this person.
+
+    identity — standing facts (name, city, job …)
+    about    — key relationships / preferences / projects, flattened
+    """
+    if memory is None:
+        memory = load_memory()
+    identity = memory.get("identity", {}) or {}
+    profile: dict[str, str] = {}
+    for field in _IDENTITY_FIELDS:
+        val = _entry_value(identity.get(field))
+        if val:
+            profile[field] = val
+    about: dict[str, str] = {}
+    for cat in ("relationships", "preferences", "projects"):
+        for key, entry in (memory.get(cat, {}) or {}).items():
+            val = _entry_value(entry)
+            if val:
+                about[f"{cat}/{key}"] = val
+    return {"identity": profile, "about": about}
+
 def _empty_memory() -> dict:
     return {
         "identity":      {},
@@ -60,16 +182,27 @@ def load_memory() -> dict:
     with _lock:
         try:
             data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                base = _empty_memory()
-                for key in base:
-                    if key not in data:
-                        data[key] = {}
-                return data
-            return _empty_memory()
         except Exception as e:
             print(f"[Memory] ⚠️ Load error: {e}")
             return _empty_memory()
+    if not isinstance(data, dict):
+        return _empty_memory()
+    base = _empty_memory()
+    for key in base:
+        if key not in data:
+            data[key] = {}
+    # Hygiene at load: forget TTL-stale entries, merge duplicates. Done outside
+    # the lock because save_memory re-acquires it (Lock is not reentrant).
+    # Persist the cleaned store so the next session starts clean.
+    removed_expired = expire_memory(data)
+    removed_dups = dedup_memory(data)
+    if removed_expired or removed_dups:
+        try:
+            save_memory(data)
+        except Exception:
+            pass
+        _notify_hygiene(removed_expired, removed_dups)
+    return data
 
 def _all_entries(memory: dict) -> list[tuple]:
     entries = []
@@ -91,6 +224,25 @@ def set_trim_notifier(fn) -> None:
     """Register a callable(str) that surfaces trims to the user."""
     global _trim_notifier
     _trim_notifier = fn
+
+
+def _notify_hygiene(removed_expired: list[str], removed_dups: list[tuple]) -> None:
+    if not (removed_expired or removed_dups):
+        return
+    parts = []
+    if removed_expired:
+        parts.append(f"forgot {len(removed_expired)} expired entries "
+                     f"({', '.join(removed_expired[:3])}"
+                     f"{'…' if len(removed_expired) > 3 else ''})")
+    if removed_dups:
+        parts.append(f"merged {len(removed_dups)} duplicate entries")
+    msg = "SYS: Memory hygiene — " + "; ".join(parts)
+    if _trim_notifier:
+        try:
+            _trim_notifier(msg)
+        except Exception:
+            pass
+    print(f"[Memory] 🧹 {msg}")
 
 
 def _trim_to_limit(memory: dict) -> dict:
@@ -118,6 +270,7 @@ def _trim_to_limit(memory: dict) -> dict:
 def save_memory(memory: dict) -> None:
     if not isinstance(memory, dict):
         return
+    expire_memory(memory)          # forget TTL-stale entries before persisting
     memory = _trim_to_limit(memory)
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _lock:
@@ -147,9 +300,21 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             if _recursive_update(target[key], value):
                 changed = True
         else:
+            today = datetime.now().strftime("%Y-%m-%d")
             new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value))
-            entry    = {"value": new_val, "updated": datetime.now().strftime("%Y-%m-%d")}
+            entry    = {"value": new_val, "updated": today}
             existing = target.get(key, {})
+            # Conflict resolution: same key, new value differs from stored.
+            # Keep the previous value in _prev history (cap 5) so nothing is
+            # silently overwritten; the latest value stays in "value".
+            if (isinstance(existing, dict)
+                    and existing.get("value") not in (None, new_val)):
+                history = existing.get("_prev") or []
+                history.append({"value": existing.get("value"),
+                                "updated": existing.get("updated", today)})
+                if len(history) > 5:
+                    history = history[-5:]
+                entry["_prev"] = history
             if not isinstance(existing, dict) or existing.get("value") != new_val:
                 target[key] = entry
                 changed = True
