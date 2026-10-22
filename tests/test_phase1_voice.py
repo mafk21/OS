@@ -18,7 +18,9 @@ def test_config_barge_grace():
     orig_g = cm.get_grace_period()
     try:
         cm.save_barge_in_enabled(not orig_b)
-        assert cm.get_barge_in_enabled() == (not orig_b)
+        # barge-in is FORCED ON this build — the getter ignores stored False
+        assert cm.get_barge_in_enabled() is True
+        assert isinstance(cm.get_barge_in_enabled(), bool)
         cm.save_grace_period(12)
         assert cm.get_grace_period() == 12
         cm.save_grace_period(0)
@@ -53,3 +55,30 @@ def test_ui_has_region_overlay():
     assert "_pause_btn" in txt
     assert "_region_btn" in txt
     assert "BARGE-IN" in txt
+
+def test_latest_model_migration():
+    """gemini-3.8-live leads the ladder (3.1-flash-live-preview dies 2026-11-17)."""
+    import pathlib
+    g = pathlib.Path("core/gemini.py").read_text(encoding="utf-8")
+    assert '"models/gemini-3.8-live"' in g
+    m = pathlib.Path("main.py").read_text(encoding="utf-8")
+    assert 'LIVE_MODEL          = "models/gemini-3.8-live"' in m
+    # 3.8 rejects proactivity/thinking fields and defaults to async tools
+    assert '_is38' in m
+    assert '"behavior": d.get("behavior") or "BLOCKING"' in m
+    # server-side interruption must drain local playback
+    assert 'getattr(sc, "interrupted", False)' in m
+
+def test_prompt_teaches_interruption():
+    """JARVIS must never claim barge-in is impossible (user-reported)."""
+    import pathlib
+    t = pathlib.Path("core/prompt.txt").read_text(encoding="utf-8")
+    assert "[INTERRUPTIONS]" in t
+    assert "Never claim you cannot be interrupted" in t
+
+def test_setup_supports_current_python():
+    import pathlib
+    s = pathlib.Path("setup.py").read_text(encoding="utf-8")
+    assert "MAX_PY = (3, 15)" in s
+    r = pathlib.Path("requirements.txt").read_text(encoding="utf-8")
+    assert "google-genai>=2.32.0" in r

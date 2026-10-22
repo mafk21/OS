@@ -159,14 +159,20 @@ _LADDERS = {
 # used before it, which is known to work here. A mismatch in config is already
 # survivable — the connect loop drops the tuning and proactive-audio fields and
 # reconnects when the server rejects them.
+# gemini-3.8-live leads: GA since 2026-09-15 and the migration target for
+# gemini-3.1-flash-live-preview, which Google shuts down on 2026-11-17.
+# The two older rungs stay behind it only until then — they still connect
+# today, and the connect loop survives config drift by dropping rejected
+# fields (proactivity/thinking) and reconnecting.
 LIVE_MODELS = (
+    "models/gemini-3.8-live",
     "models/gemini-3.1-flash-live-preview",
     "models/gemini-2.5-flash-native-audio-preview-12-2025",
 )
 
 # The Live model to use for one-shot calls. main.py owns the real one; this is
 # only the fallback for when this module is imported without it (tests).
-_LIVE_FALLBACK = "models/gemini-3.1-flash-live-preview"
+_LIVE_FALLBACK = "models/gemini-3.8-live"
 
 # How many one-shot Live sessions may exist at once.
 #

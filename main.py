@@ -105,7 +105,9 @@ PROMPT_PATH     = BASE_DIR / "core" / "prompt.txt"
 #
 # It is reassigned on every connect, so a model that runs out of quota is
 # stepped over and the assistant keeps talking instead of failing to start.
-LIVE_MODEL          = "models/gemini-3.1-flash-live-preview"
+# gemini-3.1-flash-live-preview SHUTS DOWN 2026-11-17 (Google deprecation);
+# gemini-3.8-live is its GA replacement. Ladder lives in core/gemini.py.
+LIVE_MODEL          = "models/gemini-3.8-live"
 CHANNELS            = 1
 SEND_SAMPLE_RATE    = 16000 
 RECEIVE_SAMPLE_RATE = 24000
@@ -1301,6 +1303,17 @@ class JarvisLive:
             parts.append(mem_str)
         parts.append(sys_prompt)
 
+        # gemini-3.8-live defaults tool calls to ASYNC (NON_BLOCKING); this
+        # app's flow executes the tool and answers with its result, which is
+        # the legacy blocking contract. Pin it there per Google's migration
+        # guide — only on 3.8, older models reject the field.
+        if "gemini-3.8" in LIVE_MODEL:
+            _all_decls = [
+                ({**d, "behavior": d.get("behavior") or "BLOCKING"}
+                 if isinstance(d, dict) else d)
+                for d in _all_decls
+            ]
+
         cfg = dict(
             response_modalities=["AUDIO"],
             output_audio_transcription={},
@@ -1331,14 +1344,18 @@ class JarvisLive:
                 )
             ),
         )
+        _is38 = "gemini-3.8" in LIVE_MODEL
         if self._enhanced_live:
             # Proactive audio: JARVIS stays silent when speech isn't addressed
             # to it (background chatter, talking to someone else in the room).
+            # On gemini-3.8-live proactive audio is ALWAYS ON server-side and
+            # the proactivity field is rejected — so it is sent only to the
+            # older models where it is still an opt-in.
             # (Affective dialog was dropped: gemini-3.1-flash-live does not
             #  support it, and it never reliably detected tone in practice.
             #  To restore it on a 2.5 native-audio model, add back:
             #  cfg["enable_affective_dialog"] = True )
-            if get_proactive_audio_enabled():
+            if get_proactive_audio_enabled() and not _is38:
                 cfg["proactivity"] = types.ProactivityConfig(proactive_audio=True)
 
         if self._tuned_live:
@@ -1394,7 +1411,9 @@ class JarvisLive:
         # appear to deliberate on the Live path, so pinning the field only adds a
         # way for a future release to behave differently. Set "thinking_enabled"
         # in config/api_keys.json to true to let it reason instead.
-        if get_thinking_enabled():
+        if get_thinking_enabled() and "gemini-3.8" not in LIVE_MODEL:
+            # gemini-3.8-live REJECTS thinking_config/level — omit it there
+            # (3.8 does interleaved reasoning without the field).
             out["thinking_config"] = types.ThinkingConfig(thinking_budget=-1)
 
         return out
@@ -1893,6 +1912,13 @@ class JarvisLive:
 
                     if response.server_content:
                         sc = response.server_content
+
+                        # Server-side barge-in: OUR message (the mic block
+                        # forwarded at interrupt, or a typed command) cancelled
+                        # the model's generation. Drain local playback NOW —
+                        # the buffered audio must not keep talking over the user.
+                        if getattr(sc, "interrupted", False) and not self._interrupted:
+                            self.interrupt()
 
                         if sc.output_transcription and sc.output_transcription.text:
                             txt = _clean_transcript(sc.output_transcription.text)
@@ -2494,12 +2520,16 @@ class JarvisLive:
                 _resumed_with = self._resume_handle is not None
                 config = self._build_config()
 
-                # Fresh client on every reconnect — avoids stale HTTP session state
-                # v1alpha carries proactive audio; if it gets rejected we fall
-                # back to v1beta.
+                # Fresh client on every reconnect — avoids stale HTTP session state.
+                # Older rungs: v1alpha carries the proactivity field.
+                # gemini-3.8-live: GA surface is v1beta (Google's own examples),
+                # and the proactivity field must NOT be sent to it.
                 client = genai.Client(
                     api_key=_get_api_key(),
-                    http_options={"api_version": "v1alpha" if self._enhanced_live else "v1beta"}
+                    http_options={"api_version": (
+                        "v1beta" if "gemini-3.8" in live_model
+                        else ("v1alpha" if self._enhanced_live else "v1beta")
+                    )}
                 )
 
                 async with (
