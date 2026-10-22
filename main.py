@@ -74,6 +74,10 @@ from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
                                        multi_channel)
 from core.subagents            import get_subagent_manager, subagent
 from core.gws_pack             import gws_pack
+from core.session_recycle      import (
+    SessionRecycler, parse_go_away_seconds,
+    CHECK_INTERVAL_SEC as RECYCLE_CHECK_SEC,
+)
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -944,6 +948,9 @@ class JarvisLive:
         self._proactive        = ProactiveEngine()
         self._heartbeat        = HeartbeatEngine()   # Phase 4: observe/suggest/act + HEARTBEAT_OK + never-nag-twice
         self._screen_memory    = get_screen_memory()   # Phase 7: screen memory (event-driven capture + FTS5 search)
+        self._session_recycler = SessionRecycler()     # Phase 13: proactive 15-min WebSocket recycle
+        self._reconnect_silent = False                 # True → silent background recycle (no HUD log spam)
+        self._proactive_recycle_pending = False        # True across a background recycle handoff
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
 
@@ -1355,20 +1362,29 @@ class JarvisLive:
         except Exception as e:
             print(f"[PluginSay] {e}")
 
-    def request_reconnect(self, keep_context: bool = True, reason: str = ""):
+    def request_reconnect(
+        self,
+        keep_context: bool = True,
+        reason: str = "",
+        silent: bool = False,
+    ):
         """Thread-safe: ask the run loop to tear down and rebuild the Live
-        session. Called from the Qt thread. No-op until the async loop and
-        reconnect event exist.
+        session. Called from the Qt thread or background loop tasks. No-op
+        until the async loop and reconnect event exist.
 
         `keep_context=False` drops the resumption handle so the new session
         starts empty — only for changes the server cannot apply to a resumed
-        session."""
+        session. `silent=True` suppresses HUD chat log chatter for routine
+        proactive 15-min WebSocket recycles."""
         loop = getattr(self, "_loop", None)
         ev   = self._reconnect_event
         self._reconnect_keep   = keep_context
         self._reconnect_reason = reason
+        self._reconnect_silent = silent
         if loop and ev is not None:
             loop.call_soon_threadsafe(ev.set)
+        elif ev is not None:
+            ev.set()
 
     def _on_voice_change(self):
         """Voice picker applied.
@@ -1396,10 +1412,13 @@ class JarvisLive:
         self._reconnect_event.clear()
         keep   = self._reconnect_keep
         reason = getattr(self, "_reconnect_reason", "") or "settings"
-        self.ui.write_log(
-            f"SYS: Applying {reason} — reconnecting"
-            + ("..." if keep else " (starting a fresh conversation)...")
-        )
+        silent = getattr(self, "_reconnect_silent", False)
+        self._reconnect_silent = False
+        if not silent:
+            self.ui.write_log(
+                f"SYS: Applying {reason} — reconnecting"
+                + ("..." if keep else " (starting a fresh conversation)...")
+            )
         raise _ReconnectSignal(keep_context=keep)
 
     def _make_remote_key(self):
@@ -2360,6 +2379,17 @@ class JarvisLive:
                                 print("[JARVIS] 🔗 Session resumption armed")
                             self._resume_handle = _sru.new_handle
 
+                    # ── Server GoAway notice (Phase 13) ──────────────────────
+                    # Google sends GoAway before terminating a long-lived
+                    # WebSocket (~15 min ceiling or maintenance roll). Arm the
+                    # recycler so we rebuild on the very next speech gap
+                    # instead of being cut off mid-sentence.
+                    _ga = getattr(response, "go_away", None)
+                    if _ga is not None:
+                        _left = parse_go_away_seconds(_ga)
+                        self._session_recycler.on_go_away(_left)
+                        print(f"[SessionRecycle] ⚠️ Server GoAway (time_left={_left}s) — scheduling seamless recycle")
+
                     if response.data:
                         if self._interrupted:
                             pass  # discard: interrupted
@@ -2462,14 +2492,15 @@ class JarvisLive:
 
                     if response.tool_call:
                         fn_responses = []
-                        for fc in response.tool_call.function_calls:
-                            print(f"[JARVIS] 📞 {fc.name}")
-                            fr = await self._execute_tool(fc)
-                            fn_responses.append(fr)
-                        await self.session.send_tool_response(
-                            function_responses=fn_responses
-                        )
-                        await self._flush_pending_vision()
+                        with self._session_recycler.track_tool():
+                            for fc in response.tool_call.function_calls:
+                                print(f"[JARVIS] 📞 {fc.name}")
+                                fr = await self._execute_tool(fc)
+                                fn_responses.append(fr)
+                            await self.session.send_tool_response(
+                                function_responses=fn_responses
+                            )
+                            await self._flush_pending_vision()
         except Exception as e:
             print(f"[JARVIS] ❌ Recv: {e}")
             traceback.print_exc()
@@ -2967,6 +2998,49 @@ class JarvisLive:
             except Exception as e:
                 print(f"[ScreenMemory] ⚠️ {e}")
 
+    # ── Proactive 15-min Session Recycle ───────────────────────────────────────
+    # Phase 13 — Gemini Live WebSocket sessions hit a hard ~15-minute ceiling.
+    # Starting at 13m (or upon a server GoAway frame), wait for an idle speech
+    # gap with no active audio/tools/vision and trigger a silent resumed rebuild.
+
+    async def _run_session_recycle(self) -> None:
+        """Background task: proactively recycle the Live WebSocket before 15m."""
+        while True:
+            await asyncio.sleep(RECYCLE_CHECK_SEC)
+
+            if not self.session:
+                continue
+
+            with self._speaking_lock:
+                speaking = self._is_speaking
+
+            audio_queued = bool(
+                self.audio_in_queue is not None and not self.audio_in_queue.empty()
+            )
+            speech_age = max(0.0, time.monotonic() - self._last_user_speech)
+
+            should, reason = self._session_recycler.should_recycle(
+                is_speaking=speaking,
+                audio_queued=audio_queued,
+                last_user_speech_age=speech_age,
+                vision_busy=bool(self._vision_busy),
+                has_resume_handle=bool(self._resume_handle),
+            )
+            if should:
+                self._session_recycler.mark_recycled(reason)
+                age_min = self._session_recycler.session_age() / 60.0
+                print(
+                    f"[SessionRecycle] ♻️ Recycling Live session at {age_min:.1f}m "
+                    f"({reason}; resume={'yes' if self._resume_handle else 'no'})"
+                )
+                self._proactive_recycle_pending = True
+                self.request_reconnect(
+                    keep_context=True,
+                    reason=reason,
+                    silent=True,
+                )
+                return
+
     # ── Phone audio relay ────────────────────────────────────────────────────────
 
     async def _relay_phone_audio(self) -> None:
@@ -3080,7 +3154,8 @@ class JarvisLive:
         while True:
             try:
                 print("[JARVIS] Connecting...")
-                self.ui.set_state("THINKING")
+                if not self._proactive_recycle_pending:
+                    self.ui.set_state("THINKING")
                 # Pick the rung to open the conversation on. A model resting
                 # off a quota limit is skipped; the name is published back to
                 # LIVE_MODEL so plugins follow whatever is actually in use.
@@ -3117,6 +3192,9 @@ class JarvisLive:
                     # latency on recovery and, before PR #7, silent until full.
                     self.out_queue        = asyncio.Queue(maxsize=64)
                     self._turn_done_event = asyncio.Event()
+                    self._session_recycler.on_connect()
+                    _was_proactive_recycle = self._proactive_recycle_pending
+                    self._proactive_recycle_pending = False
 
                     # Reset transient state that must not carry over from a previous session
                     self._pending_vision       = None
@@ -3132,23 +3210,42 @@ class JarvisLive:
                     except Exception:
                         pass
                     print("[JARVIS] Connected.")
-                    if _resumed_with:
-                        # Say it plainly: the difference between "it reconnected"
-                        # and "it reconnected and still knows what we were doing"
-                        # is the whole point, and it is invisible otherwise.
-                        self.ui.write_log("SYS: Reconnected — conversation restored.")
 
-                    # Wake word: if enabled, come up ASLEEP (mic gated, silent)
-                    # until the user says "Hey Jarvis" or taps wake in the UI.
-                    if self._wake_enabled:
-                        self._ensure_wake_detector()
-                        self._awake = False
-                        self.ui.set_state("SLEEPING")
-                        self.ui.write_log("SYS: JARVIS online — sleeping. Say 'Hey Jarvis' to wake me.")
+                    if _was_proactive_recycle:
+                        # Seamless 15-min background recycle: preserve current
+                        # wake/sleep state and keep the HUD chat log noise-free.
+                        if self._wake_enabled:
+                            self._ensure_wake_detector()
+                            self.ui.set_state("LISTENING" if self._awake else "SLEEPING")
+                        else:
+                            self._awake = True
+                            self.ui.set_state("LISTENING")
+                        print(
+                            f"[SessionRecycle] ♻️ Recycled seamlessly "
+                            f"(cycle #{self._session_recycler.recycle_count}, "
+                            f"resumed={_resumed_with})"
+                        )
                     else:
-                        self._awake = True
-                        self.ui.set_state("LISTENING")
-                        self.ui.write_log("SYS: JARVIS online.")
+                        if _resumed_with:
+                            # Say it plainly: the difference between "it reconnected"
+                            # and "it reconnected and still knows what we were doing"
+                            # is the whole point, and it is invisible otherwise.
+                            self.ui.write_log("SYS: Reconnected — conversation restored.")
+
+                        # Wake word: if enabled, come up ASLEEP on fresh start,
+                        # but keep an already-awake resumed session awake.
+                        if self._wake_enabled:
+                            self._ensure_wake_detector()
+                            if _resumed_with and self._awake:
+                                self.ui.set_state("LISTENING")
+                            else:
+                                self._awake = False
+                                self.ui.set_state("SLEEPING")
+                                self.ui.write_log("SYS: JARVIS online — sleeping. Say 'Hey Jarvis' to wake me.")
+                        else:
+                            self._awake = True
+                            self.ui.set_state("LISTENING")
+                            self.ui.write_log("SYS: JARVIS online.")
 
                     if self._dashboard:
                         await self._dashboard.broadcast({"type": "status", "state": "active"})
@@ -3164,6 +3261,7 @@ class JarvisLive:
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_heartbeat())
                     tg.create_task(self._run_screen_memory_capture())
+                    tg.create_task(self._run_session_recycle())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
@@ -3195,6 +3293,8 @@ class JarvisLive:
                         self._resume_handle = None
                     self._conn_backoff = 0
                     continue
+
+                self._proactive_recycle_pending = False
 
                 # A resumption handle the server will not accept — expired, or
                 # belonging to a session it has since dropped. Without this, the
