@@ -39,6 +39,7 @@
 | 🔍 Deep Research | Multi-wave sourced reports with citations — compares options, verifies facts, delivers bottom-line-first answers |
 | ⚡ Per-tool scheduling | Slow tools (web search, deep research, file processor, browser, messaging) run NON_BLOCKING with WHEN_IDLE delivery — results arrive in speech gaps, never cutting you off |
 | 🖱️ Computer Use | Set-of-Mark visual grounding — capture screen, detect numbered elements, click/type by element ID |
+| 🌐 97-Language Switching | Mid-turn language switching across 97 languages — Gemini 3.8 Live detects and responds in the user's language automatically; set_language stores preference |
 | 💓 Heartbeat Autonomy | Observe/suggest/act levels with HEARTBEAT_OK silence and never-nag-twice — proactive suggestions that respect your quiet time |
 | 🗓️ Session Memory | Summarises each conversation and mentions it naturally next morning — consumed after use, never repeats |
 | 👁️‍🗨️ Background Monitoring | User-configured topic watching — checks for new headlines once a day and alerts naturally |

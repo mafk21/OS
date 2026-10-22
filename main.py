@@ -527,6 +527,28 @@ TOOL_DECLARATIONS = [
         },
     },
     {
+        "name": "set_language",
+        "description": (
+            "Set or switch the conversation language. Gemini 3.8 Live natively "
+            "supports mid-turn switching across 97 languages — the model detects "
+            "the user's language and responds in it automatically. Call this to "
+            "explicitly set a language preference (stored in memory for future "
+            "sessions) or when the user asks to switch languages. Pass a language "
+            "name or code (e.g. 'Turkish', 'tr', 'Spanish', 'es', 'Arabic', 'ar') "
+            "or 'auto' for automatic detection."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "language": {
+                    "type": "STRING",
+                    "description": "Language name, code, or 'auto' for auto-detect",
+                },
+            },
+            "required": ["language"],
+        },
+    },
+    {
         "name": "shutdown_jarvis",
         "description": (
             "Shuts down the assistant completely. "
@@ -1737,6 +1759,17 @@ class JarvisLive:
             elif name == "screen_memory_search":
                 # Phase 7: search screen memory (OCR + a11y + FTS5).
                 result = screen_memory_search(args)
+
+            elif name == "set_language":
+                # Phase 9: 97-language switching. Store preference in memory;
+                # Gemini 3.8 Live handles native mid-turn switching.
+                lang = str(args.get("language", "")).strip()
+                if not lang:
+                    result = "set_language: no language specified."
+                else:
+                    update_memory({"identity": {"language": {"value": lang}}})
+                    result = f"Language set to {lang}. I'll respond in {lang} from now on (and remember it for next session)."
+                    print(f"[Language] 🗣️ {result}")
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
