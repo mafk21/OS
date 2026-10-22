@@ -1733,12 +1733,13 @@ class JarvisLive:
                 r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
                 result = r or "Done."
                 # web_search: mirror results to the on-screen content panel
-                if (name == "web_search" and r
+                if (name in ("web_search", "deep_research") and r
                         and not r.startswith("No results")
                         and not r.startswith("Search failed")):
-                    _mode  = args.get("mode", "search")
-                    _query = args.get("query") or ", ".join(args.get("items", []))
-                    _label = f"{_mode.upper()} — {_query[:38]}" if _query else _mode.upper()
+                    _query = args.get("query") or ""
+                    _label = ("RESEARCH — " + _query[:38]
+                              if name == "deep_research"
+                              else f"{args.get('mode', 'search').upper()} — {_query[:38]}")
                     self.ui.show_content(_label, r)
 
             else:
