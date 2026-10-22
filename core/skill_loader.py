@@ -131,9 +131,11 @@ def _unquote(v: str) -> str:
 # ── registry ────────────────────────────────────────────────────────────────
 
 class SkillRegistry:
-    def __init__(self, skills: dict[str, "SkillRecord"], all_records: list):
+    def __init__(self, skills: dict[str, "SkillRecord"], all_records: list,
+                 base_dir: Optional[Path] = None):
         self._skills = skills          # name -> record, VALID entries only
         self._all = all_records
+        self._dir = base_dir or Path("skills")
 
     def __len__(self) -> int:
         return len(self._skills)
@@ -194,6 +196,64 @@ class SkillRegistry:
             raise ValueError(f"Skill '{key}' has no file '{relpath}'"
                              f" (bundled: {', '.join(rec.resources) or 'none'})")
         return _read_capped(target, what=f"'{relpath}'")
+
+    # -- authoring (the learning loop) ───────────────────────────────────────
+    def write(self, name, description, body, update: bool = False) -> str:
+        """Create or replace a SKILL.md — the agent's self-authoring path.
+
+        Validates against the *same* spec as discovery, so anything the model
+        writes is guaranteed to survive the next restart's scan, then
+        registers the record immediately: skill_read sees it this session,
+        the {skills} block picks it up on the next connect.
+
+        Guardrails: create refuses to shadow a valid skill (use update);
+        update refuses when there is nothing to update. The caller (prompt
+        rules) is what requires asking the user first — this method only
+        guarantees the artifact is well-formed, never silent corruption.
+        """
+        key = str(name or "").strip()
+        desc = " ".join(str(description or "").split())
+        text = str(body or "").strip()
+        if not _NAME_RE.match(key) or len(key) > 64:
+            raise ValueError(
+                f"invalid skill name '{name}' — lowercase letters, numbers and "
+                f"hyphens, max 64 chars, e.g. 'weekly-report'")
+        if not desc:
+            raise ValueError("description is required — say what the skill "
+                             "does AND when to use it (it is the trigger)")
+        if len(desc) > 1024:
+            desc = desc[:1024]
+        if not text:
+            raise ValueError("body is required — the step-by-step instructions, "
+                             "pitfalls and verification the next run follows")
+        folder = self._dir / key
+        md = folder / "SKILL.md"
+        registered = key in self._skills
+        if registered and not update:
+            raise ValueError(f"skill '{key}' already exists — call "
+                             f"skill_manage action=update to change it")
+        if update and not (registered or md.is_file()):
+            raise ValueError(f"no skill '{key}' to update — "
+                             f"call skill_manage action=create instead")
+        folder.mkdir(parents=True, exist_ok=True)
+        md.write_text(
+            f"---\nname: {key}\ndescription: {desc}\n---\n\n{text}\n",
+            encoding="utf-8",
+        )
+        rec = SkillRecord(name=key, description=desc, dir=key, path=folder,
+                          valid=True)
+        rec.resources = [
+            str(p.relative_to(folder))
+            for p in sorted(folder.rglob("*"))
+            if p.is_file() and p.name not in ("SKILL.md", "skill.md")
+        ][:40]
+        self._skills[key] = rec
+        if rec not in self._all:
+            self._all.append(rec)
+        verb = "updated" if (registered or md.is_file()) and update else "created"
+        return (f"Skill '{key}' {verb} at {folder.as_posix()}/SKILL.md. "
+                f"skill_read can load it right now; it joins the prompt's "
+                f"[SKILLS] list at the next session.")
 
 
 def _read_capped(path: Path, what: str) -> str:
@@ -274,5 +334,5 @@ def discover_skills(skills_dir: Path,
             logger(f"Skill '{folder.name}' rejected: {e}")
         all_records.append(rec)
 
-    logger(f"Skill discovery complete: {len(valid)} active.")
-    return SkillRegistry(valid, all_records)
+        logger(f"Skill discovery complete: {len(valid)} active.")
+    return SkillRegistry(valid, all_records, base_dir=skills_dir)
