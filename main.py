@@ -88,6 +88,7 @@ from core.wake_word            import (
 from core.loop_safety          import (
     out_put_drop_oldest, throttled_loop_exception_handler,
 )
+from core.skill_loader         import discover_skills
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
@@ -341,6 +342,34 @@ TOOL_DECLARATIONS = [
     # camera stream, memory writes, the monitor engine, and shutdown. All other
     # tools live in their own action file and are auto-discovered by
     # core.action_loader (see JarvisLive.__init__).
+    {
+        "name": "skill_read",
+        "description": (
+            "Reads a SKILL.md skill's instructions, or one file bundled with it. "
+            "Your prompt's [SKILLS] block lists every installed skill by name and "
+            "description. When a task matches a skill's description, call this "
+            "BEFORE starting and follow its instructions — skills carry the "
+            "step-by-step procedures for recurring tasks. "
+            "Call with just 'name' to load the instructions. "
+            "Add 'path' (relative, e.g. 'references/details.md') to open a file "
+            "the instructions point at. This tool only reads; bundled scripts are "
+            "run through your shell tool."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "name": {
+                    "type": "STRING",
+                    "description": "Skill name exactly as listed in [SKILLS] (folder name)",
+                },
+                "path": {
+                    "type": "STRING",
+                    "description": "Optional file inside the skill folder, e.g. 'references/x.md'",
+                },
+            },
+            "required": ["name"],
+        },
+    },
     {
         "name": "system_status",
         "description": (
@@ -656,6 +685,15 @@ class JarvisLive:
         self.ui.get_plugins = self._plugin_registry.list_for_ui
         self.ui.get_plugin_settings = self._plugin_registry.settings_schemas  # ⚙ settings tab
         self.ui.request_say = self.plugin_say   # plugins: mid-task speech channel
+
+        # Skills — the open SKILL.md standard (agentskills.io). Metadata enters
+        # the prompt through {skills}; bodies load on demand via skill_read.
+        # Same never-raise contract as actions/plugins: a broken folder is
+        # logged and skipped.
+        self._skill_registry = discover_skills(
+            skills_dir=_base_dir / "skills",
+            logger=lambda msg: print(f"[Skills] {msg}"),
+        )
 
         # ── Wake word ────────────────────────────────────────────────────────
         # _awake gates the mic (see _listen_audio) and the background speakers.
@@ -1304,6 +1342,9 @@ class JarvisLive:
             "assistant_name": self._asst_name,
             "platform": f"{_platform.system()} {_platform.release()}".strip(),
             "capabilities": _describe_tools(_all_decls),
+            # Level 1 of progressive disclosure: one line per skill (name +
+            # trigger description). Bodies load later through skill_read.
+            "skills": self._skill_registry.get_listing(),
             "limits": _describe_limits(
                 has_vision="screen_process" in _names,
                 has_mic=True,
@@ -1462,6 +1503,14 @@ class JarvisLive:
                 # hundred short strings, and a thread hop would cost more than
                 # the work itself.
                 result = search_memory(args.get("query", ""), limit=8)
+
+            elif name == "skill_read":
+                # Skills live on disk as SKILL.md folders; metadata is already in
+                # the prompt, this is Level 2/3 — body or a bundled file. Pure
+                # read, dictionary-cheap: stays in the loop like recall_memory.
+                result = self._skill_registry.read(
+                    args.get("name", ""), args.get("path") or None
+                )
 
             elif name == "undo":
                 if str(args.get("action", "")).lower().strip() == "list":
