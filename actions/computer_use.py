@@ -205,6 +205,30 @@ def computer_use(parameters: dict, response=None, player=None,
         return f"computer_use: {e}"
 
 
+# Last Set-of-Mark element map captured by som_capture: id -> element dict
+_LAST_ID_MAP: dict[str, dict] = {}
+
+
+def get_last_id_map() -> dict[str, dict]:
+    """Return a shallow copy of the most recent som_capture element map."""
+    return dict(_LAST_ID_MAP)
+
+
+def clear_last_id_map() -> None:
+    """Clear cached Set-of-Mark element coordinates."""
+    _LAST_ID_MAP.clear()
+
+
+def _resolve_element_center(el_id: str) -> Optional[tuple[int, int]]:
+    """Resolve a cached SoM element ID to its center (x, y) coordinates."""
+    el = _LAST_ID_MAP.get(str(el_id).strip())
+    if not el or "x" not in el or "y" not in el:
+        return None
+    cx = int(el["x"]) + int(el.get("width", 0)) // 2
+    cy = int(el["y"]) + int(el.get("height", 0)) // 2
+    return cx, cy
+
+
 def _som_capture(player) -> str:
     """Capture screen, detect elements, annotate, return element map."""
     try:
@@ -215,6 +239,8 @@ def _som_capture(player) -> str:
 
     elements = _detect_elements_som()
     annotated, id_map = _annotate_som(img_bytes, elements)
+    _LAST_ID_MAP.clear()
+    _LAST_ID_MAP.update(id_map)
 
     # Show the annotated image to the user
     if player and hasattr(player, "show_content"):
@@ -255,16 +281,16 @@ def _format_element_map(id_map: dict) -> str:
 
 
 def _click_by_id(parameters: dict) -> str:
-    el_id = (parameters or {}).get("element_id", "").strip()
+    el_id = str((parameters or {}).get("element_id", "")).strip()
     x = (parameters or {}).get("x")
     y = (parameters or {}).get("y")
 
-    # Try element_id → coordinate lookup from last capture
-    # (In a full implementation, we'd store the last id_map. For now, fall back
-    # to coordinates or computer_control's screen_click.)
     if x is not None and y is not None:
         return _cc_click(x=x, y=y)
     if el_id:
+        coords = _resolve_element_center(el_id)
+        if coords is not None:
+            return _cc_click(x=coords[0], y=coords[1])
         return (f"computer_use click_by_id: element_id '{el_id}' requires a prior "
                 f"som_capture to build the element map. Call som_capture first, "
                 f"or use computer_control screen_click with a description.")
@@ -272,7 +298,7 @@ def _click_by_id(parameters: dict) -> str:
 
 
 def _type_by_id(parameters: dict) -> str:
-    el_id = (parameters or {}).get("element_id", "").strip()
+    el_id = str((parameters or {}).get("element_id", "")).strip()
     text = (parameters or {}).get("text", "")
     x = (parameters or {}).get("x")
     y = (parameters or {}).get("y")
@@ -282,6 +308,11 @@ def _type_by_id(parameters: dict) -> str:
         _cc_click(x=x, y=y)
         return _cc_type(text)
     if el_id:
+        coords = _resolve_element_center(el_id)
+        if coords is not None:
+            _cc_move(x=coords[0], y=coords[1])
+            _cc_click(x=coords[0], y=coords[1])
+            return _cc_type(text)
         return (f"computer_use type_by_id: element_id '{el_id}' requires a prior "
                 f"som_capture. Call som_capture first, or use computer_control "
                 f"smart_type / type directly.")
@@ -289,13 +320,16 @@ def _type_by_id(parameters: dict) -> str:
 
 
 def _hover_by_id(parameters: dict) -> str:
-    el_id = (parameters or {}).get("element_id", "").strip()
+    el_id = str((parameters or {}).get("element_id", "")).strip()
     x = (parameters or {}).get("x")
     y = (parameters or {}).get("y")
 
     if x is not None and y is not None:
         return _cc_move(x=x, y=y)
     if el_id:
+        coords = _resolve_element_center(el_id)
+        if coords is not None:
+            return _cc_move(x=coords[0], y=coords[1])
         return (f"computer_use hover_by_id: element_id '{el_id}' requires a prior "
                 f"som_capture. Call som_capture first.")
     return "computer_use hover_by_id: need element_id or x,y coordinates"

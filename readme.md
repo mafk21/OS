@@ -5,11 +5,11 @@
 | Metric | Scale |
 | :--- | :--- |
 | **Codebase** | **34,000+ lines** across **85+ Python modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **46 self-describing OS actions** + **15 live-session tools** + **drop-in plugins & MCP** |
+| **Execution Surface** | **46 self-describing OS actions** + **15 live-session tools** + **10 default `SKILL.md` playbooks** + **drop-in plugins & MCP** |
 | **Live Voice Engine** | **Gemini 3.8 Live** bidirectional audio + **9-rung model ladder** + **97-language** mid-turn switching |
 | **Provider & Offline Stack** | **8 cloud/local LLM providers** (Gemini, Anthropic, OpenAI, xAI, DeepSeek, Groq, Together, Ollama) + local **Whisper STT / Piper-Kokoro TTS** |
 | **Rendering** | **Zero GPU required** — 3D MediaPipe canonical head mesh, lighting, rig & ~50 Hz formant/transcript lip-sync rendered pure in software (`QPainter`) |
-| **Verification** | **170+ automated `pytest` tests** covering voice, session recycling, scheduling, memory, skills, subagents, computer use, screen memory, gateway & GWS automation |
+| **Verification** | **179+ automated `pytest` tests** covering voice, session recycling, scheduling, memory, default skills, subagents, computer use, screen memory, gateway & GWS automation |
 
 ---
 
@@ -276,10 +276,19 @@ OS/
 │   ├── marketplace_action.py      # Voice/tool interface to the plugin marketplace
 │   └── hosted_auth_action.py      # Opt-in email OTP hosted auth management
 │
-├── skills/                        # Open Agent Skills (SKILL.md progressive-disclosure SOPs)
+├── skills/                        # 10 default Open Agent Skills (SKILL.md progressive-disclosure SOPs)
 │   ├── README.md                  # Spec & authoring guide
 │   ├── _template/                 # Starter template for new skills
-│   └── deep-research/             # Multi-wave sourced research methodology skill
+│   ├── code-ship/                 # Bugfix, feature build, test verification & Git/PR shipping (+ checklist)
+│   ├── daily-briefing/            # Executive briefing (calendar, tasks, live weather, news & memory)
+│   ├── deep-research/             # Multi-wave cited synthesis (+ source reliability rubric)
+│   ├── focus-mode/                # Deep-work orchestrator (checkpoints, heartbeat quiet, routines & timer)
+│   ├── gui-autopilot/             # Tiered GUI automation (accessibility tree → SoM computer_use → coords)
+│   ├── meeting-copilot/           # Live lecture/meeting capture → summary, tasks & deadline reminders
+│   ├── safe-file-organizer/       # Dry-run folder triage, quarantine & undo-backed cleanup
+│   ├── second-brain/              # Unified recall across memory, notes, RAG vault & FTS5 screen history
+│   ├── system-doctor/             # Hardware, audio, network, storage & subsystem diagnostics
+│   └── workspace-comms/           # Gmail, Docs, Drive, Calendar & omnichannel messaging SOP
 │
 ├── memory/                        # Persistent local state & SQLite stores
 │   ├── memory_manager.py          # Two-tier long-term memory, search, hygiene & session summaries
@@ -294,5 +303,5 @@ OS/
 ├── auth/                          # Opt-in email OTP + quota hosted authentication client
 ├── plugins/                       # Drop-in user plugins (_template.py starter included)
 ├── config/                        # Local runtime keys & self-signed TLS certs (git-ignored)
-└── tests/                         # 170+ pytest unit & integration tests across all phases
+└── tests/                         # 179+ pytest unit & integration tests across all phases
 ```
