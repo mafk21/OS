@@ -73,6 +73,7 @@ from core.screen_memory        import (get_screen_memory, screen_memory_search,
 from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
                                        multi_channel)
 from core.subagents            import get_subagent_manager, subagent
+from core.gws_pack             import gws_pack
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -653,6 +654,76 @@ TOOL_DECLARATIONS = [
                 "max_steps": {
                     "type": "INTEGER",
                     "description": "spawn: maximum steps before auto-complete (default 10)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "gws_pack",
+        "description": (
+            "Google Workspace automation via computer_use (Set-of-Mark visual "
+            "grounding). Automates Gmail, Google Docs, Google Drive, Google "
+            "Calendar through their web UIs — no API keys, no OAuth. Actions: "
+            "'gmail_send' (to, subject, body), 'gmail_search' (query), "
+            "'docs_create' (title), 'docs_write' (content), 'drive_upload' "
+            "(file_path), 'calendar_add' (title, when, description), "
+            "'gws_open' (app: gmail|docs|drive|calendar), 'workflow' (name: "
+            "send_meeting_notes|save_research_to_drive|schedule_meeting). "
+            "Each action captures the screen, detects clickable elements by ID, "
+            "and interacts with them. Falls back to human-readable SOPs when "
+            "visual grounding is unavailable."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "gmail_send | gmail_search | docs_create | docs_write | drive_upload | calendar_add | gws_open | workflow",
+                },
+                "to": {
+                    "type": "STRING",
+                    "description": "gmail_send: recipient email address",
+                },
+                "subject": {
+                    "type": "STRING",
+                    "description": "gmail_send: email subject",
+                },
+                "body": {
+                    "type": "STRING",
+                    "description": "gmail_send: email body / docs_write: content",
+                },
+                "query": {
+                    "type": "STRING",
+                    "description": "gmail_search: Gmail search query",
+                },
+                "title": {
+                    "type": "STRING",
+                    "description": "docs_create: document title / calendar_add: event title",
+                },
+                "content": {
+                    "type": "STRING",
+                    "description": "docs_write: text to write into the document",
+                },
+                "file_path": {
+                    "type": "STRING",
+                    "description": "drive_upload: path to file to upload",
+                },
+                "when": {
+                    "type": "STRING",
+                    "description": "calendar_add: event time (e.g. 'tomorrow 3pm')",
+                },
+                "description": {
+                    "type": "STRING",
+                    "description": "calendar_add: event description",
+                },
+                "app": {
+                    "type": "STRING",
+                    "description": "gws_open: gmail | docs | drive | calendar",
+                },
+                "name": {
+                    "type": "STRING",
+                    "description": "workflow: send_meeting_notes | save_research_to_drive | schedule_meeting",
                 },
             },
             "required": ["action"],
@@ -1889,6 +1960,12 @@ class JarvisLive:
                 # Phase 11: subagent task decomposition.
                 result = subagent(args)
 
+            elif name == "gws_pack":
+                # Phase 12: GWS Pack — Google Workspace via computer_use.
+                result = gws_pack(args)
+                if result and not result.startswith("gws_pack:"):
+                    self.ui.show_content("GWS PACK — " + args.get("action", ""), result)
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
@@ -1915,7 +1992,8 @@ class JarvisLive:
                 r = await loop.run_in_executor(None, lambda: self._action_registry.run(name, args, _ctx))
                 result = r or "Done."
                 # web_search: mirror results to the on-screen content panel
-                if (name in ("web_search", "deep_research", "computer_use") and r
+                if (name in ("web_search", "deep_research", "computer_use",
+                             "gws_pack") and r
                         and not r.startswith("No results")
                         and not r.startswith("Search failed")):
                     _query = args.get("query") or args.get("element_id") or ""

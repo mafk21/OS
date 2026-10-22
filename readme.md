@@ -42,6 +42,7 @@
 | 🌐 97-Language Switching | Mid-turn language switching across 97 languages — Gemini 3.8 Live detects and responds in the user's language automatically; set_language stores preference |
 | 🌍 Multi-channel gateway | WhatsApp/Telegram/Discord/Slack/iMessage via webhook inbound + desktop outbound; channel registry + routing rules |
 | 🤖 Subagents | Task decomposition — spawn specialized subagents with scoped tool access, goal tracking, result isolation |
+| 📦 GWS Pack | Google Workspace automation via computer_use — Gmail/Docs/Drive/Calendar through web UIs, no API keys or OAuth |
 | 💓 Heartbeat Autonomy | Observe/suggest/act levels with HEARTBEAT_OK silence and never-nag-twice — proactive suggestions that respect your quiet time |
 | 🗓️ Session Memory | Summarises each conversation and mentions it naturally next morning — consumed after use, never repeats |
 | 👁️‍🗨️ Background Monitoring | User-configured topic watching — checks for new headlines once a day and alerts naturally |
@@ -143,7 +144,8 @@ Mark LV/
 │   ├── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
 │   ├── screen_memory.py      # Phase 7: event-driven screen capture, OCR, FTS5 search
 │   ├── multi_channel.py      # Phase 10: multi-channel gateway — webhook inbound + channel registry
-│   └── subagents.py      # Phase 11: subagents — task decomposition, scoped tools, result isolation
+│   ├── subagents.py      # Phase 11: subagents — task decomposition, scoped tools, result isolation
+│   └── gws_pack.py      # Phase 12: gws_pack — GWS Pack — Gmail/Docs/Drive/Calendar via computer_use
 └── config/
     ├── api_keys.json         # API key, name, voice, colour, toggles — created on first launch (git-ignored)
     └── certs/                # Self-signed TLS pair for the phone dashboard — generated locally (git-ignored)
