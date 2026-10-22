@@ -1,4 +1,4 @@
-# ⚡ OS —  
+# ⚡ OS
 
 **A full-duplex desktop AI operating layer with real-time voice, a 3D software-rendered holographic avatar, Set-of-Mark visual computer use, FTS5 screen memory, self-writing procedural skills, scoped subagents, an omnichannel messaging gateway, and seamless offline fallback.**
 
