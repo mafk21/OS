@@ -371,6 +371,44 @@ TOOL_DECLARATIONS = [
         },
     },
     {
+        "name": "skill_manage",
+        "description": (
+            "Create, update or list SKILL.md skills — your own procedural memory. "
+            "CREATE when a task needed 5+ tool calls or careful sequencing and will "
+            "plausibly happen again: ask the user in ONE short line first, unless "
+            "they already told you to save it ('remember how you…'). "
+            "UPDATE when a skill you followed was wrong, stale or incomplete — "
+            "supply the full corrected body; fixing a skill you found lacking is "
+            "your job, not a complaint to report. "
+            "LIST to show what is installed. "
+            "name = lowercase-with-hyphens folder name; description = what it does "
+            "AND when to use it (the trigger); body = markdown with Instructions, "
+            "Pitfalls and Verification sections. One-offs never become skills."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {
+                    "type": "STRING",
+                    "description": "create | update | list",
+                },
+                "name": {
+                    "type": "STRING",
+                    "description": "Skill (folder) name, lowercase-with-hyphens",
+                },
+                "description": {
+                    "type": "STRING",
+                    "description": "create/update: trigger line — what it does and when to use it",
+                },
+                "body": {
+                    "type": "STRING",
+                    "description": "create/update: full SKILL.md body (Instructions, Pitfalls, Verification)",
+                },
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "system_status",
         "description": (
             "Returns real-time system metrics: CPU usage, RAM, GPU load, CPU temperature, "
@@ -655,6 +693,13 @@ class JarvisLive:
         self._proactive        = ProactiveEngine()
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
+
+        # Learning loop (Phase 9): census of tool calls in the current window
+        # (restarts after 10 min idle) and a once-per-process hint flag — the
+        # model is nudged at most ONE time, matching the never-nag-twice rule.
+        self._skill_window_tools = 0
+        self._skill_window_start  = 0.0
+        self._skill_hinted        = False
 
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
@@ -1478,6 +1523,13 @@ class JarvisLive:
         print(f"[JARVIS] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
 
+        # Learning-loop census: window restarts after 10 quiet minutes so the
+        # hint measures one burst of work, not a whole day of chatting.
+        _now = time.monotonic()
+        if _now - self._skill_window_start > 600.0:
+            self._skill_window_tools = 0
+        self._skill_window_start = _now
+        self._skill_window_tools += 1
 
         if name == "save_memory":
             category = args.get("category", "notes")
@@ -1511,6 +1563,24 @@ class JarvisLive:
                 result = self._skill_registry.read(
                     args.get("name", ""), args.get("path") or None
                 )
+
+            elif name == "skill_manage":
+                # The learning loop's write path. Validation lives in
+                # skill_loader.write() so whatever the model authors passes
+                # the next restart's discovery scan by construction.
+                action = str(args.get("action", "")).strip().lower()
+                if action == "list":
+                    result = ("Installed skills:\n" + self._skill_registry.get_listing())
+                elif action in ("create", "update"):
+                    result = self._skill_registry.write(
+                        name=args.get("name", ""),
+                        description=args.get("description", ""),
+                        body=args.get("body", ""),
+                        update=(action == "update"),
+                    )
+                    print(f"[Skills] ✍ skill_manage {action}: {args.get('name', '')}")
+                else:
+                    raise ValueError("action must be 'create', 'update' or 'list'")
 
             elif name == "undo":
                 if str(args.get("action", "")).lower().strip() == "list":
@@ -1671,9 +1741,28 @@ class JarvisLive:
         _sched = (self._action_registry.scheduling(name)
                   or self._plugin_registry.scheduling(name))
         _extra = {"scheduling": _sched} if _sched else {}
+        _resp = {"result": result}
+        # ── Learning-loop hint ────────────────────────────────────────────
+        # First tool response to cross 5 calls inside one window carries a
+        # quiet, never-spoken reminder to consider saving the procedure
+        # (skill_manage). ONCE per process: if the model doesn't act on it,
+        # we do not nag again — the never-nag-twice rule applies to self-
+        # improvement too. The prompt's [LEARNING] section carries the
+        # standing rule; this is only the timing nudge.
+        if (self._skill_window_tools >= 5 and not self._skill_hinted):
+            self._skill_hinted = True
+            _resp["learning_hint"] = (
+                f"This turn has used {self._skill_window_tools} tools. If this "
+                "is a procedure that will happen again, call skill_manage "
+                "(create) to save it — ask the user in one short line first "
+                "(skip the ask if they already asked you to save it). If a "
+                "skill you followed turned out wrong or incomplete, fix it "
+                "with skill_manage (update)."
+            )
+            print(f"[Skills] 💡 learning hint after {self._skill_window_tools} tools")
         return types.FunctionResponse(
             id=fc.id, name=name,
-            response={"result": result},
+            response=_resp,
             **_extra
         )
 
