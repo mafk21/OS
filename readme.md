@@ -135,7 +135,8 @@ Mark LV/
 │   ├── plugin_loader.py      # Plugin engine — discovery, validation, crash isolation
 │   ├── action_loader.py      # Bundled-action engine — the built-in twin of plugin_loader
 │   ├── wake_word.py          # Local "Hey Jarvis" detector — own thread, offline, opt-in
-│   └── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
+│   ├── heartbeat.py          # Phase 4: observe/suggest/act levels, HEARTBEAT_OK silence, never-nag-twice
+│   └── screen_memory.py      # Phase 7: event-driven screen capture, OCR, FTS5 search
 └── config/
     ├── api_keys.json         # API key, name, voice, colour, toggles — created on first launch (git-ignored)
     └── certs/                # Self-signed TLS pair for the phone dashboard — generated locally (git-ignored)

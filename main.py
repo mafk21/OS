@@ -68,6 +68,8 @@ from actions.background_monitor import (
     add_monitor, remove_monitor, list_monitors, check_all as monitor_check_all,
 )
 from core.heartbeat            import HeartbeatEngine, HeartbeatLevel
+from core.screen_memory        import (get_screen_memory, screen_memory_search,
+                                       CAPTURE_INTERVAL_SEC)
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
@@ -501,6 +503,30 @@ TOOL_DECLARATIONS = [
         },
     },
     {
+        "name": "screen_memory_search",
+        "description": (
+            "Search JARVIS's screen memory — full-text search over OCR text and "
+            "accessibility trees captured from your screen. Use when the user asks "
+            "about something they saw earlier ('what was that article I was reading', "
+            "'find the error message from before', 'what was on my screen at 3pm'). "
+            "Leave query empty for the most recent captures."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Text to search for in screen captures",
+                },
+                "limit": {
+                    "type": "INTEGER",
+                    "description": "Maximum results to return (default 10)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "shutdown_jarvis",
         "description": (
             "Shuts down the assistant completely. "
@@ -714,6 +740,7 @@ class JarvisLive:
         self._sys_monitor      = SystemMonitor()  # persistent cooldown state
         self._proactive        = ProactiveEngine()
         self._heartbeat        = HeartbeatEngine()   # Phase 4: observe/suggest/act + HEARTBEAT_OK + never-nag-twice
+        self._screen_memory    = get_screen_memory()   # Phase 7: screen memory (event-driven capture + FTS5 search)
         self._last_user_speech = time.monotonic()  # updated on every user utterance
         self._session_log: list[str] = []          # conversation turns for end-of-session summary
 
@@ -1707,6 +1734,10 @@ class JarvisLive:
                 result = self._heartbeat.heartbeat_ok(minutes=int(minutes))
                 print(f"[Heartbeat] 🤐 {result}")
 
+            elif name == "screen_memory_search":
+                # Phase 7: search screen memory (OCR + a11y + FTS5).
+                result = screen_memory_search(args)
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 async def _do_shutdown():
@@ -2683,6 +2714,27 @@ class JarvisLive:
                 topics.append(f"wish '{key}' ({val[:40]})")
         return topics[:5]
 
+    # ── Screen Memory capture ──────────────────────────────────────────────────
+    # Phase 7 — background screen capture. Runs every CAPTURE_INTERVAL_SEC,
+    # captures the screen, extracts OCR + a11y, stores in FTS5. The model
+    # queries via screen_memory_search.
+
+    async def _run_screen_memory_capture(self) -> None:
+        """Background task: periodic screen capture into screen memory."""
+        while True:
+            await asyncio.sleep(CAPTURE_INTERVAL_SEC)
+
+            if not self._awake:
+                continue
+
+            try:
+                event = self._screen_memory.capture()
+                if event:
+                    print(f"[ScreenMemory] 📸 captured ({event['duration_ms']}ms, "
+                          f"{len(event.get('ocr_text', ''))} OCR chars)")
+            except Exception as e:
+                print(f"[ScreenMemory] ⚠️ {e}")
+
     # ── Phone audio relay ────────────────────────────────────────────────────────
 
     async def _relay_phone_audio(self) -> None:
@@ -2866,6 +2918,7 @@ class JarvisLive:
                     tg.create_task(self._run_background_monitor())
                     tg.create_task(self._run_proactive_mode())
                     tg.create_task(self._run_heartbeat())
+                    tg.create_task(self._run_screen_memory_capture())
                     tg.create_task(self._run_sleep_watch())
                     if self._dashboard:
                         tg.create_task(self._relay_phone_audio())
