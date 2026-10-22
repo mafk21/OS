@@ -21,7 +21,7 @@ OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 HERE = Path(__file__).resolve().parent
 
 MIN_PY = (3, 11)        # hard floor: below this the syntax used here won't parse
-MAX_PY = (3, 13)        # highest version this is actually tested on
+MAX_PY = (3, 15)        # current stable line (3.15.0 released 2026-10-09)
 
 
 def _run(label: str, args: list[str]) -> None:
