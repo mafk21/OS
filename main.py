@@ -85,6 +85,9 @@ from core.viseme               import VisemeStream
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
+from core.loop_safety          import (
+    out_put_drop_oldest, throttled_loop_exception_handler,
+)
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
@@ -541,6 +544,15 @@ def _keep_context_of(exc: BaseException) -> bool:
             if _is_reconnect_signal(sub):
                 return _keep_context_of(sub)
     return True
+
+
+def _leaf_errors(exc: BaseException):
+    """Yield the non-group exceptions inside a (possibly nested) group."""
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            yield from _leaf_errors(sub)
+    else:
+        yield exc
 
 
 class JarvisLive:
@@ -1624,12 +1636,26 @@ class JarvisLive:
             # mic / phone PCM through the new `audio` field instead. Queue items
             # are {"data": <bytes>, "mime_type": <str>} from _listen_audio and
             # the phone relay.
-            await self.session.send_realtime_input(
-                audio=types.Blob(
-                    data=msg["data"],
-                    mime_type=msg.get("mime_type", "audio/pcm"),
+            #
+            # Hard 10 s ceiling per send: a stalled write used to hang here
+            # silently while the mic kept filling the queue behind it
+            # (QueueFull flood, then a 1006 ping-timeout close). Convert the
+            # stall into a normal reconnect instead — the session teardown path
+            # is the proven recovery.
+            try:
+                await asyncio.wait_for(
+                    self.session.send_realtime_input(
+                        audio=types.Blob(
+                            data=msg["data"],
+                            mime_type=msg.get("mime_type", "audio/pcm"),
+                        )
+                    ),
+                    timeout=10.0,
                 )
-            )
+            except asyncio.TimeoutError:
+                raise ConnectionError(
+                    "timed out: send_realtime_input stalled >10s — forcing reconnect"
+                ) from None
 
     async def _listen_audio(self):
         print("[JARVIS] 🎤 Mic started")
@@ -1733,8 +1759,13 @@ class JarvisLive:
                             # not echo. Without this the first syllable of 'stop' is lost.
                             try:
                                 data = indata.tobytes()
+                                # Drop-oldest, never QueueFull: a raise here
+                                # happens inside an asyncio callback and used
+                                # to print one traceback PER mic block when
+                                # the send stalled (see core/loop_safety.py).
                                 loop.call_soon_threadsafe(
-                                    self.out_queue.put_nowait,
+                                    out_put_drop_oldest,
+                                    self.out_queue,
                                     {"data": data, "mime_type": "audio/pcm"},
                                 )
                             except Exception:
@@ -1780,7 +1811,8 @@ class JarvisLive:
             if not self.ui.muted and not self._phone_active:
                 data = indata.tobytes()
                 loop.call_soon_threadsafe(
-                    self.out_queue.put_nowait,
+                    out_put_drop_oldest,
+                    self.out_queue,
                     {"data": data, "mime_type": "audio/pcm"}
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
@@ -2425,10 +2457,7 @@ class JarvisLive:
             with self._speaking_lock:
                 speaking = self._is_speaking
             if not speaking and not self.ui.muted:
-                try:
-                    self.out_queue.put_nowait(chunk)
-                except asyncio.QueueFull:
-                    pass
+                out_put_drop_oldest(self.out_queue, chunk)
 
     def _on_phone_connected(self) -> None:
         self.ui.write_log("SYS: Phone connected via Remote Dashboard.")
@@ -2471,6 +2500,10 @@ class JarvisLive:
 
     async def run(self):
         self._loop = asyncio.get_event_loop()
+        # Callback errors must never be reprinted in full at mic rate: the
+        # printing runs on this loop and starves keepalive pings (2026-10-22
+        # flood -> 1006 close). Distinct errors print once; repeats count.
+        self._loop.set_exception_handler(throttled_loop_exception_handler)
         self._reconnect_event = asyncio.Event()
 
         # ── Wire the shared core services to the interface ───────────────────
@@ -2538,7 +2571,12 @@ class JarvisLive:
                 ):
                     self.session          = session
                     self.audio_in_queue   = asyncio.Queue()
-                    self.out_queue        = asyncio.Queue(maxsize=200)
+                    # 1024-sample mic blocks @16 kHz = 64 ms each, so 64 blocks
+                    # ≈ 4 s of ceiling. Drop-oldest (out_put_drop_oldest) keeps
+                    # freshness instead of building a stale replay backlog when
+                    # the websocket send stalls — 200 (≈13 s) was both too much
+                    # latency on recovery and, before PR #7, silent until full.
+                    self.out_queue        = asyncio.Queue(maxsize=64)
                     self._turn_done_event = asyncio.Event()
 
                     # Reset transient state that must not carry over from a previous session
@@ -2636,6 +2674,19 @@ class JarvisLive:
                     continue
 
                 err_str = str(e)
+                if isinstance(e, BaseExceptionGroup) and e.exceptions:
+                    # A TaskGroup failure's str() is only "unhandled errors in
+                    # a TaskGroup (1 sub-exception)" — the real reason (timed
+                    # out, quota, 1008 …) lives in the nested exception. Keyword
+                    # classification on the group message sent every in-session
+                    # failure to the generic branch (observed: the 1006
+                    # ping-timeout above never matched a network pattern), so
+                    # flatten to the leaves before classifying.
+                    _leaf = [
+                        f"{type(s).__name__}: {s}"
+                        for s in _leaf_errors(e)
+                    ]
+                    err_str = " | ".join(_leaf) or err_str
                 print(f"[JARVIS] Error ({type(e).__name__}): {e}")
                 traceback.print_exc()
 
@@ -2731,6 +2782,12 @@ class JarvisLive:
                         f"NET: Connection failed — retrying in {_conn_backoff}s. "
                         "(a VPN may be required)"
                     )
+                elif "already connected" in err_str:
+                    # 1008 — the server still holds the session that just died
+                    # on OUR side. It reaps it on its own schedule; hammering a
+                    # fresh connect every 3 s only prints the same wall of
+                    # errors again. Give it room, then retry.
+                    self._conn_backoff = 10
                 else:
                     self._conn_backoff = 3
             finally:
