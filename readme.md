@@ -21,7 +21,8 @@
 │  🎙️ Full-Duplex Mic (EchoGuard + Barge-In + Wake Word + Ctrl+Space PTT + Grace Win)  │
 │  👁️ Vision (Full Screen · Rubberband Region · Live Webcam · Event-Driven OCR/a11y)   │
 │  🌍 Omnichannel Inbound (Webhook Gateway · Telegram Bot · TLS Phone QR Dashboard)    │
-│  🧑‍🎤 PyQt6 HUD (3D Software Avatar · 50Hz Visemes · HUD Video · Live Content Panel)   │
+│  🌐 APEX-UI Desktop HUD (3D Cyan Particle Orb · 18-Node Reasoning Web · Live WS)    │
+│  🧑‍🎤 Classic PyQt6 Fallback (`JARVIS_CLASSIC_UI=1` · 3D Avatar · 50Hz Visemes)       │
 └──────────────────────────────────────────┬───────────────────────────────────────────┘
                                            ▼
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
@@ -62,7 +63,8 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 
 | Capability | Engineering |
 | :--- | :--- |
-| 🧑‍🎤 **Software 3D Avatar** | Renders the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, dynamic lighting, and live hue/hex theming purely in `QPainter` — **no GPU or OpenGL stack needed**. |
+| 🌐 **APEX-UI 3D Desktop HUD** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**: 3D Three.js cyan particle orb + golden SVG telemetry ring + 18-node `ReasoningWeb` constellation that streams live circuit particles along specialist spokes whenever JARVIS invokes tools, plus real-time WebSocket voice state, waveform drive, command dock, transcript drawer, audio/voice settings, and unforgeable confirmation modal. Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
+| 🧑‍🎤 **Classic Software 3D Avatar** | Optional classic PyQt6 HUD (`JARVIS_CLASSIC_UI=1`) rendering the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, dynamic lighting, and live hue/hex theming purely in `QPainter`. |
 | 👄 **50 Hz Formant + Transcript Lip-Sync** | `core/viseme.py` fuses real-time audio formants with incoming transcript phonemes for accurate bilabial closures, spreads, and rounded vowels across Latin, Cyrillic, and Greek scripts via Unicode reduction. |
 | 🙂 **State-Driven Facial Acting** | Phrase-tracking eyebrows, saccadic eye fixations, stressed-syllable nods, thinking gaze-away, eye contact while listening, closed lids while sleeping, and downward glances when HUD content updates. |
 | 🔇 **Calibrated Barge-In & EchoGuard** | `core/echo.py` separates speaker bleed from real user speech so you can **interrupt JARVIS mid-sentence** (50 ms playback slicing + instant queue drain) without triggering on its own voice. |

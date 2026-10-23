@@ -1840,6 +1840,9 @@ class JarvisLive:
 
         print(f"[JARVIS] 🔧 {name}  {args}")
         self.ui.set_state("THINKING")
+        _notify_tool = getattr(self.ui, "notify_tool_call", None)
+        if callable(_notify_tool):
+            _notify_tool(name)
 
         # Learning-loop census: window restarts after 10 quiet minutes so the
         # hint measures one burst of work, not a whole day of chatting.

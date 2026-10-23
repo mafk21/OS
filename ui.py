@@ -3063,6 +3063,7 @@ class MainWindow(QMainWindow):
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
     _quiz_hide_sig  = pyqtSignal()
     _review_sig     = pyqtSignal(str, str, object, object)  # document review payload
+    _bridge_call_sig = pyqtSignal(object)    # invoke callable on Qt main thread from APEX bridge
 
     def __init__(self, face_path: str):
         super().__init__()
@@ -3346,6 +3347,7 @@ class MainWindow(QMainWindow):
         self._quiz_sig.connect(self._show_quiz)
         self._quiz_hide_sig.connect(self._hide_quiz)
         self._review_sig.connect(self._show_review)
+        self._bridge_call_sig.connect(lambda fn: fn() if callable(fn) else None)
         self._cam_stop = threading.Event()
 
         # Camera preview overlay (child of central widget, positioned in resizeEvent)
@@ -5985,7 +5987,64 @@ class JarvisUI:
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
-        self._win.show()
+        self._apex_bridge = None
+
+        classic_mode = os.environ.get("JARVIS_CLASSIC_UI", "").strip().lower() in (
+            "1", "true", "yes",
+        )
+        no_launch = os.environ.get("JARVIS_HUD_NO_LAUNCH", "").strip().lower() in (
+            "1", "true", "yes",
+        )
+
+        if classic_mode:
+            self._win.show()
+        else:
+            try:
+                from core.apex_bridge import ApexHudBridge, launch_app_window
+
+                self._apex_bridge = ApexHudBridge(
+                    self,
+                    on_all_windows_closed=self._quit_from_hud,
+                    auto_close_on_disconnect=True,
+                )
+                hud_url = self._apex_bridge.start()
+
+                embedded = False
+                if not no_launch:
+                    try:
+                        from PyQt6.QtCore import QUrl
+                        from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+                        self._apex_bridge._auto_close = False
+                        web = QWebEngineView(self._win)
+                        web.setUrl(QUrl(hud_url))
+                        self._win.setCentralWidget(web)
+                        self._win.resize(1440, 920)
+                        self._win.show()
+                        embedded = True
+                    except Exception:
+                        embedded = False
+
+                if not embedded:
+                    # Keep Qt event loop alive without showing the legacy window;
+                    # RegionOverlay closing after a capture must not quit QApplication.
+                    self._app.setQuitOnLastWindowClosed(False)
+                    if self._win._overlay is not None:
+                        self._win._overlay.hide()
+                    self._win.hide()
+                    if not no_launch:
+                        launch_app_window(hud_url)
+                print(f"[APEX-HUD] Desktop HUD online -> {hud_url}")
+            except Exception as exc:
+                print(f"[APEX-HUD] Falling back to classic UI: {exc}")
+                self._apex_bridge = None
+                self._win.show()
+
+    def _quit_from_hud(self) -> None:
+        try:
+            self._win._bridge_call_sig.emit(self._app.quit)
+        except Exception:
+            pass
 
     @property
     def muted(self) -> bool:
@@ -6044,10 +6103,14 @@ class JarvisUI:
         """Thread-safe: raise the irreversible-action gate. Called from action
         handlers running in executor threads, so it goes through a signal."""
         self._win._confirm_sig.emit(str(title)[:120], str(detail)[:300])
+        if self._apex_bridge is not None:
+            self._apex_bridge.push_confirm(title, detail)
 
     def hide_confirm(self) -> None:
         """Thread-safe: take the gate down."""
         self._win._confirm_hide_sig.emit()
+        if self._apex_bridge is not None:
+            self._apex_bridge.hide_confirm()
 
     @property
     def get_plugins(self):
@@ -6097,6 +6160,11 @@ class JarvisUI:
             self._win.hud.set_audio_level(level)
         except Exception:
             pass
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_audio_level(level)
+            except Exception:
+                pass
 
     def glance(self, dx: float, dy: float, hold: float = 1.1) -> None:
         """Ask the avatar to look somewhere for a moment (see HoloAvatar.glance)."""
@@ -6130,15 +6198,53 @@ class JarvisUI:
             self._win.hud.push_visemes(frames, hop, at)
         except Exception:
             pass
+        if self._apex_bridge is not None and frames:
+            try:
+                peak = max(float(f[0]) for f in frames[:6])
+                self._apex_bridge.push_audio_level(peak)
+            except Exception:
+                pass
+
+    def notify_tool_call(self, tool_names) -> None:
+        """Light up the corresponding APEX-UI ReasoningWeb circuit spokes."""
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_tool_trace(tool_names)
+            except Exception:
+                pass
+
+    def set_offline(self, offline: bool, detail: str = "") -> None:
+        """Thread-safe: update offline indicator in both Qt and APEX-UI HUD."""
+        try:
+            self._win._bridge_call_sig.emit(
+                lambda: self._win.set_offline(bool(offline), str(detail or ""))
+            )
+        except Exception:
+            pass
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_offline(bool(offline), str(detail or ""))
+            except Exception:
+                pass
 
     def notify_phone_connected(self) -> None:
         self._win.notify_phone_connected()
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_state(state)
+            except Exception:
+                pass
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_log(text)
+            except Exception:
+                pass
 
     def wait_for_api_key(self):
         while not self._win._ready:
@@ -6147,6 +6253,11 @@ class JarvisUI:
     def show_content(self, title: str, text: str):
         """Thread-safe: display content in the panel below the HUD."""
         self._win._content_sig.emit(title[:48], text[:4000])
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_content(title, text)
+            except Exception:
+                pass
 
     def show_quiz(self, topic: str, questions, grade=None) -> None:
         """Thread-safe: put an interactive quiz on the board.
@@ -6179,6 +6290,11 @@ class JarvisUI:
         """Thread-safe: show the API key setup overlay (e.g. after an auth error)."""
         self._win._ready = False
         self._win._reconfig_sig.emit()
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_reconfig()
+            except Exception:
+                pass
 
     def show_camera_frame(self, img_bytes: bytes):
         """Thread-safe: show a webcam frame in the small overlay (screen captures)."""
