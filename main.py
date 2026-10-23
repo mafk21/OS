@@ -2007,7 +2007,7 @@ class JarvisLive:
 
             elif name == "screen_memory_search":
                 # Phase 7: search screen memory (OCR + a11y + FTS5).
-                result = screen_memory_search(args)
+                result = await loop.run_in_executor(None, lambda: screen_memory_search(args))
 
             elif name == "set_language":
                 # Phase 9: 97-language switching. Store preference in memory;
@@ -2022,15 +2022,15 @@ class JarvisLive:
 
             elif name == "multi_channel":
                 # Phase 10: multi-channel gateway.
-                result = multi_channel(args)
+                result = await loop.run_in_executor(None, lambda: multi_channel(args))
 
             elif name == "subagent":
                 # Phase 11: subagent task decomposition.
-                result = subagent(args)
+                result = await loop.run_in_executor(None, lambda: subagent(args))
 
             elif name == "gws_pack":
                 # Phase 12: GWS Pack — Google Workspace via computer_use.
-                result = gws_pack(args)
+                result = await loop.run_in_executor(None, lambda: gws_pack(args))
                 if result and not result.startswith("gws_pack:"):
                     self.ui.show_content("GWS PACK — " + args.get("action", ""), result)
 
@@ -2600,20 +2600,41 @@ class JarvisLive:
 
                     if response.tool_call:
                         self._interrupted = False
-                        fn_responses = []
-                        with self._session_recycler.track_tool():
-                            for fc in response.tool_call.function_calls:
-                                print(f"[JARVIS] 📞 {fc.name}")
-                                fr = await self._execute_tool(fc)
-                                fn_responses.append(fr)
-                            await self.session.send_tool_response(
-                                function_responses=fn_responses
-                            )
-                            await self._flush_pending_vision()
+                        asyncio.create_task(self._dispatch_tool_call(response.tool_call))
         except Exception as e:
             print(f"[JARVIS] ❌ Recv: {e}")
             traceback.print_exc()
             raise
+
+    async def _dispatch_tool_call(self, tool_call) -> None:
+        """Execute single or multi-tool batches concurrently off the receive loop.
+
+        Running this in its own task ensures `NON_BLOCKING` tools never stall
+        `_receive_audio()` while Gemini is simultaneously streaming speech audio,
+        and `asyncio.gather` executes multi-tool batches in parallel (`max`
+        latency instead of `sum` latency).
+        """
+        fcs = list(getattr(tool_call, "function_calls", None) or [])
+        if not fcs:
+            return
+        try:
+            with self._session_recycler.track_tool():
+                for fc in fcs:
+                    print(f"[JARVIS] 📞 {fc.name}")
+                if len(fcs) == 1:
+                    fn_responses = [await self._execute_tool(fcs[0])]
+                else:
+                    fn_responses = list(
+                        await asyncio.gather(*(self._execute_tool(fc) for fc in fcs))
+                    )
+                if self.session:
+                    await self.session.send_tool_response(
+                        function_responses=fn_responses
+                    )
+                    await self._flush_pending_vision()
+        except Exception as e:
+            print(f"[JARVIS] ⚠️ Tool batch dispatch error: {e}")
+            traceback.print_exc()
 
     async def _play_audio(self):
         print("[JARVIS] 🔊 Play started")
@@ -3139,7 +3160,8 @@ class JarvisLive:
                 continue
 
             try:
-                event = self._screen_memory.capture()
+                loop = asyncio.get_running_loop()
+                event = await loop.run_in_executor(None, self._screen_memory.capture)
                 if event:
                     print(f"[ScreenMemory] 📸 captured ({event['duration_ms']}ms, "
                           f"{len(event.get('ocr_text', ''))} OCR chars)")
@@ -3248,6 +3270,10 @@ class JarvisLive:
 
     async def run(self):
         self._loop = asyncio.get_event_loop()
+        import concurrent.futures as _cf
+        self._loop.set_default_executor(
+            _cf.ThreadPoolExecutor(max_workers=16, thread_name_prefix="jarvis-worker")
+        )
         # Callback errors must never be reprinted in full at mic rate: the
         # printing runs on this loop and starves keepalive pings (2026-10-22
         # flood -> 1006 close). Distinct errors print once; repeats count.

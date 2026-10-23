@@ -1,5 +1,7 @@
 "use client";
 
+import { useJarvisAudioLevel } from './JarvisBridge'
+
 const GOLD = '#f5a623'
 const GOLD_BRIGHT = '#ffd080'
 const CYAN = '#00e5ff'
@@ -39,7 +41,9 @@ function Waveform({ active, level = 0, speaking = false, cx, cy, width = 200 }) 
   )
 }
 
-export default function OrbStatusBar({ state = 'idle', rawState = '', level = 0, subtitle = null }) {
+export default function OrbStatusBar({ state = 'idle', rawState = '', level = undefined, subtitle = null }) {
+  const ctxLevel = useJarvisAudioLevel()
+  const effLevel = level !== undefined ? level : ctxLevel
   const W = 440, H = 112
   const cx = W / 2, cy = 38
   const isActive = state !== 'idle'
@@ -102,7 +106,7 @@ export default function OrbStatusBar({ state = 'idle', rawState = '', level = 0,
         <line x1={cx - 150} y1={cy} x2={cx - 28} y2={cy} stroke={GOLD} strokeWidth="1" opacity={isActive ? 0.5 : 0.18} strokeDasharray="4 3" />
         <line x1={cx + 28} y1={cy} x2={cx + 150} y2={cy} stroke={GOLD} strokeWidth="1" opacity={isActive ? 0.5 : 0.18} strokeDasharray="4 3" />
 
-        <Waveform active={isActive} level={level} speaking={state === 'speaking'} cx={cx} cy={cy} width={170} />
+        <Waveform active={isActive} level={effLevel} speaking={state === 'speaking'} cx={cx} cy={cy} width={170} />
 
         <circle cx={cx} cy={cy} r={20} stroke={GOLD} strokeWidth="1.5" strokeOpacity="0.7" fill="#030200" filter="url(#sbBlur)" className="orb-center-ring" />
         <circle cx={cx} cy={cy} r={6} fill={GOLD_BRIGHT} opacity="0.95" className="orb-center" style={{ filter: `drop-shadow(0 0 10px ${GOLD})` }} />

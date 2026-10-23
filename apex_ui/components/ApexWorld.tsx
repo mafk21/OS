@@ -536,7 +536,6 @@ export default function ApexWorld() {
   const {
     orbState,
     rawState,
-    audioLevel,
     lastSubtitle,
     trace,
     tapOrb,
@@ -697,7 +696,6 @@ export default function ApexWorld() {
       <OrbStatusBarComp
         state={orbState}
         rawState={rawState}
-        level={audioLevel}
         subtitle={lastSubtitle}
       />
 

@@ -6034,6 +6034,10 @@ class JarvisUI:
                     self._win.hide()
                     if not no_launch:
                         launch_app_window(hud_url)
+                # Stop all legacy paint/metric QTimers (~250 Hz combined) so the
+                # hidden PyQt6 avatar & canvas consume zero CPU / Python GIL.
+                for _tmr in self._win.findChildren(QTimer):
+                    _tmr.stop()
                 print(f"[APEX-HUD] Desktop HUD online -> {hud_url}")
             except Exception as exc:
                 print(f"[APEX-HUD] Falling back to classic UI: {exc}")
@@ -6156,10 +6160,11 @@ class JarvisUI:
         """Thread-safe: feed a 0.0–1.0 live audio level to the HUD waveform.
         Called from the audio threads; a plain float store is atomic under the
         GIL, so no signal/lock is needed for this cosmetic value."""
-        try:
-            self._win.hud.set_audio_level(level)
-        except Exception:
-            pass
+        if self._apex_bridge is None or self._win.isVisible():
+            try:
+                self._win.hud.set_audio_level(level)
+            except Exception:
+                pass
         if self._apex_bridge is not None:
             try:
                 self._apex_bridge.push_audio_level(level)
@@ -6194,10 +6199,11 @@ class JarvisUI:
         """Thread-safe: post a schedule of (level, openness, width) mouth frames
         for JARVIS's own speech. `at` is the wall-clock time the batch begins to
         sound, not the time of the call. See HudCanvas.push_visemes()."""
-        try:
-            self._win.hud.push_visemes(frames, hop, at)
-        except Exception:
-            pass
+        if self._apex_bridge is None or self._win.isVisible():
+            try:
+                self._win.hud.push_visemes(frames, hop, at)
+            except Exception:
+                pass
         if self._apex_bridge is not None and frames:
             try:
                 peak = max(float(f[0]) for f in frames[:6])
