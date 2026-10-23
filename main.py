@@ -91,7 +91,7 @@ from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
 from core.action_loader        import discover_actions
-from core.echo                 import EchoGuard
+from core.echo                 import EchoGuard, is_voiced_speech, speech_band_level
 from core.viseme               import VisemeStream
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
@@ -1013,6 +1013,8 @@ class JarvisLive:
         self._grace_period      = float(get_grace_period())
         self._paused           = False      # Pause = deaf but reply/task continues
         self._barge_blocks     = 0          # consecutive barge-in positive blocks
+        self._barge_preroll: list[bytes] = []  # candidate voiced blocks held until barge-in confirms
+        self._ambient_floor    = 0.0        # adaptive unvoiced room noise floor in 250-3400 Hz
         self._barge_notified   = False      # log once per barge session
         self._barge_open_until = 0.0       # window after barge where PTT is bypassed
         # UI hooks for Phase 1 controls
@@ -1493,6 +1495,7 @@ class JarvisLive:
         if value:
             self._tail_until = 0.0
             self._barge_blocks = 0
+            self._barge_preroll.clear()
         else:
             # Hold the guard open across the device's own output latency plus a
             # margin for the room. The microphone is NOT muted during it — the
@@ -2081,6 +2084,19 @@ class JarvisLive:
     async def _send_realtime(self):
         while True:
             msg = await self.out_queue.get()
+            # Drop stale pre-speech ambient/breath packets that were queued just
+            # before JARVIS began speaking so they cannot trigger server-side
+            # interruption mid-sentence. Confirmed barge-in packets carry
+            # "barge": True (and _barge_open_until covers the follow-up phrase).
+            with self._speaking_lock:
+                _spk = self._is_speaking
+            if (
+                (_spk or (self.audio_in_queue is not None and not self.audio_in_queue.empty()))
+                and not msg.get("barge")
+                and not self._phone_active
+                and time.monotonic() >= getattr(self, "_barge_open_until", 0.0)
+            ):
+                continue
             # Gemini 3.x Live rejects the old realtime_input.media_chunks field
             # (what `media=...` maps to) and closes the socket with a 1007. Send
             # mic / phone PCM through the new `audio` field instead. Queue items
@@ -2125,107 +2141,86 @@ class JarvisLive:
                     return
             with self._speaking_lock:
                 jarvis_speaking = self._is_speaking
+            if not jarvis_speaking and self.audio_in_queue is not None and not self.audio_in_queue.empty():
+                jarvis_speaking = True
 
             # ── Pause gate ───────────────────────────────────────────────────
             if self._paused:
                 return
 
-            # ── Barge-in (voice interrupt) ───────────────────────────────────
-            # User demanded 'make it work' — previous version gated on
-            # barge_enabled False (saved config) + EchoGuard strict thresholds
-            # which failed in reverberant rooms. Now:
-            #  • barge is FORCED ON (getter always True, plus auto-migration)
-            #  • interrupt is 2 blocks (~130ms) for normal speech, even faster for loud
-            #  • level fallback bypasses spectral check when mic > expected echo
-            #  • interrupting block is IMMEDIATELY forwarded to the model
-            #  • tail is killed so next blocks aren't swallowed
+            # ── Barge-in (voiced speech interrupt, immune to breathing/noise) ──
+            # While JARVIS speaks, we gate mic audio strictly on:
+            #  1) 250–3400 Hz speech-band level clearing ambient noise + floor
+            #  2) Voiced vocal-fold pitch periodicity + formant check (rejects
+            #     breathing, sighs, mic wind puffs, clicks, and fan hum even when loud)
+            #  3) EchoGuard spectral/level separation against speaker playback
+            #  4) Sustained streak (4–5 blocks ≈ 256–320 ms), flushing a short
+            #     pre-roll buffer once confirmed so the first syllable is kept.
             if jarvis_speaking:
-                # Force ON if somehow still off (stale config on disk)
                 if not self._barge_enabled:
-                    self._barge_enabled = True
-                    try:
-                        save_barge_in_enabled(True)
-                    except Exception:
-                        pass
-                    print("[Barge] auto-enabled — interrupt forced ON")
+                    self._barge_blocks = 0
+                    self._barge_preroll.clear()
+                    return
                 try:
-                    lvl = _pcm_level(indata)
-                    # Silence/noise floor — decay and keep gating echo
-                    if lvl < 0.04:
+                    sb_lvl = speech_band_level(indata, SEND_SAMPLE_RATE)
+                    min_gate = max(0.10, self._ambient_floor + 0.07)
+                    if sb_lvl < min_gate:
                         if self._barge_blocks > 0:
-                            self._barge_blocks -= 1
+                            self._barge_blocks = max(0, self._barge_blocks - 2)
+                            if self._barge_blocks == 0:
+                                self._barge_preroll.clear()
                         return
 
-                    evidence = False
-                    # Fast loud path: normal loud voice ~0.16-0.25, shouting 0.3+
-                    if lvl > 0.16:
-                        evidence = True
-                    else:
-                        # Spectral check via EchoGuard
-                        try:
-                            is_user = self._echo.is_user_speech(indata, SEND_SAMPLE_RATE, lvl)
-                            if is_user:
-                                evidence = True
-                            else:
-                                # Level vs expected echo fallback: if we're hearing
-                                # notably more than the learned echo gain predicts,
-                                # it's the user even when spectra are similar.
-                                try:
-                                    exp = self._echo.gain * max(self._out_level, 0.05)
-                                    if self._echo.calibrated:
-                                        if lvl > exp + 0.08:
-                                            evidence = True
-                                    else:
-                                        # Before calibration no expected value — any
-                                        # clear voice above 0.09 counts
-                                        if lvl > 0.09:
-                                            evidence = True
-                                except Exception:
-                                    if lvl > 0.10:
-                                        evidence = True
-                        except Exception:
-                            # EchoGuard threw — fall back to plain level
-                            if lvl > 0.10:
-                                evidence = True
-
+                    evidence = self._echo.is_user_speech(
+                        indata, SEND_SAMPLE_RATE, sb_lvl
+                    )
                     if evidence:
+                        need = max(4, int(getattr(self._echo, "required_blocks", 4)))
+                        raw_bytes = indata.tobytes()
                         self._barge_blocks += 1
-                        # Loud = 2 blocks (~130ms), otherwise respect EchoGuard but cap at 3
-                        if lvl > 0.16:
-                            need = 2
-                        else:
-                            need = getattr(self._echo, "required_blocks", 2)
-                            need = min(need, 3)
-                        if self._barge_blocks >= need:
-                            self._barge_blocks = 0
-                            # Keep mic open for the utterance that follows the interrupt
-                            self._barge_open_until = time.monotonic() + 1.5
-                            print(f"[Barge] ✋ interrupt! lvl={lvl:.2f} exp={self._echo.gain * self._out_level:.2f} thr={self._echo.threshold:.2f} floor={self._echo.floor:.2f} need={need} sim={self._echo.last_similarity:.2f}")
-                            try:
-                                loop.call_soon_threadsafe(self.interrupt)
-                            except Exception:
-                                pass
-                            # Forward THIS block immediately — it's the user's voice,
-                            # not echo. Without this the first syllable of 'stop' is lost.
-                            try:
-                                data = indata.tobytes()
-                                # Drop-oldest, never QueueFull: a raise here
-                                # happens inside an asyncio callback and used
-                                # to print one traceback PER mic block when
-                                # the send stalled (see core/loop_safety.py).
+                        if self._barge_blocks < need:
+                            self._barge_preroll.append(raw_bytes)
+                            if len(self._barge_preroll) > need - 1:
+                                del self._barge_preroll[: len(self._barge_preroll) - (need - 1)]
+                            return
+
+                        preroll = list(self._barge_preroll)
+                        self._barge_preroll.clear()
+                        self._barge_blocks = 0
+                        # Keep mic open for the utterance that follows the interrupt
+                        self._barge_open_until = time.monotonic() + 1.5
+                        print(
+                            f"[Barge] ✋ voiced interrupt! sb_lvl={sb_lvl:.2f} "
+                            f"amb={self._ambient_floor:.2f} "
+                            f"exp={self._echo.gain * self._out_level:.2f} "
+                            f"thr={self._echo.threshold:.2f} need={need} "
+                            f"sim={self._echo.last_similarity:.2f}"
+                        )
+                        try:
+                            loop.call_soon_threadsafe(self.interrupt)
+                        except Exception:
+                            pass
+                        # Flush buffered onset blocks + current block so the
+                        # first syllable of 'stop' or 'wait' is never clipped.
+                        try:
+                            for chunk_bytes in (*preroll, raw_bytes):
                                 loop.call_soon_threadsafe(
                                     out_put_drop_oldest,
                                     self.out_queue,
-                                    {"data": data, "mime_type": "audio/pcm"},
+                                    {
+                                        "data": chunk_bytes,
+                                        "mime_type": "audio/pcm",
+                                        "barge": True,
+                                    },
                                 )
-                            except Exception:
-                                pass
-                            return
-                        # Not enough evidence yet — don't forward, keep listening for more
+                        except Exception:
+                            pass
                         return
                     else:
                         if self._barge_blocks > 0:
-                            self._barge_blocks -= 1
+                            self._barge_blocks = max(0, self._barge_blocks - 2)
+                            if self._barge_blocks == 0:
+                                self._barge_preroll.clear()
                         return
                 except Exception as e:
                     print(f"[Barge] err {e}")
@@ -2240,13 +2235,24 @@ class JarvisLive:
             if self._tail_active():
                 try:
                     if not self._echo.is_user_speech(
-                            indata, SEND_SAMPLE_RATE, _pcm_level(indata)):
+                            indata, SEND_SAMPLE_RATE, speech_band_level(indata, SEND_SAMPLE_RATE)):
                         return
                     self._tail_until = 0.0      # a real voice ends the tail early
                 except Exception:
                     return
             elif self._echo._hist:
                 self._echo.reset()
+
+            # Track steady unvoiced room floor while listening quietly so fan/AC
+            # noise raises the barge-in speech-band gate automatically.
+            try:
+                _sb = speech_band_level(indata, SEND_SAMPLE_RATE)
+                if _sb < 0.12 and not is_voiced_speech(indata, SEND_SAMPLE_RATE):
+                    self._ambient_floor = min(
+                        0.12, self._ambient_floor * 0.95 + _sb * 0.05
+                    )
+            except Exception:
+                pass
 
             # ── Push-to-talk ─────────────────────────────────────────────────
             # When it is on the microphone is closed by default and the chord
@@ -2396,6 +2402,20 @@ class JarvisLive:
                         else:
                             if self._turn_done_event and self._turn_done_event.is_set():
                                 self._turn_done_event.clear()
+                            # When JARVIS's very first reply slice arrives, purge
+                            # any stale pre-speech mic/breath frames still waiting
+                            # in out_queue so they don't hit server VAD mid-reply.
+                            if (
+                                not self._is_speaking
+                                and self.audio_in_queue.empty()
+                                and self.out_queue is not None
+                                and time.monotonic() >= getattr(self, "_barge_open_until", 0.0)
+                            ):
+                                while not self.out_queue.empty():
+                                    try:
+                                        self.out_queue.get_nowait()
+                                    except asyncio.QueueEmpty:
+                                        break
                             # Split into ~50 ms chunks so interrupt() stops audio within 50 ms
                             # (24000 Hz × 2 bytes/sample × 0.05 s = 2400 bytes per slice)
                             _audio_data = response.data
