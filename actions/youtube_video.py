@@ -64,12 +64,14 @@ def _get_api_key() -> str:
 
 def _open_url(url: str) -> None:
     try:
+        from core.os_control import unpatched_popen
         if is_mac():
-            subprocess.Popen(["open", url])
+            unpatched_popen(["open", url])
         elif is_linux():
-            subprocess.Popen(["xdg-open", url])
+            unpatched_popen(["xdg-open", url])
         else:
-            subprocess.Popen(["cmd", "/c", "start", "", url], shell=False)
+            import os
+            os.startfile(url)  # type: ignore[attr-defined]
     except Exception as e:
         print(f"[YouTube] ⚠️ open_url failed: {e}")
 
@@ -210,12 +212,13 @@ def _save_summary(content: str, video_url: str) -> str:
     filepath.write_text(header + content, encoding="utf-8")
 
     try:
+        from core.os_control import unpatched_popen
         if is_windows():
-            subprocess.Popen(["notepad.exe", str(filepath)])
+            unpatched_popen(["notepad.exe", str(filepath)])
         elif is_mac():
-            subprocess.Popen(["open", "-t", str(filepath)])
+            unpatched_popen(["open", "-t", str(filepath)])
         else:
-            subprocess.Popen(["xdg-open", str(filepath)])
+            unpatched_popen(["xdg-open", str(filepath)])
     except Exception as e:
         print(f"[YouTube] ⚠️ Could not open text editor: {e}")
 

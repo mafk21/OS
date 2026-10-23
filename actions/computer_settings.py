@@ -804,6 +804,9 @@ _NO_PYAUTOGUI_ACTIONS = frozenset({
 })
 
 _DEEP_SETTINGS_TARGETS = {
+    "task_manager":       "Task Manager",
+    "open_settings":      "Settings",
+    "file_explorer":      "File Explorer",
     "bluetooth_settings": "Bluetooth Settings",
     "wifi_settings":      "WiFi Settings",
     "sound_settings":     "Sound Settings",
