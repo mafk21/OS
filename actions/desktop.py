@@ -29,11 +29,25 @@ def _get_api_key() -> str:
         return json.load(f)["gemini_api_key"]
     
 def _get_desktop() -> Path:
+    try:
+        from actions.file_controller import _get_desktop as _fc_desktop
+        return _fc_desktop()
+    except Exception:
+        pass
     if _OS == "Linux":
         xdg = os.environ.get("XDG_DESKTOP_DIR", "")
         if xdg and Path(xdg).exists():
             return Path(xdg)
     return Path.home() / "Desktop"
+
+
+def _safe_sandbox_move(src, dst):
+    from actions.file_controller import _is_safe_path
+    sp, dp = Path(src), Path(dst)
+    if not _is_safe_path(sp) or not _is_safe_path(dp):
+        raise PermissionError(f"Sandbox move outside safe user folders denied: {src} -> {dst}")
+    return shutil.move(str(sp), str(dp))
+
 
 def _build_sandbox() -> dict:
     import time
@@ -53,6 +67,7 @@ def _build_sandbox() -> dict:
         "Path": Path,
         "time": time,
         "shutil": type("shutil", (), {
+            "move":       _safe_sandbox_move,
             "copy2":      shutil.copy2,
             "copytree":   shutil.copytree,
             "disk_usage": shutil.disk_usage,
@@ -306,47 +321,9 @@ _SKIP_EXTENSIONS = {
 }
 
 
-def organize_desktop(mode: str = "by_type") -> str:
-    desktop       = _get_desktop()
-    skip_exts     = _SKIP_EXTENSIONS.get(_OS, set())
-    moved, skipped = [], []
-
-    for item in desktop.iterdir():
-        if item.is_dir() or item.name.startswith("."):
-            continue
-        if item.suffix.lower() in skip_exts:
-            continue
-
-        if mode == "by_date":
-            mtime       = datetime.fromtimestamp(item.stat().st_mtime)
-            folder_name = mtime.strftime("%Y-%m")
-        else:
-            ext         = item.suffix.lower()
-            folder_name = "Others"
-            for folder, exts in FILE_TYPE_MAP.items():
-                if ext in exts:
-                    folder_name = folder
-                    break
-
-        target_dir = desktop / folder_name
-        target_dir.mkdir(exist_ok=True)
-        new_path = target_dir / item.name
-
-        if new_path.exists():
-            skipped.append(item.name)
-            continue
-
-        shutil.move(str(item), str(new_path))
-        moved.append(f"{item.name} → {folder_name}/")
-
-    result = f"Desktop organized ({mode}): {len(moved)} files moved."
-    if moved:
-        result += "\n" + "\n".join(moved[:8])
-        if len(moved) > 8:
-            result += f"\n... and {len(moved) - 8} more."
-    if skipped:
-        result += f"\n{len(skipped)} file(s) skipped (name conflict)."
-    return result
+def organize_desktop(mode: str = "by_type", target_path: str = "desktop") -> str:
+    from actions.file_controller import organize_folder
+    return organize_folder(target_path or "desktop", mode=mode)
 
 
 def list_desktop() -> str:
@@ -448,7 +425,13 @@ def desktop_control(
             return get_current_wallpaper()
 
         elif action == "organize":
-            return organize_desktop(params.get("mode", "by_type"))
+            target = (
+                params.get("path")
+                or params.get("folder")
+                or params.get("directory")
+                or "desktop"
+            )
+            return organize_desktop(params.get("mode", "by_type"), target_path=str(target))
 
         elif action == "clean":
             return clean_desktop()
@@ -463,6 +446,14 @@ def desktop_control(
             actual_task = task or params.get("description", "")
             if not actual_task:
                 return "Please describe what you want to do on the desktop."
+
+            low_task = actual_task.lower()
+            if any(w in low_task for w in ("organize", "sort", "tidy")):
+                from actions.file_controller import organize_folder
+                for folder_kw in ("downloads", "documents", "pictures", "videos", "music", "desktop"):
+                    if folder_kw in low_task:
+                        mode_kw = "by_date" if "date" in low_task else "by_type"
+                        return organize_folder(folder_kw, mode=mode_kw)
 
             print(f"[Desktop] Asking Gemini: {actual_task}")
             if player:
@@ -485,17 +476,21 @@ def desktop_control(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "desktop_control",
-    "description": "Controls the desktop: wallpaper, organize, clean, list, stats.",
+    "description": (
+        "Controls desktop wallpaper, desktop archive cleanup, and desktop stats. "
+        "NOTE: To organize files in Downloads, Documents, Desktop, or any folder, "
+        "use file_controller(action='organize', path='downloads') instead."
+    ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "wallpaper | wallpaper_url | organize | clean | list | stats | task"
+                "description": "wallpaper | wallpaper_url | current_wallpaper | organize | clean | list | stats | task"
             },
             "path": {
                 "type": "STRING",
-                "description": "Image path for wallpaper"
+                "description": "Image path for wallpaper, or target folder ('downloads', 'desktop', etc.) for organize"
             },
             "url": {
                 "type": "STRING",
