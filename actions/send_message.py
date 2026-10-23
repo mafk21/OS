@@ -69,7 +69,7 @@ def _open_app(app_name: str) -> bool:
         from core.os_control import launch_application
         res = launch_application(app_name=app_name, normalized=_normalize(app_name))
         if res.get("ok"):
-            time.sleep(1.2)
+            time.sleep(0.2)
             return True
     except Exception as e:
         print(f"[SendMessage] launch_application fallback: {e}")
@@ -111,23 +111,23 @@ def _search_in_app(query: str) -> None:
     search_hotkey = ("command", "f") if os_name == "mac" else ("ctrl", "f")
 
     pyautogui.hotkey(*search_hotkey)
-    time.sleep(0.5)
+    time.sleep(0.25)
     _clear_and_paste(query)
-    time.sleep(1.0)
+    time.sleep(0.5)
 
 def _desktop_send(app_name: str, receiver: str, message: str) -> str:
     if not _open_app(app_name):
         return f"Could not open {app_name}."
 
-    time.sleep(1.0)
+    time.sleep(0.3)
     _search_in_app(receiver)
     pyautogui.press("enter")
-    time.sleep(0.8)
+    time.sleep(0.45)
 
     _paste_text(message)
-    time.sleep(0.2)
+    time.sleep(0.15)
     pyautogui.press("enter")
-    time.sleep(0.3)
+    time.sleep(0.2)
     return f"Message sent to {receiver} via {app_name}."
 
 def _send_whatsapp(receiver: str, message: str) -> str:

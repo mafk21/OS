@@ -40,7 +40,6 @@ export type JarvisContextValue = {
   assistantName: string;
   orbState: OrbState;
   rawState: string;
-  audioLevel: number;
   muted: boolean;
   paused: boolean;
   offline: boolean;
@@ -83,6 +82,11 @@ export type JarvisContextValue = {
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
+const JarvisAudioLevelContext = createContext<number>(0);
+
+export function useJarvisAudioLevel(): number {
+  return useContext(JarvisAudioLevelContext);
+}
 
 function mapRawToOrb(raw: string, muted: boolean, paused: boolean): OrbState {
   const s = (raw || "").toUpperCase();
@@ -200,16 +204,19 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     return false;
   }, []);
 
-  // Smooth 30fps audio envelope decay so equalizer bars look liquid
+  // Smooth audio envelope decay isolated in JarvisAudioLevelContext; skips state
+  // updates completely when silent so 0 React re-renders occur at rest.
   useEffect(() => {
     const id = setInterval(() => {
+      const tgt = targetLevelRef.current;
+      targetLevelRef.current = tgt < 0.004 ? 0 : tgt * 0.84;
       setAudioLevel((cur) => {
-        const tgt = targetLevelRef.current;
-        targetLevelRef.current = Math.max(0, tgt * 0.84);
+        if (cur === 0 && tgt === 0) return 0;
         const next = cur + (tgt - cur) * 0.45;
-        return next < 0.004 ? 0 : Math.min(1, next);
+        const clamped = next < 0.005 ? 0 : Math.min(1, next);
+        return Math.abs(clamped - cur) < 0.004 ? cur : clamped;
       });
-    }, 36);
+    }, 40);
     return () => clearInterval(id);
   }, []);
 
@@ -543,7 +550,6 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       assistantName,
       orbState,
       rawState: connected ? rawState : demoState.toUpperCase(),
-      audioLevel,
       muted,
       paused,
       offline,
@@ -591,7 +597,6 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       orbState,
       rawState,
       demoState,
-      audioLevel,
       muted,
       paused,
       offline,
@@ -632,7 +637,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <JarvisContext.Provider value={value}>{children}</JarvisContext.Provider>
+    <JarvisContext.Provider value={value}>
+      <JarvisAudioLevelContext.Provider value={audioLevel}>
+        {children}
+      </JarvisAudioLevelContext.Provider>
+    </JarvisContext.Provider>
   );
 }
 

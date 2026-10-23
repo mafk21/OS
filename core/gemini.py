@@ -128,15 +128,15 @@ LIVE = "live"
 # real quota when they are healthy, and a rung that is down is set aside by the
 # cooldown after one attempt instead of being paid for on every call.
 _LADDERS = {
-    FAST: (LIVE,
-           "gemini-2.5-flash-lite", "gemini-3.5-flash-lite",
+    FAST: ("gemini-2.5-flash-lite", "gemini-3.5-flash-lite",
            "gemini-3.1-flash-lite", "gemini-flash-lite-latest",
            "gemini-2.5-flash", "gemini-3.5-flash",
+           LIVE,
            "gemini-3.6-flash", "gemini-3-flash-preview"),
-    SMART: (LIVE,
-            "gemini-2.5-flash", "gemini-3.5-flash",
+    SMART: ("gemini-2.5-flash", "gemini-3.5-flash",
             "gemini-2.5-flash-lite", "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
+            LIVE,
             "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-flash-latest"),
     # Grounded search needs response.candidates[...].grounding_metadata, which a
     # Live turn does not produce. REST only, and it says so rather than silently
@@ -315,19 +315,32 @@ def api_key(refresh: bool = False) -> str:
         return _cached_key
 
 
+_client_lock = threading.Lock()
+_client_pool: dict[tuple[str, int], object] = {}
+
+
 def client(timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = ""):
-    """A configured genai.Client with a deadline on it. Raises if there is no
-    key, because a caller that cannot work without one should say so."""
+    """A pooled genai.Client with a deadline on it so HTTP/2 + TLS stay warm."""
     from google import genai
     from google.genai import types as gtypes
 
     key = key or api_key()
     if not key:
         raise RuntimeError("no Gemini API key is configured")
-    return genai.Client(
-        api_key=key,
-        http_options=gtypes.HttpOptions(timeout=max(MIN_TIMEOUT_MS, int(timeout_ms))),
-    )
+    eff_timeout = max(MIN_TIMEOUT_MS, int(timeout_ms))
+    cache_key = (key, eff_timeout)
+    with _client_lock:
+        cached = _client_pool.get(cache_key)
+        if cached is not None:
+            return cached
+        cl = genai.Client(
+            api_key=key,
+            http_options=gtypes.HttpOptions(timeout=eff_timeout),
+        )
+        if len(_client_pool) > 12:
+            _client_pool.clear()
+        _client_pool[cache_key] = cl
+        return cl
 
 
 class _Reply:
@@ -406,13 +419,13 @@ async def _live_turn(parts: list, system: str, key: str, timeout_s: float) -> st
                 sc = getattr(resp, "server_content", None)
                 if sc and sc.output_transcription and sc.output_transcription.text:
                     chunks.append(sc.output_transcription.text)
+                if sc and getattr(sc, "turn_complete", False):
+                    break
 
         await asyncio.wait_for(drain(), timeout=timeout_s)
-        # The transcription can trail the audio turn by a beat; a short second
-        # drain stops a reply being cut mid-token. chat_takeover learned this
-        # the same way and for the same reason.
+        # Brief trailing check in case a final transcription packet arrives right after turn_complete
         try:
-            await asyncio.wait_for(drain(), timeout=1.5)
+            await asyncio.wait_for(drain(), timeout=0.25)
         except asyncio.TimeoutError:
             pass
         return "".join(chunks).strip()

@@ -206,6 +206,62 @@ def list_processes_snapshot() -> list[dict[str, Any]]:
     return out
 
 
+_ORIG_LIST_PROCESSES_SNAPSHOT = list_processes_snapshot
+
+
+def _fast_pid_set() -> set[int]:
+    """Return active PID set in ~0.15ms via psutil.pids() unless snapshot is monkeypatched."""
+    if list_processes_snapshot is not _ORIG_LIST_PROCESSES_SNAPSHOT:
+        return {p["pid"] for p in list_processes_snapshot()}
+    if _PSUTIL:
+        try:
+            return set(psutil.pids())
+        except Exception:
+            pass
+    return {p["pid"] for p in list_processes_snapshot()}
+
+
+def _pid_names_for(pids: set[int]) -> dict[int, str]:
+    """Resolve process names ONLY for the requested PIDs (<1ms for visible windows)."""
+    if not pids:
+        return {}
+    if list_processes_snapshot is not _ORIG_LIST_PROCESSES_SNAPSHOT or not _PSUTIL:
+        full = _pid_name_map()
+        return {pid: full.get(pid, "") for pid in pids}
+    names: dict[int, str] = {}
+    for pid in pids:
+        if pid <= 0:
+            continue
+        try:
+            names[pid] = psutil.Process(pid).name() or ""
+        except Exception:
+            names[pid] = ""
+    return names
+
+
+def _fast_new_processes(before_pids: set[int]) -> list[dict[str, Any]]:
+    """Inspect ONLY newly spawned PIDs since `before_pids` instead of all OS processes."""
+    if list_processes_snapshot is not _ORIG_LIST_PROCESSES_SNAPSHOT or not _PSUTIL:
+        return [p for p in list_processes_snapshot() if p["pid"] not in before_pids]
+    out: list[dict[str, Any]] = []
+    try:
+        new_pids = set(psutil.pids()) - before_pids
+    except Exception:
+        return []
+    for pid in new_pids:
+        try:
+            proc = psutil.Process(pid)
+            name = proc.name() or ""
+            try:
+                cmd = " ".join(proc.cmdline() or [])[:240]
+            except Exception:
+                cmd = ""
+            out.append({"pid": pid, "name": name, "cmdline": cmd})
+        except Exception:
+            continue
+    return out
+
+
 def _pid_name_map() -> dict[int, str]:
     return {p["pid"]: p["name"] for p in list_processes_snapshot()}
 
@@ -238,7 +294,6 @@ def list_visible_windows() -> list[dict[str, Any]]:
         try:
             user32 = ctypes.windll.user32
             fg_hwnd = int(user32.GetForegroundWindow() or 0)
-            pid_names = _pid_name_map()
             WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
             GWL_EXSTYLE = -20
             WS_EX_TOOLWINDOW = 0x00000080
@@ -267,7 +322,7 @@ def list_visible_windows() -> list[dict[str, Any]]:
                     "id": hwnd,
                     "title": title,
                     "pid": pid,
-                    "process": pid_names.get(pid, ""),
+                    "process": "",
                     "active": hwnd == fg_hwnd,
                     "minimized": bool(user32.IsIconic(hwnd)),
                     "maximized": bool(user32.IsZoomed(hwnd)),
@@ -275,6 +330,9 @@ def list_visible_windows() -> list[dict[str, Any]]:
                 return True
 
             user32.EnumWindows(WNDENUMPROC(_cb), 0)
+            pid_names = _pid_names_for({w["pid"] for w in windows if w["pid"]})
+            for w in windows:
+                w["process"] = pid_names.get(w["pid"], "")
         except Exception:
             pass
         return windows
@@ -332,7 +390,6 @@ def list_visible_windows() -> list[dict[str, Any]]:
                 m = re.search(r"0x[0-9a-fA-F]+", xr.stdout or "")
                 if m:
                     active_hex = int(m.group(0), 16)
-            pid_names = _pid_name_map()
             r = subprocess.run(["wmctrl", "-lp"], capture_output=True, text=True, timeout=3)
             for line in (r.stdout or "").splitlines():
                 parts = line.split(None, 4)
@@ -344,16 +401,18 @@ def list_visible_windows() -> list[dict[str, Any]]:
                         "id": wid_hex,
                         "title": title.strip(),
                         "pid": pid,
-                        "process": pid_names.get(pid, ""),
+                        "process": "",
                         "active": bool(active_hex and wid_int == active_hex),
                         "minimized": False,
                         "maximized": False,
                     })
+            pid_names = _pid_names_for({w["pid"] for w in windows if w["pid"]})
+            for w in windows:
+                w["process"] = pid_names.get(w["pid"], "")
         except Exception:
             pass
     elif shutil.which("xdotool"):
         try:
-            pid_names = _pid_name_map()
             r = subprocess.run(
                 ["xdotool", "search", "--onlyvisible", "--name", "."],
                 capture_output=True, text=True, timeout=3,
@@ -372,11 +431,14 @@ def list_visible_windows() -> list[dict[str, Any]]:
                     "id": wid,
                     "title": title,
                     "pid": pid,
-                    "process": pid_names.get(pid, ""),
+                    "process": "",
                     "active": False,
                     "minimized": False,
                     "maximized": False,
                 })
+            pid_names = _pid_names_for({w["pid"] for w in windows if w["pid"]})
+            for w in windows:
+                w["process"] = pid_names.get(w["pid"], "")
         except Exception:
             pass
     return windows
@@ -604,8 +666,7 @@ def verify_launch(
 
         # 2. Existing visible window for single-instance apps (Chrome, Explorer, Settings, VS Code)
         matched_existing = find_windows(query, wins)
-        procs = list_processes_snapshot()
-        new_procs = [p for p in procs if p["pid"] not in before_pids]
+        new_procs = _fast_new_processes(before_pids)
         for p in new_procs:
             pname = p["name"].lower()
             pstem = pname[:-4] if pname.endswith(".exe") else pname
@@ -628,11 +689,11 @@ def verify_launch(
                 "new_window": False,
             }
 
-        time.sleep(0.18)
+        time.sleep(0.06)
 
     # Final check: did a process stay alive without a top-level window (e.g. tray app or headless)?
     if found_proc is not None:
-        live_pids = {p["pid"] for p in list_processes_snapshot()}
+        live_pids = _fast_pid_set()
         if found_proc["pid"] in live_pids:
             return {
                 "verified": True,
@@ -675,65 +736,100 @@ def _find_windows_app_path_registry(exe_name: str) -> str | None:
     return None
 
 
-def _find_windows_start_shortcut(app_name: str) -> str | None:
-    if _SYSTEM != "Windows":
-        return None
-    needle = re.sub(r"[^a-z0-9]+", " ", app_name.lower()).strip()
-    if not needle:
-        return None
+_SHORTCUT_CACHE: list[tuple[str, str]] | None = None
+_SHORTCUT_CACHED_AT: float = 0.0
+_UWP_CACHE: list[tuple[str, str]] | None = None
+_UWP_CACHED_AT: float = 0.0
+
+
+def _get_windows_shortcuts_index() -> list[tuple[str, str]]:
+    global _SHORTCUT_CACHE, _SHORTCUT_CACHED_AT
+    now = time.monotonic()
+    if _SHORTCUT_CACHE is not None and (now - _SHORTCUT_CACHED_AT) < 120.0:
+        return _SHORTCUT_CACHE
     roots = [
         Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows" / "Start Menu" / "Programs",
         Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Microsoft" / "Windows" / "Start Menu" / "Programs",
         Path.home() / "Desktop",
     ]
-    best_match: tuple[int, str] | None = None
+    entries: list[tuple[str, str]] = []
     for root in roots:
         if not root.is_dir():
             continue
         try:
             for lnk in root.rglob("*.lnk"):
                 stem = re.sub(r"[^a-z0-9]+", " ", lnk.stem.lower()).strip()
-                if "uninstall" in stem:
-                    continue
-                score = 0
-                if stem == needle:
-                    score = 100
-                elif needle in stem.split():
-                    score = 85
-                elif len(needle) >= 4 and needle in stem:
-                    score = 65
-                if score and (best_match is None or score > best_match[0]):
-                    best_match = (score, str(lnk))
-                    if score == 100:
-                        return str(lnk)
+                if stem and "uninstall" not in stem:
+                    entries.append((stem, str(lnk)))
         except Exception:
             continue
+    _SHORTCUT_CACHE = entries
+    _SHORTCUT_CACHED_AT = now
+    return entries
+
+
+def _find_windows_start_shortcut(app_name: str) -> str | None:
+    if _SYSTEM != "Windows":
+        return None
+    needle = re.sub(r"[^a-z0-9]+", " ", app_name.lower()).strip()
+    if not needle:
+        return None
+    best_match: tuple[int, str] | None = None
+    for stem, lnk_path in _get_windows_shortcuts_index():
+        score = 0
+        if stem == needle:
+            return lnk_path
+        if needle in stem.split():
+            score = 85
+        elif len(needle) >= 4 and needle in stem:
+            score = 65
+        if score and (best_match is None or score > best_match[0]):
+            best_match = (score, lnk_path)
     return best_match[1] if best_match else None
 
 
-def _find_windows_uwp_appid(app_name: str) -> str | None:
-    """Query Get-StartApps for Store/UWP/MSIX AppIDs (e.g. WhatsApp, Spotify, Calculator)."""
-    if _SYSTEM != "Windows":
-        return None
-    safe = re.sub(r"[^a-zA-Z0-9 ._-]", "", app_name).strip()
-    if not safe:
-        return None
+def _get_windows_uwp_index() -> list[tuple[str, str]]:
+    global _UWP_CACHE, _UWP_CACHED_AT
+    now = time.monotonic()
+    if _UWP_CACHE is not None and (now - _UWP_CACHED_AT) < 300.0:
+        return _UWP_CACHE
     ps_cmd = (
-        f"$q = '{safe}'.ToLower(); "
-        "Get-StartApps | Where-Object { $_.Name.ToLower() -eq $q -or $_.Name.ToLower().Contains($q) } "
-        "| Select-Object -First 1 -ExpandProperty AppID"
+        "Get-StartApps | ForEach-Object { \"$($_.Name)`t$($_.AppID)\" }"
     )
+    entries: list[tuple[str, str]] = []
     try:
         r = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
             capture_output=True, text=True, timeout=4, **_WIN_HIDE,
         )
-        appid = (r.stdout or "").strip().splitlines()
-        if appid and appid[0].strip():
-            return f"shell:AppsFolder\\{appid[0].strip()}"
+        for line in (r.stdout or "").splitlines():
+            if "\t" in line:
+                nm, aid = line.split("\t", 1)
+                nm_clean = nm.strip().lower()
+                aid_clean = aid.strip()
+                if nm_clean and aid_clean:
+                    entries.append((nm_clean, aid_clean))
     except Exception:
         pass
-    return None
+    _UWP_CACHE = entries
+    _UWP_CACHED_AT = now
+    return entries
+
+
+def _find_windows_uwp_appid(app_name: str) -> str | None:
+    """Query cached Get-StartApps index for Store/UWP/MSIX AppIDs (e.g. WhatsApp, Spotify, Calculator)."""
+    if _SYSTEM != "Windows":
+        return None
+    safe = re.sub(r"[^a-zA-Z0-9 ._-]", "", app_name).strip().lower()
+    if not safe:
+        return None
+    partial: str | None = None
+    for nm, aid in _get_windows_uwp_index():
+        if nm == safe:
+            return f"shell:AppsFolder\\{aid}"
+        if partial is None and safe in nm:
+            partial = f"shell:AppsFolder\\{aid}"
+    return partial
 
 
 def _win32_shell_execute(
@@ -845,7 +941,7 @@ def open_interactive_terminal(
             }
         workdir = str(p.resolve())
 
-    before_pids = {p["pid"] for p in list_processes_snapshot()}
+    before_pids = _fast_pid_set()
     before_wins = {w["id"] for w in list_visible_windows()}
 
     if _SYSTEM == "Windows":
@@ -1092,7 +1188,7 @@ def launch_application(
     if ("/" in raw or "\\" in raw or raw.startswith("~")) and expanded_path.exists():
         return open_path_verified(str(expanded_path), label=raw)
 
-    before_pids = {p["pid"] for p in list_processes_snapshot()}
+    before_pids = _fast_pid_set()
     before_wins = {w["id"] for w in list_visible_windows()}
 
     # 3. Windows launch pipeline (deterministic resolution -> ShellExecuteW -> verify)
@@ -1310,7 +1406,7 @@ def open_path_verified(path_str: str, label: str = "") -> dict[str, Any]:
         return {"ok": False, "verified_window": None, "pid": None, "message": f"Path does not exist: {path_str}"}
     resolved = str(p.resolve())
     disp = label or p.name or resolved
-    before_pids = {pr["pid"] for pr in list_processes_snapshot()}
+    before_pids = _fast_pid_set()
     before_wins = {w["id"] for w in list_visible_windows()}
 
     if _SYSTEM == "Windows":

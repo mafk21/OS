@@ -126,7 +126,7 @@ def brightness_get() -> int | None:
     try:
         if _OS == "Windows":
             r = subprocess.run(
-                ["powershell", "-Command",
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
                  "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness)"
                  ".CurrentBrightness"],
                 capture_output=True, text=True, timeout=5, **_WIN_HIDE
@@ -150,7 +150,7 @@ def brightness_set(value: int) -> None:
     value = max(0, min(100, int(value)))
     if _OS == "Windows":
         subprocess.run(
-            ["powershell", "-Command",
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
              "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
              f".WmiSetBrightness(1, {value})"],
             capture_output=True, timeout=5, **_WIN_HIDE
@@ -206,7 +206,7 @@ def brightness_up():
     else:
         try:
             subprocess.run(
-                ["powershell", "-Command",
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
                  "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
                  ".WmiSetBrightness(1, [math]::Min(100, "
                  "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness + 10))"],
@@ -235,7 +235,7 @@ def brightness_down():
     else:
         try:
             subprocess.run(
-                ["powershell", "-Command",
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
                  "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightnessMethods)"
                  ".WmiSetBrightness(1, [math]::Max(0, "
                  "(Get-WmiObject -Namespace root/wmi -Class WmiMonitorBrightness).CurrentBrightness - 10))"],
@@ -569,7 +569,7 @@ def toggle_wifi():
     elif _OS == "Windows":
         try:
             subprocess.run(
-                ["powershell", "-Command",
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command",
                  "$adapter = Get-NetAdapter | Where-Object {$_.PhysicalMediaType -eq 'Native 802.11'};"
                  "if ($adapter.Status -eq 'Up') { Disable-NetAdapter -Name $adapter.Name -Confirm:$false }"
                  "else { Enable-NetAdapter -Name $adapter.Name -Confirm:$false }"],
