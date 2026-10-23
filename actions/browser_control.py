@@ -408,7 +408,8 @@ def _open_native(url: str, browser_name: Optional[str]) -> str:
                 exe = _find_exe_windows(_WIN_EXE_HINTS.get(name, name))
         if exe:
             try:
-                subprocess.Popen(
+                from core.os_control import unpatched_popen
+                unpatched_popen(
                     [exe, url] if url else [exe],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )

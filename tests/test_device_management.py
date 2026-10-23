@@ -220,3 +220,47 @@ def test_computer_settings_targeted_close_and_computer_control_honest_focus(monk
     # focus_window reports honestly when window doesn't exist
     miss = cc.computer_control({"action": "focus_window", "title": "NonExistentWindow_404"})
     assert "No visible window" in miss
+
+
+def test_whole_skill_verified_launch_for_gui_apps_files_and_cross_actions(monkeypatch, tmp_path):
+    """Verify the fix covers ALL desktop apps, settings, files & cross-skill launchers (not just PowerShell)."""
+    import actions.file_controller as fc
+    import actions.send_message as sm
+
+    monkeypatch.setattr(oa, "_SYSTEM", "Windows")
+    monkeypatch.setattr(osc, "_SYSTEM", "Windows")
+
+    # 1. GUI desktop app (e.g. Discord / Chrome / Notepad) resolved via Start Menu/PATH + verified window
+    monkeypatch.setattr(osc, "_find_windows_start_shortcut", lambda name: rf"C:\StartMenu\{name}.lnk")
+    monkeypatch.setattr(osc, "_win32_shell_execute", lambda *a, **k: (True, "ok"))
+    monkeypatch.setattr(
+        osc,
+        "list_visible_windows",
+        lambda: [{"id": 8801, "title": "Discord", "pid": 31337, "process": "Discord.exe", "active": True, "minimized": False, "maximized": False}],
+    )
+    monkeypatch.setattr(osc, "list_processes_snapshot", lambda: [{"pid": 31337, "name": "Discord.exe", "exe": "Discord.exe", "cpu": 1.0, "memory_mb": 210.0, "cmdline": ""}])
+    monkeypatch.setattr(osc, "focus_win32_hwnd", lambda hwnd: True)
+
+    out_discord = oa.open_app({"app_name": "Discord"})
+    assert "Discord" in out_discord and "verified" in out_discord.lower()
+
+    # 2. send_message._open_app uses verified launch_application instead of blind Win+Enter
+    assert sm._open_app("Discord") is True
+
+    # 3. computer_settings routes task_manager / file_explorer / open_settings through verified open_app
+    monkeypatch.setattr(
+        osc,
+        "list_visible_windows",
+        lambda: [{"id": 8802, "title": "Task Manager", "pid": 31338, "process": "Taskmgr.exe", "active": True, "minimized": False, "maximized": False}],
+    )
+    out_tm = cs.computer_settings({"action": "task_manager"})
+    assert "Task Manager" in out_tm
+
+    # 4. file_controller(action='open') verifies and opens paths safely inside home dir
+    sample = Path.home() / f"_jarvis_test_open_{os.getpid()}.txt"
+    sample.write_text("hello", encoding="utf-8")
+    try:
+        out_fc = fc.file_controller({"action": "open", "path": str(sample)})
+        assert sample.name in out_fc
+    finally:
+        sample.unlink(missing_ok=True)

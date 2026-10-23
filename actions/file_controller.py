@@ -714,6 +714,14 @@ def file_controller(
         elif action == "info":
             return get_file_info(path, name=name)
 
+        elif action in ("open", "launch", "reveal"):
+            from core.os_control import open_path_verified
+            base = _resolve_path(path)
+            target = (base / name) if name else base
+            if not _is_safe_path(target):
+                return f"Access denied: {target}"
+            return open_path_verified(str(target))["message"]
+
         else:
             return f"Unknown action: '{action}'"
 

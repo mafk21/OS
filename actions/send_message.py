@@ -64,20 +64,20 @@ def _clear_and_paste(text: str) -> None:
     _paste_text(text)
 
 def _open_app(app_name: str) -> bool:
-    _require_pyautogui()
+    try:
+        from actions.open_app import _normalize
+        from core.os_control import launch_application
+        res = launch_application(app_name=app_name, normalized=_normalize(app_name))
+        if res.get("ok"):
+            time.sleep(1.2)
+            return True
+    except Exception as e:
+        print(f"[SendMessage] launch_application fallback: {e}")
+
     os_name = _get_os()
 
     try:
-        if os_name == "windows":
-            pyautogui.press("win")
-            time.sleep(0.5)
-            _paste_text(app_name)
-            time.sleep(0.6)
-            pyautogui.press("enter")
-            time.sleep(2.5)
-            return True
-
-        elif os_name == "mac":
+        if os_name == "mac":
             result = subprocess.run(
                 ["open", "-a", app_name],
                 capture_output=True, text=True, timeout=10,
@@ -89,26 +89,7 @@ def _open_app(app_name: str) -> bool:
                 )
             time.sleep(2.5)
             return result.returncode == 0
-
-        else: 
-            launched = False
-            for launcher in [
-                ["gtk-launch", app_name.lower()],
-                [app_name.lower()],
-            ]:
-                try:
-                    subprocess.Popen(
-                        launcher,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    launched = True
-                    break
-                except FileNotFoundError:
-                    continue
-            time.sleep(2.5)
-            return launched
-
+        return False
     except Exception as e:
         print(f"[SendMessage] ⚠️ Could not open {app_name}: {e}")
         return False

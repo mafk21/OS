@@ -281,12 +281,13 @@ def _save_to_desktop(content: str, origin: str, destination: str) -> str:
     print(f"[FlightFinder] 💾 Saved: {filepath}")
 
     try:
+        from core.os_control import unpatched_popen
         if is_windows():
-            subprocess.Popen(["notepad.exe", str(filepath)])
+            unpatched_popen(["notepad.exe", str(filepath)])
         elif is_mac():
-            subprocess.Popen(["open", "-t", str(filepath)])
+            unpatched_popen(["open", "-t", str(filepath)])
         else:
-            subprocess.Popen(["xdg-open", str(filepath)])
+            unpatched_popen(["xdg-open", str(filepath)])
     except Exception as e:
         print(f"[FlightFinder] ⚠️ Could not open text editor: {e}")
 

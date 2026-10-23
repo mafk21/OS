@@ -124,12 +124,13 @@ def _steam_exe(steam_path: Path) -> Path:
 
 
 def _launch_steam_url(exe: Path, url: str) -> None:
+    from core.os_control import unpatched_popen
     if is_mac():
-        subprocess.Popen(["open", url])
+        unpatched_popen(["open", url])
     elif is_linux():
-        subprocess.Popen(["xdg-open", url])
+        unpatched_popen(["xdg-open", url])
     else:
-        subprocess.Popen([str(exe), url])
+        unpatched_popen([str(exe), url])
 
 def _get_steam_libraries(steam_path: Path) -> list[Path]:
     libraries = [steam_path / "steamapps"]
@@ -458,10 +459,11 @@ def _ensure_steam_running(steam_path: Path) -> bool:
         return False
 
     print("[GameUpdater] 🚀 Starting Steam...")
+    from core.os_control import unpatched_popen
     if is_mac():
-        subprocess.Popen(["open", "-a", "Steam"])
+        unpatched_popen(["open", "-a", "Steam"])
     else:
-        subprocess.Popen([str(exe)])
+        unpatched_popen([str(exe)])
 
     for _ in range(20):
         time.sleep(1)
@@ -767,23 +769,25 @@ def _update_epic_games(epic_exe: Path, game_name: str = None) -> str:
         if not matched:
             return f"'{game_name}' not found in Epic."
         try:
+            from core.os_control import unpatched_popen
             url = f"com.epicgames.launcher://apps/{matched[0]['id']}?action=launch&silent=true"
             if is_mac():
-                subprocess.Popen(["open", url])
+                unpatched_popen(["open", url])
             elif is_linux():
-                subprocess.Popen([str(epic_exe), url] if epic_exe else ["xdg-open", url])
+                unpatched_popen([str(epic_exe), url] if epic_exe else ["xdg-open", url])
             else:
-                subprocess.Popen([str(epic_exe), url])
+                unpatched_popen([str(epic_exe), url])
             return f"Opened Epic for '{matched[0]['name']}'."
         except Exception as e:
             return f"Epic update failed: {e}"
     else:
         try:
+            from core.os_control import unpatched_popen
             if is_mac():
-                subprocess.Popen(["open", "-a", "Epic Games Launcher"])
+                unpatched_popen(["open", "-a", "Epic Games Launcher"])
             elif is_linux():
                 if epic_exe:
-                    subprocess.Popen([str(epic_exe)])
+                    unpatched_popen([str(epic_exe)])
                 else:
                     return ("Epic Games is not natively supported on Linux. "
                             "Consider using Heroic Launcher.")
@@ -791,12 +795,12 @@ def _update_epic_games(epic_exe: Path, game_name: str = None) -> str:
 
                 if _is_epic_running():
                     for g in games[:10]:
-                        subprocess.Popen([str(epic_exe),
+                        unpatched_popen([str(epic_exe),
                             f"com.epicgames.launcher://apps/{g['id']}?action=launch&silent=true"])
                         time.sleep(0.5)
                     return f"Triggered update check for {len(games)} Epic game(s)."
                 else:
-                    subprocess.Popen([str(epic_exe)])
+                    unpatched_popen([str(epic_exe)])
             count = len(games)
             return (f"Epic Games Launcher opened. {count} game(s) will be checked."
                     if count else "Epic Games Launcher opened.")
