@@ -308,5 +308,13 @@ OS/
 ├── auth/                          # Opt-in email OTP + quota hosted authentication client
 ├── plugins/                       # Drop-in user plugins (_template.py starter included)
 ├── config/                        # Local runtime keys & self-signed TLS certs (git-ignored)
-└── tests/                         # 179+ pytest unit & integration tests across all phases
+├── LICENSE                        # MIT License
+└── tests/                         # 212+ pytest unit & integration tests across all phases
 ```
+
+---
+
+## 📄 License
+
+Distributed under the [MIT License](LICENSE).
+
