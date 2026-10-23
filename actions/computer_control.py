@@ -256,17 +256,30 @@ def _clear_field() -> str:
     return "Field cleared"
 
 def _focus_window(title: str) -> str:
+    if not (title or "").strip():
+        return "focus_window requires a `title` (window or application name)."
+    try:
+        from core.os_control import control_window
+        ok, msg = control_window(title, "focus")
+        if ok or "No visible window" in msg:
+            return msg
+    except Exception:
+        pass
+
     os_name = _get_os()
 
     if os_name == "windows":
         try:
-            script = f'(New-Object -ComObject WScript.Shell).AppActivate("{title}")'
-            subprocess.run(
+            safe = title.replace('"', '`"')
+            script = f'if ((New-Object -ComObject WScript.Shell).AppActivate("{safe}")) {{ "OK" }} else {{ "MISS" }}'
+            r = subprocess.run(
                 ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                capture_output=True, timeout=5, **_WIN_HIDE,
+                capture_output=True, text=True, timeout=5, **_WIN_HIDE,
             )
-            time.sleep(0.3)
-            return f"Focused window: {title}"
+            if "OK" in (r.stdout or ""):
+                time.sleep(0.3)
+                return f"Focused window: {title}"
+            return f"No visible window matching '{title}' was found."
         except Exception as e:
             return f"focus_window (Windows) failed: {e}"
 
@@ -276,12 +289,14 @@ def _focus_window(title: str) -> str:
             f'set frontmost of (first process whose name contains "{title}") to true'
         )
         try:
-            subprocess.run(
+            r = subprocess.run(
                 ["osascript", "-e", script],
-                capture_output=True, timeout=5,
+                capture_output=True, text=True, timeout=5,
             )
-            time.sleep(0.3)
-            return f"Focused window: {title}"
+            if r.returncode == 0:
+                time.sleep(0.3)
+                return f"Focused window: {title}"
+            return f"No visible window matching '{title}' was found."
         except Exception as e:
             return f"focus_window (macOS) failed: {e}"
 
@@ -301,8 +316,10 @@ def _focus_window(title: str) -> str:
                 ["xdotool", "search", "--name", title, "windowactivate"],
                 capture_output=True, timeout=5,
             )
-            time.sleep(0.3)
-            return f"Focused window: {title}"
+            if result.returncode == 0:
+                time.sleep(0.3)
+                return f"Focused window: {title}"
+            return f"No visible window matching '{title}' was found."
         except FileNotFoundError:
             return "focus_window (Linux) requires wmctrl or xdotool"
         except Exception as e:

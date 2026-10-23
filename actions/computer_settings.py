@@ -245,6 +245,19 @@ def brightness_down():
             print(f"[Settings] Brightness down failed on Windows: {e}")
 
 def close_app():
+    # Safety guard: never send Alt+F4 if JARVIS's own HUD window is focused!
+    try:
+        import os as _os
+        from core.os_control import list_visible_windows, control_window
+        wins = list_visible_windows()
+        active = next((w for w in wins if w.get("active")), None)
+        if active and int(active.get("pid") or 0) == _os.getpid():
+            other = next((w for w in wins if int(w.get("pid") or 0) != _os.getpid()), None)
+            if other:
+                control_window(other["title"], "close")
+            return
+    except Exception:
+        pass
     if _OS == "Darwin": pyautogui.hotkey("command", "q")
     else:               pyautogui.hotkey("alt", "f4")
 
@@ -781,15 +794,33 @@ def _suggest(description: str) -> str:
     return (f"I could not match '{description}' to a computer action. "
             f"Call computer_settings again with an exact `action` from: {hint}.")
 
+_NO_PYAUTOGUI_ACTIONS = frozenset({
+    "dark_mode", "toggle_wifi", "restart", "shutdown", "sleep_display",
+    "screen_off", "brightness_up", "brightness_down", "volume_set",
+    "open_powershell", "open_terminal", "open_cmd",
+    "bluetooth_settings", "wifi_settings", "sound_settings",
+    "display_settings", "windows_update", "power_settings",
+    "storage_settings", "startup_apps", "device_manager",
+})
+
+_DEEP_SETTINGS_TARGETS = {
+    "bluetooth_settings": "Bluetooth Settings",
+    "wifi_settings":      "WiFi Settings",
+    "sound_settings":     "Sound Settings",
+    "display_settings":   "Display Settings",
+    "windows_update":     "Windows Update",
+    "power_settings":     "Power Settings",
+    "storage_settings":   "Storage Settings",
+    "startup_apps":       "Startup Apps",
+    "device_manager":     "Device Manager",
+}
+
 def computer_settings(
     parameters: dict = None,
     response=None,
     player=None,
     session_memory=None,
 ) -> str:
-    if not _PYAUTOGUI:
-        return "pyautogui is not installed. Run: pip install pyautogui"
-
     params      = parameters or {}
     raw_action  = params.get("action", "").strip()
     description = params.get("description", "").strip()
@@ -809,6 +840,40 @@ def computer_settings(
     print(f"[Settings] Action: {action}  Value: {value}  OS: {_OS}")
     if player:
         player.write_log(f"[Settings] {action}")
+
+    # Direct terminal / shell openers with ground-truth window verification
+    if action in ("open_powershell", "powershell"):
+        from core.os_control import open_interactive_terminal
+        return open_interactive_terminal("powershell", cwd=str(value or "").strip())["message"]
+    if action in ("open_terminal", "terminal"):
+        from core.os_control import open_interactive_terminal
+        return open_interactive_terminal("wt" if _OS == "Windows" else "terminal", cwd=str(value or "").strip())["message"]
+    if action in ("open_cmd", "cmd"):
+        from core.os_control import open_interactive_terminal
+        return open_interactive_terminal("cmd", cwd=str(value or "").strip())["message"]
+
+    # Deep OS settings pages (Bluetooth, Sound, Display, Windows Update, Device Manager, etc.)
+    if action in _DEEP_SETTINGS_TARGETS:
+        from actions.open_app import open_app as _open_app
+        return _open_app({"app_name": _DEEP_SETTINGS_TARGETS[action]}, player=player)
+
+    # Targeted window management when `value` names a specific window/app
+    _TARGETED_WIN_OPS = {
+        "close_app": "close",
+        "close_window": "close",
+        "minimize": "minimize",
+        "maximize": "maximize",
+        "snap_left": "snap_left",
+        "snap_right": "snap_right",
+        "focus_window": "focus",
+    }
+    if action in _TARGETED_WIN_OPS and value and str(value).strip():
+        from core.os_control import control_window
+        _ok, msg = control_window(str(value).strip(), _TARGETED_WIN_OPS[action])
+        return msg
+
+    if not _PYAUTOGUI and action not in _NO_PYAUTOGUI_ACTIONS:
+        return "pyautogui is not installed. Run: pip install pyautogui"
 
     # ── The gate ─────────────────────────────────────────────────────────────
     # A human presses a button, or this does not happen. The model can no longer

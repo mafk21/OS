@@ -123,7 +123,8 @@ JARVIS sees and operates any application on screen — even apps with no API:
 - **Browser, RAG, Media & Desktop Control**:
   - **Goal-Driven Browser (`actions/browser_control.py`, `actions/browser_agent.py`)**: Playwright automation with low/medium/high risk permission gating and safe messaging review.
   - **RAG & Universal File Processor (`actions/rag_docs.py`, `actions/file_processor.py`, `actions/file_controller.py`)**: Obsidian vault sync, local RAG indexing, document generation, PDF/Doc/code reading, and undo-backed file management.
-  - **HUD Video, Music, Creative & Utilities**: Plays YouTube/local video directly in the HUD avatar slot (`actions/video_player.py`, `actions/youtube_video.py`), generates images (`actions/image_generation.py`), controls Spotify & translates/summarizes text selections (`actions/music_selection.py`), tracks flights (`actions/flight_finder.py`), updates games (`actions/game_updater.py`), assists with LinkedIn/sysadmin workflows (`actions/career_helpers.py`), schedules OS-native reminders (`actions/reminder.py`), monitors CPU/RAM/GPU/temps (`actions/system_monitor.py`), and controls volume, brightness, Wi-Fi, windows, and power (`actions/computer_settings.py`, `actions/computer_control.py`, `actions/desktop.py`, `actions/open_app.py`).
+  - **Verified Device, Window, Process & Terminal Control (`actions/device_manager.py`, `actions/open_app.py`, `core/os_control.py`, `actions/computer_settings.py`, `actions/computer_control.py`, `actions/desktop.py`)**: Opens interactive PowerShell/CMD/Windows Terminal/macOS/Linux terminals in real visible foreground windows (bypassing background `CREATE_NO_WINDOW`), verifies launched apps against live OS window handles and PIDs before reporting success, manages windows by name (`list_windows`, `focus_window`, `close_window`, `snap_left`/`snap_right`), inspects/stops top CPU/RAM processes and TCP/UDP port owners with HUD confirmation gates, and controls volume, brightness, deep `ms-settings:` pages, Wi-Fi, battery, storage, and power.
+  - **HUD Video, Music, Creative & Utilities**: Plays YouTube/local video directly in the HUD avatar slot (`actions/video_player.py`, `actions/youtube_video.py`), generates images (`actions/image_generation.py`), controls Spotify & translates/summarizes text selections (`actions/music_selection.py`), tracks flights (`actions/flight_finder.py`), updates games (`actions/game_updater.py`), assists with LinkedIn/sysadmin workflows (`actions/career_helpers.py`), schedules OS-native reminders (`actions/reminder.py`), and monitors CPU/RAM/GPU/temps (`actions/system_monitor.py`).
 
 ---
 
@@ -222,6 +223,7 @@ OS/
 │   ├── gws_pack.py                # Zero-API Google Workspace automation via computer_use
 │   ├── background_agent.py        # Asynchronous background job runner
 │   ├── telegram_bot.py            # Paired Telegram remote control bot with /stop support
+│   ├── os_control.py              # Verified app/terminal launcher + live window/PID/port/hardware engine
 │   ├── action_loader.py           # Auto-discovery, schema validation & crash isolation for actions/
 │   ├── plugin_loader.py           # Hot-discovery & collision protection for drop-in plugins/
 │   ├── mcp_adapter.py             # Model Context Protocol (MCP) server-to-tool bridge
@@ -230,13 +232,14 @@ OS/
 │   ├── installer.py               # On-demand optional package installer
 │   └── prompt.txt                 # Dynamic system prompt template hydrated from live runtime state
 │
-├── actions/                       # 46 self-describing OS, research, productivity & creative skills
+├── actions/                       # 47 self-describing OS, research, productivity & creative actions
+│   ├── device_manager.py          # Verified window, terminal, process, port, disk, battery & network manager
 │   ├── computer_use.py            # Set-of-Mark visual grounding (som_capture, click/type/hover_by_id)
 │   ├── accessibility.py           # Native UI Automation (Win) / AT-SPI (Linux) semantic element control
 │   ├── computer_control.py        # Mouse, keyboard, smart_type, screen_find & window control
 │   ├── computer_settings.py       # Cross-platform volume, brightness, Wi-Fi & power management
 │   ├── desktop.py                 # Taskbar, virtual desktop & window orchestration
-│   ├── open_app.py                # Per-OS application resolver & launcher
+│   ├── open_app.py                # Verified app, PowerShell/terminal, folder & deep settings launcher
 │   ├── screen_processor.py        # Full-screen, rubberband region & webcam vision capture
 │   ├── deep_research.py           # Multi-wave cited research synthesis (NON_BLOCKING / WHEN_IDLE)
 │   ├── web_search.py              # Grounded Gemini + DuckDuckGo search (news/research/price/compare)
