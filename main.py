@@ -885,25 +885,6 @@ def _leaf_errors(exc: BaseException):
         yield exc
 
 
-def _normalize_barge_pcm(raw_bytes: bytes) -> bytes:
-    """Gently lift quiet conversational barge-in speech (85..600 RMS) into a
-    comfortable ~650 RMS range so Gemini's server-side VAD & transcription hear
-    soft desk-distance interruptions without clipping normal speech or boosting
-    post-utterance silence (<85 RMS).
-    """
-    if not raw_bytes:
-        return raw_bytes
-    pcm = np.frombuffer(raw_bytes, dtype=np.int16)
-    if pcm.size == 0:
-        return raw_bytes
-    rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
-    if rms < 85.0 or rms >= 600.0:
-        return raw_bytes
-    gain = min(3.5, 650.0 / rms)
-    boosted = np.clip(pcm.astype(np.float32) * gain, -32767.0, 32767.0).astype(np.int16)
-    return boosted.tobytes()
-
-
 class JarvisLive:
     def __init__(self, ui: JarvisUI):
         self.ui             = ui
@@ -921,7 +902,9 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
-        self._abort_playback       = threading.Event()  # Instant hardware stream flush on interrupt
+        self._interrupted_at       = 0.0     # monotonic timestamp when _interrupted was armed
+        self._last_interrupted_rx  = 0.0     # monotonic timestamp of last discarded old chunk
+        self._abort_playback       = threading.Event()  # Queue-drain signal on interrupt (never aborts PortAudio stream)
         # Transcript-driven mouth shapes for the avatar. Fed from the receive
         # loop as words arrive, drained by the playback loop against the audio.
         self._visemes              = VisemeStream()
@@ -1600,8 +1583,7 @@ class JarvisLive:
             pass
 
     def interrupt(self) -> None:
-        """Stop JARVIS mid-speech: flush hardware output, drain queued audio,
-        and open the microphone immediately.
+        """Stop JARVIS mid-speech: drain queued audio and open the mic immediately.
 
         Crucially, Gemini Live streams audio faster than real-time and often
         sends `turn_complete` seconds before local speaker playback finishes.
@@ -1612,7 +1594,14 @@ class JarvisLive:
         server_already_done = bool(
             self._turn_done_event and self._turn_done_event.is_set()
         )
-        self._interrupted = not server_already_done
+        now_mono = time.monotonic()
+        if server_already_done:
+            self._interrupted = False
+            self._interrupted_at = 0.0
+        else:
+            self._interrupted = True
+            self._interrupted_at = now_mono
+            self._last_interrupted_rx = now_mono
         self._abort_playback.set()
         q = self.audio_in_queue
         if q:
@@ -1634,7 +1623,7 @@ class JarvisLive:
         self._barge_preroll.clear()
         # Keep mic hot & un-gated for the follow-up phrase after interrupt
         self._barge_open_until = max(
-            getattr(self, "_barge_open_until", 0.0), time.monotonic() + 2.5
+            getattr(self, "_barge_open_until", 0.0), now_mono + 2.5
         )
         # The words we were about to mouth are never going to be spoken now.
         self._visemes.reset()
@@ -2267,15 +2256,15 @@ class JarvisLive:
                             loop.call_soon_threadsafe(self.interrupt)
                         except Exception:
                             pass
-                        # Flush rolling 256 ms onset pre-roll (normalizing quiet
-                        # voices so Gemini's server-side VAD hears 'Stop' cleanly).
+                        # Flush rolling 256 ms onset pre-roll unmodified so
+                        # Gemini's server-side VAD hears natural audio levels.
                         try:
                             for chunk_bytes in preroll_frames:
                                 loop.call_soon_threadsafe(
                                     out_put_drop_oldest,
                                     self.out_queue,
                                     {
-                                        "data": _normalize_barge_pcm(chunk_bytes),
+                                        "data": chunk_bytes,
                                         "mime_type": "audio/pcm",
                                         "barge": True,
                                     },
@@ -2317,7 +2306,7 @@ class JarvisLive:
                     self._tail_until = 0.0      # a real voice ends the tail early
                 except Exception:
                     return
-            elif self._echo._hist:
+            elif self._echo._hist or getattr(self._echo, "_spk_samples_pushed", 0):
                 self._echo.reset()
 
             # Asymmetric true-floor room tracker: follows quiet moments downward
@@ -2347,8 +2336,6 @@ class JarvisLive:
             if not self.ui.muted and not self._phone_active:
                 data = indata.tobytes()
                 in_barge_followup = time.monotonic() < getattr(self, "_barge_open_until", 0.0)
-                if in_barge_followup:
-                    data = _normalize_barge_pcm(data)
                 loop.call_soon_threadsafe(
                     out_put_drop_oldest,
                     self.out_queue,
@@ -2485,62 +2472,72 @@ class JarvisLive:
 
                     if response.data:
                         if self._interrupted:
-                            pass  # discard stale server audio from interrupted turn
-                        else:
+                            _now_rx = time.monotonic()
+                            # Safety release: if >0.65s elapsed since the last
+                            # discarded chunk (and >1.0s since interrupt()), the
+                            # old cancelled stream already ended without sending
+                            # turn_complete — this packet is a brand-new reply!
+                            if (
+                                _now_rx - getattr(self, "_interrupted_at", 0.0) > 1.0
+                                and _now_rx - getattr(self, "_last_interrupted_rx", 0.0) > 0.65
+                            ):
+                                self._interrupted = False
+                            else:
+                                self._last_interrupted_rx = _now_rx
+                        if not self._interrupted:
                             self._abort_playback.clear()
                             if self._turn_done_event and self._turn_done_event.is_set():
                                 self._turn_done_event.clear()
-                            # When JARVIS's very first reply slice arrives, purge
-                            # any stale pre-speech mic/breath frames still waiting
-                            # in out_queue so they don't hit server VAD mid-reply.
-                            if (
-                                not self._is_speaking
-                                and self.audio_in_queue.empty()
-                                and self.out_queue is not None
-                                and time.monotonic() >= getattr(self, "_barge_open_until", 0.0)
-                            ):
-                                while not self.out_queue.empty():
-                                    try:
-                                        self.out_queue.get_nowait()
-                                    except asyncio.QueueEmpty:
-                                        break
-                            # Split into ~50 ms chunks so interrupt() stops audio within 50 ms
-                            # (24000 Hz × 2 bytes/sample × 0.05 s = 2400 bytes per slice)
+                            # Split into ~40 ms chunks so interrupt() stops audio within ~50 ms
+                            # (24000 Hz × 2 bytes/sample × 0.04 s = 1920 bytes per slice)
                             _audio_data = response.data
-                            _SLICE = 2400
+                            _SLICE = 1920
                             for _i in range(0, len(_audio_data), _SLICE):
                                 self.audio_in_queue.put_nowait(_audio_data[_i : _i + _SLICE])
 
                     if response.server_content:
                         sc = response.server_content
 
-                        # Server-side barge-in: OUR message (the mic block
-                        # forwarded at interrupt, or a typed command) cancelled
-                        # the model's generation. Drain local playback NOW —
-                        # the buffered audio must not keep talking over the user.
-                        if getattr(sc, "interrupted", False) and not self._interrupted:
-                            self.interrupt()
+                        # Server-side barge-in: Gemini explicitly confirmed the
+                        # old generation is cancelled. Drain local playback AND
+                        # clear `_interrupted` immediately — Gemini often streams
+                        # the reply to the user's new utterance without sending a
+                        # separate turn_complete for the cancelled turn!
+                        if getattr(sc, "interrupted", False):
+                            if not self._interrupted:
+                                self.interrupt()
+                            self._interrupted = False
+                            in_buf = []
+                            out_buf = []
+                            self._visemes.reset()
 
                         if sc.output_transcription and sc.output_transcription.text:
-                            txt = _clean_transcript(sc.output_transcription.text)
-                            # A turn that involves a tool call passes through
-                            # several turn_completes, and the API re-sends the
-                            # tail of the transcript across them. Comparing only
-                            # against the previous chunk missed that — once
-                            # out_buf had been flushed and emptied, the repeat
-                            # sailed straight back in, which logged the answer
-                            # twice AND made the avatar mouth it twice.
-                            if txt and not _is_repeat_chunk(txt, out_buf):
-                                out_buf.append(txt)
-                                # Hand the words to the mouth as they arrive, so
-                                # the avatar can form the consonants the audio
-                                # alone cannot show. Pure string work — it adds
-                                # nothing measurable to the response path.
-                                self._visemes.feed_text(txt)
+                            if not self._interrupted:
+                                txt = _clean_transcript(sc.output_transcription.text)
+                                # A turn that involves a tool call passes through
+                                # several turn_completes, and the API re-sends the
+                                # tail of the transcript across them. Comparing only
+                                # against the previous chunk missed that — once
+                                # out_buf had been flushed and emptied, the repeat
+                                # sailed straight back in, which logged the answer
+                                # twice AND made the avatar mouth it twice.
+                                if txt and not _is_repeat_chunk(txt, out_buf):
+                                    out_buf.append(txt)
+                                    # Hand the words to the mouth as they arrive, so
+                                    # the avatar can form the consonants the audio
+                                    # alone cannot show. Pure string work — it adds
+                                    # nothing measurable to the response path.
+                                    self._visemes.feed_text(txt)
 
                         if sc.input_transcription and sc.input_transcription.text:
                             txt = _clean_transcript(sc.input_transcription.text)
                             if txt:
+                                # Server is transcribing the user's new utterance —
+                                # any subsequent response.data belongs to the new reply!
+                                if self._interrupted:
+                                    self._interrupted = False
+                                    out_buf = []
+                                    self._visemes.reset()
                                 in_buf.append(txt)
                                 self._last_user_speech = time.monotonic()
 
@@ -2599,6 +2596,7 @@ class JarvisLive:
                                 asyncio.create_task(_cam_close())
 
                     if response.tool_call:
+                        self._interrupted = False
                         fn_responses = []
                         with self._session_recycler.track_tool():
                             for fc in response.tool_call.function_calls:
@@ -2658,24 +2656,23 @@ class JarvisLive:
         except Exception:
             pass
 
-        def _flush_hw_stream() -> None:
-            """Abort any buffered OS/PortAudio samples so speaker stops in <20 ms."""
-            try:
-                stream.abort()
-                stream.start()
-            except Exception:
-                pass
+        def _drain_playback_queue() -> None:
+            """Discard queued slices cleanly — never abort a blocking PortAudio
+            RawOutputStream on Windows WASAPI/MME, which wedges future writes."""
             while not self.audio_in_queue.empty():
                 try:
                     self.audio_in_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     break
 
+        idle_ticks = 0
         try:
             while True:
                 if self._abort_playback.is_set():
                     self._abort_playback.clear()
-                    _flush_hw_stream()
+                    _drain_playback_queue()
+                    if self._is_speaking:
+                        self.set_speaking(False)
                     continue
 
                 try:
@@ -2684,31 +2681,39 @@ class JarvisLive:
                         timeout=0.05
                     )
                 except asyncio.TimeoutError:
+                    idle_ticks += 1
                     if self._abort_playback.is_set():
                         self._abort_playback.clear()
-                        _flush_hw_stream()
+                        _drain_playback_queue()
+                        if self._is_speaking:
+                            self.set_speaking(False)
                         continue
-                    if (
-                        self._turn_done_event
-                        and self._turn_done_event.is_set()
-                        and self.audio_in_queue.empty()
+                    if self.audio_in_queue.empty() and (
+                        (self._turn_done_event and self._turn_done_event.is_set())
+                        or self._interrupted
+                        or (self._is_speaking and idle_ticks >= 16)
                     ):
-                        self.set_speaking(False)
-                        self._turn_done_event.clear()
+                        if self._is_speaking:
+                            self.set_speaking(False)
+                        if self._turn_done_event and self._turn_done_event.is_set():
+                            self._turn_done_event.clear()
                     continue
 
-                if self._abort_playback.is_set():
+                idle_ticks = 0
+                if self._abort_playback.is_set() or self._interrupted:
                     self._abort_playback.clear()
-                    _flush_hw_stream()
+                    _drain_playback_queue()
+                    if self._is_speaking:
+                        self.set_speaking(False)
                     continue
 
                 self.set_speaking(True)
 
-                # Batch immediately-available chunks up to ~60 ms (2880 bytes at
-                # 24 kHz / 16-bit mono) so interrupt() + stream.abort() cuts off
-                # audible playback almost instantaneously without thread churn.
+                # Batch immediately-available chunks up to ~50 ms (2400 bytes at
+                # 24 kHz / 16-bit mono) so draining audio_in_queue halts audible
+                # speech within ~50 ms cleanly via normal stream.write().
                 batch = bytearray(chunk)
-                while len(batch) < 2880:
+                while len(batch) < 2400:
                     try:
                         batch.extend(self.audio_in_queue.get_nowait())
                     except asyncio.QueueEmpty:
@@ -2770,7 +2775,9 @@ class JarvisLive:
                     break   # executor shutting down — exit cleanly
                 if self._abort_playback.is_set():
                     self._abort_playback.clear()
-                    _flush_hw_stream()
+                    _drain_playback_queue()
+                    if self._is_speaking:
+                        self.set_speaking(False)
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")
             raise
@@ -3341,6 +3348,8 @@ class JarvisLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    self._interrupted_at       = 0.0
+                    self._last_interrupted_rx  = 0.0
                     self._abort_playback.clear()
 
                     # Leaving offline? clear banner before new session

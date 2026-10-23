@@ -340,6 +340,117 @@ class TestEchoGuardBargeIn:
 
         assert stop_score >= 2.0, f"Quiet 165 RMS 'Stop!' failed 128ms barge-in: score={stop_score}"
 
+    def test_windows_380ms_latency_nonlinear_speaker_never_self_interrupts(self):
+        """Regression test for the Windows WASAPI/Bluetooth output-latency bug:
+        during the first ~380 ms after `note_output`, audio is still inside the OS
+        buffer so the mic hears silence. `EchoGuard` must NEVER decay coupling to
+        zero ('headphones') during that silence and self-interrupt when JARVIS's
+        own voice exits the speakers — across 150, 250, 500, and 950 RMS nonlinear
+        4-tap reverberant speaker echo + sentence pauses + heavy breathing!"""
+        rng = np.random.default_rng(1234)
+        dur_s = 10.0
+        n16 = int(dur_s * SR_MIC)
+        t16 = np.arange(n16) / SR_MIC
+        f0 = 130.0 + 32.0 * np.sin(2.0 * np.pi * 2.0 * t16) + 15.0 * np.cos(2.0 * np.pi * 3.4 * t16)
+        ph = 2.0 * np.pi * np.cumsum(f0) / SR_MIC
+        spk_clean = sum((1.0 / (k ** 0.85)) * np.sin(k * ph + 0.33 * k) for k in range(1, 26))
+        env = np.clip(0.65 + 0.55 * np.sin(2.0 * np.pi * 3.1 * t16), 0.0, 1.2)
+        env[(t16 > 3.0) & (t16 < 3.45)] = 0.0  # inter-sentence pause
+        env[(t16 > 6.8) & (t16 < 7.25)] = 0.0  # inter-sentence pause
+        spk_clean = spk_clean / np.std(spk_clean) * 2000.0 * env
+        n24 = int(dur_s * SR_OUT)
+        spk_24k = np.interp(np.linspace(0.0, dur_s, n24, endpoint=False), t16, spk_clean).astype(np.int16)
+
+        spk_nonlin = np.tanh(spk_clean / 2400.0) * 2400.0
+        lat_samps = int(0.380 * SR_MIC)
+        rir = np.zeros(lat_samps + 600, dtype=np.float64)
+        rir[lat_samps] = 1.0
+        rir[lat_samps + 95] = -0.45
+        rir[lat_samps + 240] = 0.25
+        rir[lat_samps + 470] = -0.12
+        raw_echo = np.convolve(spk_nonlin, rir)[:n16]
+        raw_echo = raw_echo / (np.std(raw_echo) + 1e-9)
+
+        for echo_rms in (150.0, 250.0, 500.0, 950.0):
+            guard = EchoGuard()
+            spk_cur = 0
+            score = 0.0
+            self_interrupts = 0
+            for b in range(n16 // BLOCK_MIC):
+                ts = 100.0 + b * 0.064
+                tgt = int((b + 1) * BLOCK_MIC * SR_OUT / SR_MIC) + int(0.15 * SR_OUT)
+                while spk_cur < min(n24, tgt):
+                    ec = min(n24, spk_cur + 2400)
+                    ch = spk_24k[spk_cur:ec]
+                    guard.note_output(ch, SR_OUT, speech_band_level(ch, SR_OUT), when=ts)
+                    spk_cur = ec
+                mic = raw_echo[b * BLOCK_MIC : (b + 1) * BLOCK_MIC] * echo_rms + rng.normal(0.0, 28.0, BLOCK_MIC)
+                if (b % 20) in (8, 9, 10):
+                    mic += _synth_breath(rms=520.0, seed=3000 + b).astype(np.float64)
+                mic_i16 = np.clip(mic, -32767, 32767).astype(np.int16)
+                sb = speech_band_level(mic_i16, SR_MIC)
+                sc = guard.speech_score(mic_i16, SR_MIC, sb, when=ts) if sb >= 0.024 else 0.0
+                if sc >= 1.0:
+                    score += sc
+                    if score >= 2.0:
+                        self_interrupts += 1
+                        score = 0.0
+                else:
+                    score = max(0.0, score - 0.75)
+            assert self_interrupts == 0, f"Self-interrupted {self_interrupts}x at echo_rms={echo_rms}"
+
+    def test_clock_skewed_bluetooth_echo_never_self_interrupts(self):
+        """Even under +1200 ppm USB-mic vs speaker crystal clock skew + 420 ms
+        Bluetooth latency + nonlinear distortion, Stage 2 prevents self-interruption."""
+        rng = np.random.default_rng(777)
+        dur_s = 8.0
+        n16 = int(dur_s * SR_MIC)
+        t16 = np.arange(n16) / SR_MIC
+        f0 = 130.0 + 30.0 * np.sin(2.0 * np.pi * 2.0 * t16)
+        ph = 2.0 * np.pi * np.cumsum(f0) / SR_MIC
+        spk_clean = sum((1.0 / (k ** 0.85)) * np.sin(k * ph + 0.33 * k) for k in range(1, 24))
+        spk_clean = spk_clean / np.std(spk_clean) * 1900.0
+        n24 = int(dur_s * SR_OUT)
+        spk_24k = np.interp(np.linspace(0.0, dur_s, n24, endpoint=False), t16, spk_clean).astype(np.int16)
+
+        t_skew = np.linspace(0.0, dur_s * 1.0012, n16, endpoint=False)
+        spk_skew = np.interp(t_skew, t16, np.tanh(spk_clean / 2000.0) * 2000.0)
+        lat = int(0.420 * SR_MIC)
+        rir = np.zeros(lat + 500, dtype=np.float64)
+        rir[lat] = 1.0
+        rir[lat + 100] = -0.50
+        rir[lat + 260] = 0.28
+        echo_skew = np.convolve(spk_skew, rir)[:n16]
+        echo_skew = echo_skew / (np.std(echo_skew) + 1e-9)
+
+        guard = EchoGuard()
+        spk_cur = 0
+        score = 0.0
+        false_int = 0
+        for b in range(n16 // BLOCK_MIC):
+            ts = 200.0 + b * 0.064
+            tgt = int((b + 1) * BLOCK_MIC * SR_OUT / SR_MIC) + int(0.15 * SR_OUT)
+            while spk_cur < min(n24, tgt):
+                ec = min(n24, spk_cur + 2400)
+                ch = spk_24k[spk_cur:ec]
+                guard.note_output(ch, SR_OUT, speech_band_level(ch, SR_OUT), when=ts)
+                spk_cur = ec
+            mic_i16 = np.clip(
+                echo_skew[b * BLOCK_MIC : (b + 1) * BLOCK_MIC] * 450.0 + rng.normal(0.0, 28.0, BLOCK_MIC),
+                -32767,
+                32767,
+            ).astype(np.int16)
+            sb = speech_band_level(mic_i16, SR_MIC)
+            sc = guard.speech_score(mic_i16, SR_MIC, sb, when=ts) if sb >= 0.024 else 0.0
+            if sc >= 1.0:
+                score += sc
+                if score >= 2.0:
+                    false_int += 1
+                    score = 0.0
+            else:
+                score = max(0.0, score - 0.75)
+        assert false_int == 0
+
 
 def _load_main_headless(monkeypatch):
     """Import `main` in headless CI without requiring PortAudio or a GUI display."""
@@ -508,24 +619,209 @@ class TestJarvisLiveRuntimeBargeIn:
         assert jl_streaming._abort_playback.is_set() is True
         assert jl_streaming.audio_in_queue.empty()
 
-    def test_normalize_barge_pcm_lifts_quiet_voice_without_boosting_silence(self, monkeypatch):
+    def test_no_portaudio_stream_abort_and_server_interrupt_clears_flag(self):
+        """Ensure `_play_audio` never calls `stream.abort()` (which wedges blocking
+        PortAudio `RawOutputStream` on Windows WASAPI/MME), and `_receive_audio`
+        clears `self._interrupted` on `sc.interrupted` and `sc.input_transcription`
+        so Gemini's next reply is never silently discarded."""
+        src = Path(__file__).resolve().parent.parent.joinpath("main.py").read_text(
+            encoding="utf-8"
+        )
+        assert "stream.abort()" not in src
+        assert 'if getattr(sc, "interrupted", False):' in src
+        assert "if sc.input_transcription and sc.input_transcription.text:" in src
+
+    def test_end_to_end_multi_turn_answering_never_drops_replies(self, monkeypatch):
+        """Runs the real `JarvisLive._receive_audio` + `_play_audio` coroutines
+        across multiple normal and interrupted turns (including Gemini sending
+        `sc.interrupted=True` WITHOUT `turn_complete=True`) and proves every
+        subsequent JARVIS reply plays out of the speaker stream and returns
+        `_is_speaking` cleanly to `False`."""
         main_mod = _load_main_headless(monkeypatch)
-        norm = main_mod._normalize_barge_pcm
 
-        # Quiet 140 RMS voice -> lifted cleanly (~490 RMS) so server VAD hears it
-        quiet = _synth_glottal_voice(125.0, 130.0, rms=140.0, seed=77).tobytes()
-        boosted = np.frombuffer(norm(quiet), dtype=np.int16)
-        rms_boosted = float(np.sqrt(np.mean(boosted.astype(np.float32) ** 2)))
-        assert 420.0 <= rms_boosted <= 560.0
+        written_batches: list[bytes] = []
 
-        # Normal 750 RMS voice -> untouched
-        normal = _synth_glottal_voice(125.0, 130.0, rms=750.0, seed=78).tobytes()
-        assert norm(normal) == normal
+        class _FakeOutStream:
+            latency = 0.18
 
-        # Quiet room silence (30 RMS) -> untouched so end-of-speech VAD closes fast
-        rng = np.random.default_rng(79)
-        silence = rng.normal(0.0, 30.0, BLOCK_MIC).astype(np.int16).tobytes()
-        assert norm(silence) == silence
+            def start(self):
+                pass
+
+            def write(self, data: bytes):
+                written_batches.append(bytes(data))
+
+            def stop(self):
+                pass
+
+            def close(self):
+                pass
+
+        monkeypatch.setattr(
+            main_mod.sd, "RawOutputStream", lambda **_kw: _FakeOutStream(), raising=False
+        )
+
+        class _Txt:
+            def __init__(self, text: str):
+                self.text = text
+
+        class _SC:
+            def __init__(self, *, interrupted=False, turn_complete=False, in_txt="", out_txt=""):
+                self.interrupted = interrupted
+                self.turn_complete = turn_complete
+                self.input_transcription = _Txt(in_txt) if in_txt else None
+                self.output_transcription = _Txt(out_txt) if out_txt else None
+
+        class _Resp:
+            def __init__(self, *, data=b"", sc=None):
+                self.data = data
+                self.server_content = sc
+                self.tool_call = None
+                self.session_resumption_update = None
+                self.go_away = None
+
+        async def _run_scenario():
+            jl = main_mod.JarvisLive.__new__(main_mod.JarvisLive)
+            jl._asst_name = "JARVIS"
+            jl._speaking_lock = threading.Lock()
+            jl._is_speaking = False
+            jl._interrupted = False
+            jl._interrupted_at = 0.0
+            jl._last_interrupted_rx = 0.0
+            jl._abort_playback = threading.Event()
+            jl._tail_until = 0.0
+            jl._out_latency = 0.18
+            jl._wake_enabled = False
+            jl._grace_period = 8.0
+            jl._grace_until = 0.0
+            jl._out_level = 0.0
+            jl._paused = False
+            jl._barge_blocks = 0
+            jl._barge_score = 0.0
+            jl._barge_consonant_hold = 0
+            jl._barge_preroll = []
+            jl._mic_ring = deque(maxlen=4)
+            jl._barge_open_until = 0.0
+            jl._play_cursor = 0.0
+            jl._last_out_logged = ""
+            jl._last_user_speech = 0.0
+            jl._session_log = []
+            jl._dashboard = None
+            jl._vision_close_pending = False
+            jl._vision_busy = False
+            jl._echo = EchoGuard()
+            jl.audio_in_queue = asyncio.Queue()
+            jl.out_queue = asyncio.Queue(maxsize=64)
+            jl._turn_done_event = asyncio.Event()
+
+            logged: list[str] = []
+
+            class _Vis:
+                def feed_text(self, *_a):
+                    pass
+
+                def frames(self, f, *_a):
+                    return f
+
+                def reset(self):
+                    pass
+
+            class _UI:
+                muted = False
+
+                def set_state(self, *_a):
+                    pass
+
+                def write_log(self, msg: str):
+                    logged.append(msg)
+
+                def push_visemes(self, *_a):
+                    pass
+
+                def set_audio_level(self, *_a):
+                    pass
+
+            jl._visemes = _Vis()
+            jl.ui = _UI()
+
+            server_q: asyncio.Queue = asyncio.Queue()
+
+            class _FakeSession:
+                def receive(self):
+                    async def _gen():
+                        while True:
+                            item = await server_q.get()
+                            if item is None:
+                                return
+                            yield item
+
+                    return _gen()
+
+            jl.session = _FakeSession()
+
+            play_task = asyncio.create_task(jl._play_audio())
+            recv_task = asyncio.create_task(jl._receive_audio())
+
+            chunk_a = (np.ones(2400, dtype=np.int16) * 500).tobytes()
+            chunk_b = (np.ones(2400, dtype=np.int16) * 900).tobytes()
+            chunk_c = (np.ones(2400, dtype=np.int16) * 1200).tobytes()
+
+            # Turn 1: Normal user question -> JARVIS answers cleanly
+            await server_q.put(_Resp(sc=_SC(in_txt="Hello Jarvis")))
+            await server_q.put(_Resp(data=chunk_a, sc=_SC(out_txt="Hello sir.")))
+            await server_q.put(_Resp(sc=_SC(turn_complete=True)))
+            await asyncio.sleep(0.15)
+            assert sum(len(x) for x in written_batches) == len(chunk_a)
+            assert jl._is_speaking is False
+
+            # Turn 2: JARVIS starts long reply -> user interrupts mid-stream ->
+            # Gemini sends `interrupted=True` WITHOUT `turn_complete=True` ->
+            # then immediately sends Turn 3 answer `chunk_b`!
+            await server_q.put(_Resp(data=chunk_a, sc=_SC(out_txt="Long monologue...")))
+            await asyncio.sleep(0.02)
+            jl.interrupt()  # local barge-in while _turn_done_event is False!
+            await asyncio.sleep(0.02)
+            written_batches.clear()
+            assert jl._interrupted is True
+            # Stale in-flight chunk from old turn is dropped:
+            await server_q.put(_Resp(data=chunk_a))
+            await asyncio.sleep(0.02)
+            assert written_batches == []
+            # Server acknowledges interruption WITHOUT turn_complete:
+            await server_q.put(_Resp(sc=_SC(interrupted=True)))
+            await asyncio.sleep(0.02)
+            assert jl._interrupted is False
+            # Server sends answer to user's new question — MUST PLAY 100%!
+            await server_q.put(_Resp(sc=_SC(in_txt="What is two plus two?")))
+            await server_q.put(_Resp(data=chunk_b, sc=_SC(out_txt="It is four.")))
+            await server_q.put(_Resp(sc=_SC(turn_complete=True)))
+            await asyncio.sleep(0.15)
+            assert b"".join(written_batches) == chunk_b
+            assert any("It is four." in m for m in logged)
+            assert jl._is_speaking is False
+
+            # Turn 4: Server already sent turn_complete while audio was queued ->
+            # local interrupt() fires -> Turn 5 reply `chunk_c` MUST PLAY 100%!
+            written_batches.clear()
+            jl._turn_done_event.set()
+            jl.interrupt()
+            assert jl._interrupted is False
+            await server_q.put(_Resp(sc=_SC(in_txt="Are you still there?")))
+            await server_q.put(_Resp(data=chunk_c, sc=_SC(out_txt="Always here, sir.")))
+            await server_q.put(_Resp(sc=_SC(turn_complete=True)))
+            await asyncio.sleep(0.15)
+            assert sum(len(x) for x in written_batches) == len(chunk_c)
+            assert any("Always here, sir." in m for m in logged)
+            assert jl._is_speaking is False
+
+            recv_task.cancel()
+            play_task.cancel()
+            for t in (recv_task, play_task):
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+
+        asyncio.run(_run_scenario())
 
 
 class TestMainBargeInWiring:
