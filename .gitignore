@@ -43,6 +43,10 @@ ENV/
 Thumbs.db
 desktop.ini
 
+# ── Node / frontend build artifacts (e.g. apex_ui) ───────────────────────────
+node_modules/
+.next/
+
 # ── Runtime output ────────────────────────────────────────────────────────────
 *.log
 logs/
