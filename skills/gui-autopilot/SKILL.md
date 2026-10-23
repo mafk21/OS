@@ -13,7 +13,7 @@ Clicking buttons, filling forms, or navigating inside Discord, VS Code, Electron
 
 ## Procedure
 
-1. **Ensure the target app is open and focused**: Launch or focus it with `open_app` or `desktop_control` if it is not already on screen.
+1. **Verify the target app is open and focused**: Call `device_manager` (`action="list_windows"` or `action="focus_window"`, `target="<app>"`), or launch it with `open_app` and verify the returned window/PID before sending clicks or keystrokes.
 2. **Tier 1 — Native Accessibility Tree (fastest, exact)**:
    - Call `accessibility_control` (`action="list"`) or `accessibility_control` (`action="press"`, `target="<button label>"`) to invoke named UI controls directly via Windows UI Automation / Linux AT-SPI.
 3. **Tier 2 — Set-of-Mark Visual Grounding (`computer_use`)**:

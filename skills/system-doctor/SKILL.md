@@ -16,13 +16,14 @@ Diagnose slow machines, audio glitches, network/API failures, low disk space, an
 1. **Collect live telemetry in parallel**:
    - Call `system_status` for real-time CPU, RAM, GPU, and thermal readings.
    - Call `diagnostics_check` (`action="full"`, or targeted `"audio"` / `"network"` / `"storage"` / `"skills"`) to verify API keys, mic/speaker devices, cloud reachability, disk free space, active skills, camera, and local Ollama fallback.
-2. **Isolate the bottleneck**:
-   - If CPU or RAM is >85% or disk free space is <5 GB, inspect top resource consumers or directory sizes read-only via `shell_agent` (`action="run"`, e.g. process top-10 or disk summary for the active OS).
+2. **Isolate the bottleneck with `device_manager`**:
+   - Call `device_manager` (`action="top_processes"`, `sort_by="memory"` or `"cpu"`) to pinpoint exact resource hogs with PIDs and window ownership.
+   - Check `device_manager` (`action="disks"`, `"battery"`, `"network"`, or `"list_ports"`) for per-drive free space, power state, LAN/Wi-Fi details, or port conflicts (`port=3000`, etc.).
 3. **Report diagnosis before remediating**:
    - Lead with the exact culprit and metric (e.g. *"RAM is at 92% — Chrome and Docker hold 19.4 GB; mic and Gemini Live are healthy"*).
-   - Give the single concrete fix; apply safe reversible fixes (`computer_settings` or opening audio picker) directly.
+   - Give the single concrete fix; apply safe reversible fixes (`computer_settings` or `device_manager` window controls) directly.
 4. **Gate disruptive actions**:
-   - Killing user processes, toggling Wi-Fi, restarting services, or rebooting (`computer_settings` restart/shutdown uses the UI `[CONFIRMATION_PENDING]` gate) ALWAYS require explicit user confirmation first.
+   - `device_manager` (`action="kill_process"` / `"empty_recycle_bin"`) and `computer_settings` (`restart` / `shutdown` / `toggle_wifi`) place a `[CONFIRMATION_PENDING]` button on the HUD — ask the user in one short sentence to confirm on screen and never claim it completed early.
 
 ## Pitfalls
 

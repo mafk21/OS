@@ -1,16 +1,23 @@
 import platform as _platform
 import subprocess as _subprocess
 
-# ── Nuclear: force CREATE_NO_WINDOW on EVERY subprocess call on Windows ───────
-# This patches Popen itself, so no per-file flag is needed anywhere.
+# ── Default background subprocesses to CREATE_NO_WINDOW on Windows ───────────
+# Hidden helper calls (git, ffprobe, powershell WMI queries, etc.) should not
+# flash console windows, EXCEPT when JARVIS explicitly launches a visible user
+# app or interactive console (visible_window=True or CREATE_NEW_CONSOLE).
 if _platform.system() == "Windows":
     _OrigPopen = _subprocess.Popen
+    _subprocess._OrigPopen = _OrigPopen  # type: ignore[attr-defined]
+    _CREATE_NEW_CONSOLE = getattr(_subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
 
     class _Popen(_OrigPopen):
         def __init__(self, args, **kw):
-            kw["creationflags"] = kw.get("creationflags", 0) | _subprocess.CREATE_NO_WINDOW
-            kw.pop("startupinfo", None)   # drop any stale/shared STARTUPINFO
-            super().__init__(args, **                       kw)
+            visible = bool(kw.pop("visible_window", False))
+            flags = int(kw.get("creationflags", 0) or 0)
+            if not visible and not (flags & _CREATE_NEW_CONSOLE):
+                kw["creationflags"] = flags | _subprocess.CREATE_NO_WINDOW
+                kw.pop("startupinfo", None)   # drop any stale/shared STARTUPINFO
+            super().__init__(args, **kw)
 
     _subprocess.Popen = _Popen
 
