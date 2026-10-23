@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "APEX-UI — Autonomous-agent orb interface",
+  title: "JARVIS — Autonomous AI HUD",
   description:
-    "An open-source (MIT) animated orb + reasoning-graph UI. Hand-written SVG/CSS, no 3D libraries.",
+    "JARVIS real-time voice, vision, and autonomous multi-agent desktop HUD.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>{children}</body>
