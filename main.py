@@ -48,6 +48,7 @@ import time
 import json
 import sys
 import traceback
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -884,6 +885,25 @@ def _leaf_errors(exc: BaseException):
         yield exc
 
 
+def _normalize_barge_pcm(raw_bytes: bytes) -> bytes:
+    """Gently lift quiet conversational barge-in speech (85..600 RMS) into a
+    comfortable ~650 RMS range so Gemini's server-side VAD & transcription hear
+    soft desk-distance interruptions without clipping normal speech or boosting
+    post-utterance silence (<85 RMS).
+    """
+    if not raw_bytes:
+        return raw_bytes
+    pcm = np.frombuffer(raw_bytes, dtype=np.int16)
+    if pcm.size == 0:
+        return raw_bytes
+    rms = float(np.sqrt(np.mean(pcm.astype(np.float32) ** 2)))
+    if rms < 85.0 or rms >= 600.0:
+        return raw_bytes
+    gain = min(3.5, 650.0 / rms)
+    boosted = np.clip(pcm.astype(np.float32) * gain, -32767.0, 32767.0).astype(np.int16)
+    return boosted.tobytes()
+
+
 class JarvisLive:
     def __init__(self, ui: JarvisUI):
         self.ui             = ui
@@ -901,6 +921,7 @@ class JarvisLive:
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
         self._vision_busy          = False   # True while a vision capture/inject cycle is in flight
         self._interrupted          = False   # True while draining audio after user interrupt
+        self._abort_playback       = threading.Event()  # Instant hardware stream flush on interrupt
         # Transcript-driven mouth shapes for the avatar. Fed from the receive
         # loop as words arrive, drained by the playback loop against the audio.
         self._visemes              = VisemeStream()
@@ -1020,10 +1041,13 @@ class JarvisLive:
         self._grace_period      = float(get_grace_period())
         self._paused           = False      # Pause = deaf but reply/task continues
         self._barge_blocks     = 0          # consecutive barge-in positive blocks
+        self._barge_score      = 0.0        # leaky syllable-bridging confidence accumulator (triggers >= 2.0)
+        self._barge_consonant_hold = 0      # tolerates brief intra-word consonants (/s/, /t/, /k/)
         self._barge_preroll: list[bytes] = []  # candidate voiced blocks held until barge-in confirms
-        self._ambient_floor    = 0.0        # adaptive unvoiced room noise floor in 250-3400 Hz
+        self._mic_ring: deque[bytes] = deque(maxlen=4)  # 256 ms rolling pre-roll (keeps initial /st/, /w/)
+        self._ambient_floor    = 0.0        # adaptive true room floor in 200-3500 Hz (capped at 0.04)
         self._barge_notified   = False      # log once per barge session
-        self._barge_open_until = 0.0       # window after barge where PTT is bypassed
+        self._barge_open_until = 0.0       # window after barge where PTT is bypassed & quiet voice boosted
         # UI hooks for Phase 1 controls
         self.ui.on_barge_toggle  = self._ui_barge_toggle
         self.ui.on_grace_change  = self._ui_grace_change
@@ -1498,11 +1522,20 @@ class JarvisLive:
 
     def set_speaking(self, value: bool):
         with self._speaking_lock:
+            was_speaking = self._is_speaking
             self._is_speaking = value
         if value:
             self._tail_until = 0.0
-            self._barge_blocks = 0
-            self._barge_preroll.clear()
+            # IMPORTANT: _play_audio calls set_speaking(True) on every ~60 ms
+            # output batch. Only reset barge-in accumulators on the rising edge
+            # (False -> True), NEVER mid-sentence, or ongoing user speech gets
+            # wiped every 60 ms and can never reach the barge-in threshold!
+            if not was_speaking:
+                self._barge_blocks = 0
+                self._barge_score = 0.0
+                self._barge_consonant_hold = 0
+                self._barge_preroll.clear()
+                self._mic_ring.clear()
         else:
             # Hold the guard open across the device's own output latency plus a
             # margin for the room. The microphone is NOT muted during it — the
@@ -1518,7 +1551,8 @@ class JarvisLive:
             # tail expires. What the guard learned about the room always stays.
             self._out_level = 0.0
         if value:
-            self.ui.set_state("SPEAKING")
+            if not was_speaking:
+                self.ui.set_state("SPEAKING")
         elif self._paused:
             self.ui.set_state("PAUSED")
         elif not self.ui.muted:
@@ -1566,14 +1600,20 @@ class JarvisLive:
             pass
 
     def interrupt(self) -> None:
-        """Stop JARVIS mid-speech: drain queued audio and open mic immediately.
+        """Stop JARVIS mid-speech: flush hardware output, drain queued audio,
+        and open the microphone immediately.
 
-        Previous version called set_speaking(False) which armed the echo-tail
-        (mic gated for ~0.4s). That meant the *next* user blocks after a barge
-        were swallowed by the tail filter — user had to shout twice. Now we
-        clear the tail so the mic is instantly live.
+        Crucially, Gemini Live streams audio faster than real-time and often
+        sends `turn_complete` seconds before local speaker playback finishes.
+        If `_turn_done_event` is ALREADY set, the server has zero remaining
+        chunks for the old turn — setting `_interrupted = True` in that state
+        would silently discard Gemini's NEXT reply to the user's interruption!
         """
-        self._interrupted = True
+        server_already_done = bool(
+            self._turn_done_event and self._turn_done_event.is_set()
+        )
+        self._interrupted = not server_already_done
+        self._abort_playback.set()
         q = self.audio_in_queue
         if q:
             drained = 0
@@ -1589,6 +1629,13 @@ class JarvisLive:
         # Barge-in must be instant — kill the tail that set_speaking just armed.
         self._tail_until = 0.0
         self._barge_blocks = 0
+        self._barge_score = 0.0
+        self._barge_consonant_hold = 0
+        self._barge_preroll.clear()
+        # Keep mic hot & un-gated for the follow-up phrase after interrupt
+        self._barge_open_until = max(
+            getattr(self, "_barge_open_until", 0.0), time.monotonic() + 2.5
+        )
         # The words we were about to mouth are never going to be spoken now.
         self._visemes.reset()
         self._play_cursor = 0.0     # next batch starts a fresh timeline
@@ -2155,47 +2202,60 @@ class JarvisLive:
             if self._paused:
                 return
 
-            # ── Barge-in (voiced speech interrupt, immune to breathing/noise) ──
-            # While JARVIS speaks, we gate mic audio strictly on:
-            #  1) 250–3400 Hz speech-band level clearing ambient noise + floor
-            #  2) Voiced vocal-fold pitch periodicity + formant check (rejects
-            #     breathing, sighs, mic wind puffs, clicks, and fan hum even when loud)
-            #  3) EchoGuard spectral/level separation against speaker playback
-            #  4) Sustained streak (4–5 blocks ≈ 256–320 ms), flushing a short
-            #     pre-roll buffer once confirmed so the first syllable is kept.
+            # ── Barge-in (two-stage AEC + voiced speech interrupt, ~128 ms) ──
+            # While JARVIS speaks:
+            #  1) Rolling 256 ms mic ring (`_mic_ring`) retains leading consonants
+            #     (/st/ in "Stop", /w/ in "Wait") before the vowel arrives.
+            #  2) Low speech-band pre-gate (0.024..0.055) admits quiet desk speech
+            #     down to ~115 int16 RMS while rejecting sub-190 Hz wind puffs.
+            #  3) `EchoGuard.speech_score` runs linear waveform FDAF + residual
+            #     spectral echo suppression + pre-emphasized vocal-fold pitch check
+            #     (rejecting breathing, sighs, clicks, hum, and speaker echo).
+            #  4) Leaky syllable-bridging `_barge_score` triggers at >= 2.0 (~128 ms
+            #     = 2 voiced blocks) and tolerates intra-word consonants (/s/, /t/).
             if jarvis_speaking:
                 if not self._barge_enabled:
                     self._barge_blocks = 0
+                    self._barge_score = 0.0
+                    self._barge_consonant_hold = 0
                     self._barge_preroll.clear()
+                    self._mic_ring.clear()
                     return
                 try:
+                    raw_bytes = indata.tobytes()
+                    self._mic_ring.append(raw_bytes)
                     sb_lvl = speech_band_level(indata, SEND_SAMPLE_RATE)
-                    min_gate = max(0.10, self._ambient_floor + 0.07)
-                    if sb_lvl < min_gate:
-                        if self._barge_blocks > 0:
-                            self._barge_blocks = max(0, self._barge_blocks - 2)
-                            if self._barge_blocks == 0:
-                                self._barge_preroll.clear()
-                        return
+                    min_gate = max(0.024, min(0.055, self._ambient_floor + 0.015))
 
-                    evidence = self._echo.is_user_speech(
+                    # Always feed EchoGuard so FDAF sample lock & headphone
+                    # zero-coupling calibration track every 64 ms mic block.
+                    raw_score = self._echo.speech_score(
                         indata, SEND_SAMPLE_RATE, sb_lvl
                     )
-                    if evidence:
-                        need = max(4, int(getattr(self._echo, "required_blocks", 4)))
-                        raw_bytes = indata.tobytes()
+                    score_delta = raw_score if sb_lvl >= min_gate else 0.0
+
+                    if score_delta >= 1.0:
+                        need = max(2, int(getattr(self._echo, "required_blocks", 2)))
+                        self._barge_score += score_delta
                         self._barge_blocks += 1
-                        if self._barge_blocks < need:
-                            self._barge_preroll.append(raw_bytes)
-                            if len(self._barge_preroll) > need - 1:
-                                del self._barge_preroll[: len(self._barge_preroll) - (need - 1)]
+                        self._barge_consonant_hold = 1
+                        self._barge_preroll = list(self._mic_ring)
+
+                        if self._barge_score < float(need):
                             return
 
-                        preroll = list(self._barge_preroll)
+                        preroll_frames = list(self._mic_ring)
+                        self._mic_ring.clear()
                         self._barge_preroll.clear()
                         self._barge_blocks = 0
-                        # Keep mic open for the utterance that follows the interrupt
-                        self._barge_open_until = time.monotonic() + 1.5
+                        self._barge_score = 0.0
+                        self._barge_consonant_hold = 0
+                        # Stop speaker thread immediately on the audio callback thread
+                        # without waiting for the asyncio event loop tick.
+                        with self._speaking_lock:
+                            self._is_speaking = False
+                        self._abort_playback.set()
+                        self._barge_open_until = time.monotonic() + 2.5
                         print(
                             f"[Barge] ✋ voiced interrupt! sb_lvl={sb_lvl:.2f} "
                             f"amb={self._ambient_floor:.2f} "
@@ -2207,15 +2267,15 @@ class JarvisLive:
                             loop.call_soon_threadsafe(self.interrupt)
                         except Exception:
                             pass
-                        # Flush buffered onset blocks + current block so the
-                        # first syllable of 'stop' or 'wait' is never clipped.
+                        # Flush rolling 256 ms onset pre-roll (normalizing quiet
+                        # voices so Gemini's server-side VAD hears 'Stop' cleanly).
                         try:
-                            for chunk_bytes in (*preroll, raw_bytes):
+                            for chunk_bytes in preroll_frames:
                                 loop.call_soon_threadsafe(
                                     out_put_drop_oldest,
                                     self.out_queue,
                                     {
-                                        "data": chunk_bytes,
+                                        "data": _normalize_barge_pcm(chunk_bytes),
                                         "mime_type": "audio/pcm",
                                         "barge": True,
                                     },
@@ -2224,9 +2284,19 @@ class JarvisLive:
                             pass
                         return
                     else:
-                        if self._barge_blocks > 0:
-                            self._barge_blocks = max(0, self._barge_blocks - 2)
-                            if self._barge_blocks == 0:
+                        if (
+                            self._barge_score > 0.0
+                            and self._barge_consonant_hold > 0
+                            and sb_lvl >= min_gate * 0.8
+                        ):
+                            # Intra-word consonant (/s/, /t/, /k/) between syllables
+                            self._barge_consonant_hold -= 1
+                            self._barge_score = max(0.0, self._barge_score - 0.12)
+                        elif self._barge_score > 0.0:
+                            self._barge_score = max(0.0, self._barge_score - 0.75)
+                            if self._barge_score == 0.0:
+                                self._barge_blocks = 0
+                                self._barge_consonant_hold = 0
                                 self._barge_preroll.clear()
                         return
                 except Exception as e:
@@ -2250,13 +2320,16 @@ class JarvisLive:
             elif self._echo._hist:
                 self._echo.reset()
 
-            # Track steady unvoiced room floor while listening quietly so fan/AC
-            # noise raises the barge-in speech-band gate automatically.
+            # Asymmetric true-floor room tracker: follows quiet moments downward
+            # quickly (0.20) and creeps upward slowly (0.01) capped at 0.040 so
+            # breathing or typing while idle never inflates the barge-in gate.
             try:
                 _sb = speech_band_level(indata, SEND_SAMPLE_RATE)
-                if _sb < 0.12 and not is_voiced_speech(indata, SEND_SAMPLE_RATE):
+                if _sb < self._ambient_floor:
+                    self._ambient_floor = self._ambient_floor * 0.80 + _sb * 0.20
+                elif _sb < 0.045 and not is_voiced_speech(indata, SEND_SAMPLE_RATE):
                     self._ambient_floor = min(
-                        0.12, self._ambient_floor * 0.95 + _sb * 0.05
+                        0.040, self._ambient_floor * 0.99 + _sb * 0.01
                     )
             except Exception:
                 pass
@@ -2273,10 +2346,17 @@ class JarvisLive:
             
             if not self.ui.muted and not self._phone_active:
                 data = indata.tobytes()
+                in_barge_followup = time.monotonic() < getattr(self, "_barge_open_until", 0.0)
+                if in_barge_followup:
+                    data = _normalize_barge_pcm(data)
                 loop.call_soon_threadsafe(
                     out_put_drop_oldest,
                     self.out_queue,
-                    {"data": data, "mime_type": "audio/pcm"}
+                    {
+                        "data": data,
+                        "mime_type": "audio/pcm",
+                        **({"barge": True} if in_barge_followup else {}),
+                    },
                 )
                 # Feed the live mic level to the HUD so the waveform reacts to
                 # the user's actual voice while listening. Purely cosmetic — any
@@ -2405,8 +2485,9 @@ class JarvisLive:
 
                     if response.data:
                         if self._interrupted:
-                            pass  # discard: interrupted
+                            pass  # discard stale server audio from interrupted turn
                         else:
+                            self._abort_playback.clear()
                             if self._turn_done_event and self._turn_done_event.is_set():
                                 self._turn_done_event.clear()
                             # When JARVIS's very first reply slice arrives, purge
@@ -2577,14 +2658,36 @@ class JarvisLive:
         except Exception:
             pass
 
+        def _flush_hw_stream() -> None:
+            """Abort any buffered OS/PortAudio samples so speaker stops in <20 ms."""
+            try:
+                stream.abort()
+                stream.start()
+            except Exception:
+                pass
+            while not self.audio_in_queue.empty():
+                try:
+                    self.audio_in_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
         try:
             while True:
+                if self._abort_playback.is_set():
+                    self._abort_playback.clear()
+                    _flush_hw_stream()
+                    continue
+
                 try:
                     chunk = await asyncio.wait_for(
                         self.audio_in_queue.get(),
-                        timeout=0.1
+                        timeout=0.05
                     )
                 except asyncio.TimeoutError:
+                    if self._abort_playback.is_set():
+                        self._abort_playback.clear()
+                        _flush_hw_stream()
+                        continue
                     if (
                         self._turn_done_event
                         and self._turn_done_event.is_set()
@@ -2594,13 +2697,18 @@ class JarvisLive:
                         self._turn_done_event.clear()
                     continue
 
+                if self._abort_playback.is_set():
+                    self._abort_playback.clear()
+                    _flush_hw_stream()
+                    continue
+
                 self.set_speaking(True)
 
-                # Batch all immediately-available chunks into one write to reduce
-                # thread-pool round-trips (was one asyncio.to_thread per 50ms slice).
-                # Cap at ~200 ms so interrupt() still stops audio within ~200 ms.
+                # Batch immediately-available chunks up to ~60 ms (2880 bytes at
+                # 24 kHz / 16-bit mono) so interrupt() + stream.abort() cuts off
+                # audible playback almost instantaneously without thread churn.
                 batch = bytearray(chunk)
-                while len(batch) < 9600:   # 9600 bytes ≈ 200 ms at 24 kHz / 16-bit mono
+                while len(batch) < 2880:
                     try:
                         batch.extend(self.audio_in_queue.get_nowait())
                     except asyncio.QueueEmpty:
@@ -2660,6 +2768,9 @@ class JarvisLive:
                     await asyncio.to_thread(stream.write, bytes(batch))
                 except (RuntimeError, asyncio.CancelledError):
                     break   # executor shutting down — exit cleanly
+                if self._abort_playback.is_set():
+                    self._abort_playback.clear()
+                    _flush_hw_stream()
         except Exception as e:
             print(f"[JARVIS] ❌ Play: {e}")
             raise
@@ -3230,6 +3341,7 @@ class JarvisLive:
                     self._vision_busy          = False
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
+                    self._abort_playback.clear()
 
                     # Leaving offline? clear banner before new session
                     try:
