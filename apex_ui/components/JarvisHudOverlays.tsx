@@ -13,6 +13,7 @@ import {
   Scan,
   ShieldAlert,
   Brain,
+  Code2,
   ExternalLink,
   KeyRound,
   Link2,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import AutomationsModal from "./AutomationsModal";
 import BrainModal from "./BrainModal";
+import DevWorkspaceModal from "./DevWorkspaceModal";
 import IntegrationsModal from "./IntegrationsModal";
 import StudioModal from "./StudioModal";
 import { useJarvis } from "./JarvisBridge";
@@ -70,6 +72,7 @@ export default function JarvisHudOverlays() {
     brainModalOpen,
     studioModalOpen,
     automationsModalOpen,
+    devModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
@@ -78,6 +81,7 @@ export default function JarvisHudOverlays() {
     setBrainModalOpen,
     setStudioModalOpen,
     setAutomationsModalOpen,
+    setDevModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
@@ -236,6 +240,7 @@ export default function JarvisHudOverlays() {
       <ActivityTimelineHud />
       <StudioModal />
       <AutomationsModal />
+      <DevWorkspaceModal />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -313,6 +318,22 @@ export default function JarvisHudOverlays() {
         >
           <Zap size={12} />
           AUTOMATE
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setDevModalOpen(true)}
+          title="Open Live Streaming Dev Terminal, Codebase Map & Colorized Diffs"
+          style={{
+            ...pillBase,
+            borderColor: devModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: devModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Code2 size={12} />
+          CODE
         </button>
 
         <button

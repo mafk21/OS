@@ -108,6 +108,11 @@ def shell_agent(parameters: dict, player=None, **_):
             timeout=int(params.get("timeout", 60) or 60),
             shell_pref=shell_pref,
         )
+        try:
+            from core.dev_workspace import get_terminal_manager
+            get_terminal_manager().record_completed_run(cmd, cwd, out)
+        except Exception:
+            pass
         if player and hasattr(player, "show_content"):
             player.show_content("SHELL", f"$ {cmd}\n{out[:4000]}")
         return out

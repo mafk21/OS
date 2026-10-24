@@ -31,7 +31,7 @@ try:
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
     FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
-from core import audio_devices, automations, companions, mcp_adapter
+from core import audio_devices, automations, companions, dev_workspace, mcp_adapter
 from core import confirm as confirm_gate
 from memory import accounts
 from memory import config_manager as cfg
@@ -149,6 +149,10 @@ class ApexHudBridge:
         try:
             from core.subagents import get_subagent_manager
             get_subagent_manager().add_listener(self.push_activity)
+        except Exception:
+            pass
+        try:
+            dev_workspace.get_terminal_manager().add_listener(self.push_terminal_session)
         except Exception:
             pass
 
@@ -390,6 +394,9 @@ class ApexHudBridge:
         self._broadcast_threadsafe(
             {"type": "activity", "workers": self.get_activity_snapshot()}
         )
+
+    def push_terminal_session(self, session: dict[str, Any]) -> None:
+        self._broadcast_threadsafe({"type": "terminal", "session": session})
 
     def notify_tool_start(
         self, task_id: str, tool_name: str, args_summary: str = ""
@@ -1120,6 +1127,46 @@ class ApexHudBridge:
                 return {"ok": False, "error": str(exc)}
             return {"ok": True, "output": out}
 
+        # ── Live Streaming Dev Terminal, Codebase Map & Diffs ─────────────────
+
+        if action == "dev_run":
+            cmd = str(data.get("command") or "").strip()
+            cwd = str(data.get("cwd") or "").strip()
+            try:
+                sess = dev_workspace.get_terminal_manager().start_command(cmd, cwd=cwd)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            self.push_tool_trace(["shell_agent", "dev_agent"])
+            return {"ok": True, "session": sess, "sessions": dev_workspace.get_terminal_manager().list_sessions()}
+
+        if action == "dev_stdin":
+            sid = str(data.get("session_id") or "").strip()
+            txt = str(data.get("text") or "")
+            ok = dev_workspace.get_terminal_manager().send_stdin(sid, txt)
+            return {"ok": ok}
+
+        if action == "dev_stop":
+            sid = str(data.get("session_id") or "").strip()
+            ok = dev_workspace.get_terminal_manager().stop_command(sid)
+            return {"ok": ok, "sessions": dev_workspace.get_terminal_manager().list_sessions()}
+
+        if action == "dev_tree":
+            rdir = str(data.get("root_dir") or "").strip()
+            return {"ok": True, "tree": dev_workspace.build_codebase_tree(rdir)}
+
+        if action == "dev_read_file":
+            rdir = str(data.get("root_dir") or "").strip()
+            fpath = str(data.get("path") or "").strip()
+            try:
+                fobj = dev_workspace.read_workspace_file(rdir, fpath)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "file": fobj}
+
+        if action == "dev_diffs":
+            rdir = str(data.get("root_dir") or "").strip()
+            return {"ok": True, "diffs": dev_workspace.get_workspace_diffs(rdir)}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -1207,6 +1254,20 @@ class ApexHudBridge:
                     "rest_connectors": mcp_adapter.list_rest_connectors(),
                     "mcp_servers": mcp_adapter.list_mcp_servers(),
                     "available_tools": sorted(set(TOOL_NODE_MAP.keys())),
+                }
+            )
+
+        @app.get("/api/hud/dev")
+        async def _dev_get(req: Request):
+            rdir = req.query_params.get("root_dir", "")
+            tree = await asyncio.to_thread(dev_workspace.build_codebase_tree, rdir)
+            diffs = await asyncio.to_thread(dev_workspace.get_workspace_diffs, rdir)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "sessions": dev_workspace.get_terminal_manager().list_sessions(),
+                    "tree": tree,
+                    "diffs": diffs,
                 }
             )
 

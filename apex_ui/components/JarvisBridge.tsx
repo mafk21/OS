@@ -117,6 +117,17 @@ function hexToRgbTuple(hex: string): string | null {
   return `${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}`;
 }
 
+export type TerminalSession = {
+  id: string;
+  command: string;
+  cwd: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  exit_code?: number | null;
+  started_at: number;
+  elapsed_s: number;
+  output: string;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
@@ -125,6 +136,7 @@ export type JarvisContextValue = {
   privacy: PrivacySettings;
   brainCounts: BrainCounts;
   workers: WorkerItem[];
+  terminalSessions: TerminalSession[];
   activeCompanion: CompanionSummary | null;
   themeCustom: ThemeCustomConfig;
   persona: PersonaMode;
@@ -160,6 +172,7 @@ export type JarvisContextValue = {
   brainModalOpen: boolean;
   studioModalOpen: boolean;
   automationsModalOpen: boolean;
+  devModalOpen: boolean;
   activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -169,6 +182,8 @@ export type JarvisContextValue = {
   setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setStudioModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAutomationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setDevModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setTerminalSessions: React.Dispatch<React.SetStateAction<TerminalSession[]>>;
   setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
@@ -303,9 +318,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [brainModalOpen, setBrainModalOpen] = useState(false);
   const [studioModalOpen, setStudioModalOpen] = useState(false);
   const [automationsModalOpen, setAutomationsModalOpen] = useState(false);
+  const [devModalOpen, setDevModalOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
   const [workers, setWorkers] = useState<WorkerItem[]>([]);
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [activeCompanion, setActiveCompanion] = useState<CompanionSummary | null>(null);
   const [themeCustom, setThemeCustom] = useState<ThemeCustomConfig>({
     preset: "default",
@@ -594,6 +611,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
             case "activity":
               if (Array.isArray(msg.workers)) {
                 setWorkers(msg.workers as WorkerItem[]);
+              }
+              break;
+            case "terminal":
+              if (msg.session && typeof msg.session === "object") {
+                const incoming = msg.session as TerminalSession;
+                setTerminalSessions((prev) => {
+                  const rest = prev.filter((x) => x.id !== incoming.id);
+                  return [incoming, ...rest].slice(0, 20);
+                });
               }
               break;
             case "reconfig":
@@ -1036,6 +1062,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       brainCounts,
       workers,
+      terminalSessions,
       activeCompanion,
       themeCustom,
       persona,
@@ -1071,6 +1098,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       brainModalOpen,
       studioModalOpen,
       automationsModalOpen,
+      devModalOpen,
       activityOpen,
       personaModalOpen,
       setConsoleOpen,
@@ -1080,6 +1108,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setBrainModalOpen,
       setStudioModalOpen,
       setAutomationsModalOpen,
+      setDevModalOpen,
+      setTerminalSessions,
       setActivityOpen,
       setPersonaModalOpen,
       setPreviewPersona,
@@ -1119,6 +1149,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       brainCounts,
       workers,
+      terminalSessions,
       activeCompanion,
       themeCustom,
       persona,
@@ -1155,6 +1186,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       brainModalOpen,
       studioModalOpen,
       automationsModalOpen,
+      devModalOpen,
       activityOpen,
       personaModalOpen,
       choosePersona,
