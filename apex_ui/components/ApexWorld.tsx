@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import ApexHeroOrb from "./ApexHeroOrb";
 import ReasoningWebJs from "./ReasoningWeb";
@@ -7,6 +8,10 @@ import ShaderBackgroundJs from "./ShaderBackground";
 import OrbStatusBar from "./OrbStatusBar";
 import { useJarvis } from "./JarvisBridge";
 import { WorkerOrbsLayer } from "./WorkerOrbsLayer";
+
+const ApexMaleHumanoid = dynamic(() => import("./ApexMaleHumanoid"), {
+  ssr: false,
+});
 
 export type NodeSel = { name: string; key: string; color: string };
 
@@ -549,6 +554,17 @@ export default function ApexWorld() {
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
   const [cam, setCam] = useState({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 });
+  const [maleWebVisible, setMaleWebVisible] = useState(true);
+  const [humanoidPulse, setHumanoidPulse] = useState(0);
+
+  const isMale = activePersona === "male";
+
+  const handleCoreTap = () => {
+    if (isMale) {
+      setHumanoidPulse((p) => p + 1);
+    }
+    tapOrb();
+  };
 
   const openAgent = (n: NodeSel) => {
     fireLocalTrace([n.key]);
@@ -660,7 +676,7 @@ export default function ApexWorld() {
         style={{
           position: "absolute",
           inset: 0,
-          background: theme.worldBg,
+          background: isMale ? "#02050a" : theme.worldBg,
           transition: "background 0.65s ease",
         }}
       />
@@ -671,7 +687,7 @@ export default function ApexWorld() {
           style={{ position: "absolute", inset: 0, zIndex: 0 }}
         >
           <ShaderBackground
-            opacity={0.14}
+            opacity={isMale ? 0.04 : 0.14}
             voiceActive={orbState === "speaking"}
             gold={false}
             female={activePersona === "female"}
@@ -687,11 +703,15 @@ export default function ApexWorld() {
           zIndex: 1,
           pointerEvents: "none",
           mixBlendMode: "screen",
-          background: `radial-gradient(circle at 50% 42%, rgba(${
-            theme.orbGlowRgb
-          },${
-            orbState === "speaking" ? 0.3 : orbState === "listening" ? 0.22 : 0.16
-          }) 0%, rgba(${theme.orbGlow2Rgb},0.09) 30%, rgba(8,17,31,0) 62%)`,
+          background: isMale
+            ? `radial-gradient(circle at 50% 44%, rgba(${theme.orbGlowRgb},${
+                orbState === "speaking" ? 0.09 : 0.04
+              }) 0%, rgba(8,17,31,0) 56%)`
+            : `radial-gradient(circle at 50% 42%, rgba(${
+                theme.orbGlowRgb
+              },${
+                orbState === "speaking" ? 0.3 : orbState === "listening" ? 0.22 : 0.16
+              }) 0%, rgba(${theme.orbGlow2Rgb},0.09) 30%, rgba(8,17,31,0) 62%)`,
           transition: "background 0.6s ease",
         }}
       />
@@ -708,68 +728,101 @@ export default function ApexWorld() {
           transformStyle: "preserve-3d",
         }}
       >
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-          }}
-        >
-          <ReasoningWeb
-            key={activePersona}
-            persona={activePersona}
-            state={webState}
-            trace={trace}
-            mode="full"
-            coreless
-            onSelect={(n: NodeSel) => {
-              openAgent(n);
+        {isMale && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 2,
+              pointerEvents: "none",
             }}
-          />
-        </div>
+          >
+            <ApexMaleHumanoid
+              state={orbState}
+              trace={trace}
+              reducedMotion={reduced}
+              constellationVisible={maleWebVisible}
+              onToggleConstellation={() => setMaleWebVisible((v) => !v)}
+              pulseSignal={humanoidPulse}
+            />
+          </div>
+        )}
 
-        <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: "50%",
-            width: "min(560px, 58vw)",
-            height: "min(500px, 56vw, 70vh)",
-            transform: "translate(-50%, -50%)",
-            zIndex: 3,
-            pointerEvents: "none",
-          }}
-        >
-          <ApexHeroOrb
-            state={orbState}
-            interactive={false}
-            primaryColor={theme.primary}
-            primaryBright={theme.primaryBright}
-            secondaryColor={theme.secondary}
-            secondaryBright={theme.secondaryBright}
-          />
-        </div>
+        {(!isMale || maleWebVisible) && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: isMale ? 3 : undefined,
+              pointerEvents: "none",
+              ...(isMale
+                ? {
+                    WebkitMaskImage:
+                      "radial-gradient(ellipse 25% 38% at 50% 47%, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.16) 56%, rgba(0,0,0,0.88) 92%)",
+                    maskImage:
+                      "radial-gradient(ellipse 25% 38% at 50% 47%, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.16) 56%, rgba(0,0,0,0.88) 92%)",
+                  }
+                : {}),
+            }}
+          >
+            <ReasoningWeb
+              key={activePersona}
+              persona={activePersona}
+              state={webState}
+              trace={trace}
+              mode="full"
+              coreless
+              onSelect={(n: NodeSel) => {
+                openAgent(n);
+              }}
+            />
+          </div>
+        )}
+
+        {!isMale && (
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: "min(560px, 58vw)",
+              height: "min(500px, 56vw, 70vh)",
+              transform: "translate(-50%, -50%)",
+              zIndex: 3,
+              pointerEvents: "none",
+            }}
+          >
+            <ApexHeroOrb
+              state={orbState}
+              interactive={false}
+              primaryColor={theme.primary}
+              primaryBright={theme.primaryBright}
+              secondaryColor={theme.secondary}
+              secondaryBright={theme.secondaryBright}
+            />
+          </div>
+        )}
 
         <div
           role="button"
           tabIndex={0}
           aria-label="JARVIS core - tap to interrupt or wake"
-          onClick={tapOrb}
+          onClick={handleCoreTap}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
-              tapOrb();
+              handleCoreTap();
             }
           }}
           onMouseDown={(e) => e.preventDefault()}
           style={{
             position: "absolute",
             left: "50%",
-            top: "50%",
+            top: isMale ? "46%" : "50%",
             transform: "translate(-50%, -50%)",
-            width: "min(340px, 36vw)",
-            height: "min(340px, 36vw)",
+            width: isMale ? "min(250px, 26vw)" : "min(340px, 36vw)",
+            height: isMale ? "min(310px, 40vh)" : "min(340px, 36vw)",
             borderRadius: "50%",
             zIndex: 4,
             cursor: "pointer",
@@ -789,7 +842,7 @@ export default function ApexWorld() {
           style={{
             position: "fixed",
             left: 16,
-            bottom: 18,
+            bottom: isMale ? 54 : 18,
             zIndex: 35,
             padding: "5px 11px",
             borderRadius: 999,
