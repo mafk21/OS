@@ -185,8 +185,6 @@ export default function ApexOverviewPanel() {
   } = useJarvis();
 
   const ACCENT = theme.primary;
-  const FIL = open ? 480 : 320;
-  const FIL_CAP = "calc(100vw - 260px)";
 
   const tileStyle: React.CSSProperties = {
     display: "flex",
@@ -205,142 +203,66 @@ export default function ApexOverviewPanel() {
     fontFamily: "inherit",
   };
 
-  const isMale = activePersona === "male";
-
   return (
     <div className="apex-overview" style={{ pointerEvents: "none" }}>
-      {!isMale && (
-        <div
-          style={{
-            position: "absolute",
-            top: 14,
-            left: 8,
-            width: "min(520px, 94vw)",
-            height: 240,
-            pointerEvents: "none",
-            background: `radial-gradient(ellipse 48% 70% at 46% 0%, ${ACCENT}${
-              open ? "55" : "28"
-            }, ${ACCENT}0a 46%, transparent 72%)`,
-            filter: "blur(10px)",
-            transition: "all .5s ease",
-          }}
-        />
-      )}
-
-      {isMale ? (
-        <div
-          onClick={() => setOpen((o) => !o)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setOpen((o) => !o);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          aria-label="Toggle overview panel"
-          aria-expanded={open}
-          style={{
-            marginLeft: 14,
-            marginTop: 10,
-            width: "fit-content",
-            cursor: "pointer",
-            pointerEvents: "auto",
-            userSelect: "none",
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-          }}
-        >
+      <div
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen((o) => !o);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Toggle overview panel"
+        aria-expanded={open}
+        style={{
+          marginLeft: 14,
+          marginTop: 10,
+          width: "fit-content",
+          cursor: "pointer",
+          pointerEvents: "auto",
+          userSelect: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: "50%",
+              background: ACCENT,
+              boxShadow: `0 0 8px ${ACCENT}`,
+              opacity: open ? 1 : 0.72,
+            }}
+          />
           <span
             style={{
               fontFamily: "var(--font-mono)",
               fontSize: 9,
               letterSpacing: "0.32em",
-              color: open ? ACCENT : "rgba(180,222,248,0.52)",
+              color: open ? ACCENT : `rgba(${theme.filamentTextRgb},0.62)`,
               transition: "color .3s",
             }}
           >
-            {assistantName.toUpperCase()}
-          </span>
-          <Clock compact />
-        </div>
-      ) : (
-        <div
-          onClick={() => setOpen((o) => !o)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setOpen((o) => !o);
-            }
-          }}
-          role="button"
-          tabIndex={0}
-          aria-label="Toggle overview panel"
-          aria-expanded={open}
-          style={{
-            position: "relative",
-            height: 40,
-            cursor: "pointer",
-            pointerEvents: "auto",
-            userSelect: "none",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              top: 14,
-              left: 8,
-              width: `min(${FIL}px, ${FIL_CAP})`,
-              height: 2,
-              borderRadius: 2,
-              background: theme.filamentLine,
-              boxShadow: `0 0 10px ${ACCENT}, 0 0 26px ${ACCENT}${
-                open ? ", 0 0 54px " + ACCENT : ""
-              }`,
-              transition: "all .5s ease",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: 11,
-              left: open ? `min(${FIL}px, ${FIL_CAP})` : 6,
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              background: theme.filamentDot,
-              boxShadow: `0 0 10px ${ACCENT}, 0 0 18px ${ACCENT}`,
-              transition: "left .5s ease, background .4s ease, box-shadow .4s ease",
-              pointerEvents: "none",
-            }}
-          />
-          <span
-            style={{
-              position: "absolute",
-              top: 20,
-              left: 10,
-              fontFamily: "var(--font-mono)",
-              fontSize: 9,
-              letterSpacing: "0.34em",
-              color: `rgba(${theme.filamentTextRgb},${open ? 0.92 : 0.64})`,
-              transition: "color .4s",
-            }}
-          >
-            {assistantName.toUpperCase()} · {activePersona.toUpperCase()} · OVERVIEW
+            {assistantName.toUpperCase()} {activePersona === "female" ? "♀" : "♂"}
           </span>
         </div>
-      )}
+        <Clock compact />
+      </div>
 
       <div
         style={{
           paddingLeft: 14,
-          paddingTop: isMale ? 0 : 6,
+          paddingTop: 0,
           width: "fit-content",
           pointerEvents: "auto",
         }}
       >
-        {!isMale && <Clock />}
 
         {open && (
           <div

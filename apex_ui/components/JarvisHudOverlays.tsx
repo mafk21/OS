@@ -290,395 +290,262 @@ export default function JarvisHudOverlays() {
       <AutomationsModal />
       <DevWorkspaceModal />
       <SecurityModal />
-      {/* ── Top-Right HUD Controls ── */}
-      {isMale ? (
-        <div
-          style={{
-            position: "fixed",
-            top: 14,
-            right: "clamp(14px, 2.2vw, 28px)",
-            zIndex: 42,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {content && (
-            <button
-              type="button"
-              onClick={() => setMaleContentExpanded((o) => !o)}
-              title="View latest tool / search output"
-              style={{
-                ...pillBase,
-                padding: "5px 10px",
-                fontSize: "0.58rem",
-                background: maleContentExpanded
-                  ? `${PRIMARY}22`
-                  : "rgba(3, 8, 15, 0.55)",
-                borderColor: `${PRIMARY}44`,
-                color: PRIMARY,
-              }}
-            >
-              <ExternalLink size={11} />
-              OUTPUT
-            </button>
-          )}
-
+      {/* ── Unified Sleek Top-Right HUD Controls (Male Cyan & Female Rose-Orchid) ── */}
+      <div
+        style={{
+          position: "fixed",
+          top: 14,
+          right: "clamp(14px, 2.2vw, 28px)",
+          zIndex: 42,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        {content && (
           <button
             type="button"
-            onClick={toggleMute}
-            title={muted ? "Click to unmute microphone" : "Click to mute microphone"}
-            style={{
-              ...pillBase,
-              padding: "5px 11px",
-              fontSize: "0.58rem",
-              background: "rgba(3, 8, 15, 0.55)",
-              borderColor: muted ? `${RED}44` : "rgba(79, 210, 255, 0.16)",
-              color: "rgba(224, 240, 252, 0.80)",
-            }}
-          >
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: dotColor,
-                boxShadow: `0 0 8px ${dotColor}`,
-              }}
-            />
-            {statusText}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setPersonaModalOpen(true)}
-            title="Switch between Male and Female interface editions"
+            onClick={() => setMaleContentExpanded((o) => !o)}
+            title="View latest tool / search output"
             style={{
               ...pillBase,
               padding: "5px 10px",
               fontSize: "0.58rem",
-              background: "rgba(3, 8, 15, 0.55)",
-              borderColor: "rgba(79, 210, 255, 0.18)",
+              background: maleContentExpanded ? `${PRIMARY}22` : theme.barBg,
+              borderColor: `${PRIMARY}48`,
               color: PRIMARY,
             }}
           >
-            ♂ MALE
+            <ExternalLink size={11} />
+            OUTPUT
           </button>
+        )}
 
-          <button
-            type="button"
-            onClick={() => setMaleMenuOpen((o) => !o)}
-            aria-label="Open JARVIS workspace menu"
-            style={{
-              ...pillBase,
-              padding: "5px 11px",
-              fontSize: "0.58rem",
-              background: maleMenuOpen
-                ? "rgba(79, 210, 255, 0.16)"
-                : "rgba(3, 8, 15, 0.55)",
-              borderColor: maleMenuOpen
-                ? `${PRIMARY}55`
-                : "rgba(79, 210, 255, 0.16)",
-              color: maleMenuOpen ? PRIMARY : "rgba(224, 240, 252, 0.80)",
-            }}
-          >
-            <Sliders size={11} />
-            HUD ▾
-          </button>
-
-          {maleMenuOpen && (
-            <div
-              role="menu"
-              aria-label="JARVIS HUD workspaces"
-              style={{
-                position: "absolute",
-                top: 38,
-                right: 0,
-                width: 214,
-                padding: 8,
-                borderRadius: 14,
-                background: "rgba(4, 10, 18, 0.92)",
-                border: "1px solid rgba(79, 210, 255, 0.22)",
-                backdropFilter: "blur(20px)",
-                boxShadow: "0 16px 44px rgba(0, 0, 0, 0.72)",
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-              }}
-            >
-              {[
-                {
-                  label: `Console${logs.length > 0 ? ` (${logs.length})` : ""}`,
-                  icon: <Terminal size={12} />,
-                  active: consoleOpen,
-                  run: () => setConsoleOpen((o) => !o),
-                },
-                {
-                  label: "The Brain & Memory",
-                  icon: <Brain size={12} />,
-                  active: brainModalOpen,
-                  run: () => setBrainModalOpen(true),
-                },
-                {
-                  label: "Companions & Studio",
-                  icon: <Sparkles size={12} />,
-                  active: studioModalOpen,
-                  run: () => setStudioModalOpen(true),
-                },
-                {
-                  label: "Automations & MCP",
-                  icon: <Zap size={12} />,
-                  active: automationsModalOpen,
-                  run: () => setAutomationsModalOpen(true),
-                },
-                {
-                  label: "Dev Workspace",
-                  icon: <Code2 size={12} />,
-                  active: devModalOpen,
-                  run: () => setDevModalOpen(true),
-                },
-                {
-                  label: "Security & Vault",
-                  icon: <ShieldCheck size={12} />,
-                  active: securityModalOpen,
-                  run: () => setSecurityModalOpen(true),
-                },
-                {
-                  label: `Integrations${
-                    integrations.connected_count > 0
-                      ? ` (${integrations.connected_count})`
-                      : ""
-                  }`,
-                  icon: <Link2 size={12} />,
-                  active: integrationsModalOpen,
-                  run: () => setIntegrationsModalOpen(true),
-                },
-                {
-                  label: "Worker Activity",
-                  icon: <Play size={12} />,
-                  active: activityOpen,
-                  run: () => setActivityOpen((o) => !o),
-                },
-                {
-                  label: "HUD & Audio Settings",
-                  icon: <Sliders size={12} />,
-                  active: settingsOpen,
-                  run: () => setSettingsOpen(true),
-                },
-              ].map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    item.run();
-                    setMaleMenuOpen(false);
-                  }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    width: "100%",
-                    padding: "7px 10px",
-                    borderRadius: 9,
-                    border: "none",
-                    background: item.active
-                      ? "rgba(79, 210, 255, 0.14)"
-                      : "transparent",
-                    color: item.active ? PRIMARY : "rgba(232, 242, 252, 0.86)",
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 10,
-                    letterSpacing: "0.08em",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div
+        <button
+          type="button"
+          onClick={toggleMute}
+          title={muted ? "Click to unmute microphone" : "Click to mute microphone"}
           style={{
-            position: "fixed",
-            top: 14,
-            right: "clamp(14px, 2.4vw, 32px)",
-            zIndex: 42,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
+            ...pillBase,
+            padding: "5px 11px",
+            fontSize: "0.58rem",
+            background: theme.barBg,
+            borderColor: muted ? `${RED}44` : `${PRIMARY}2a`,
+            color: "rgba(240, 237, 232, 0.86)",
           }}
         >
-          <button
-            type="button"
-            onClick={() => setPersonaModalOpen(true)}
-            title="Switch between Male and Female interface editions"
+          <span
             style={{
-              ...pillBase,
-              borderColor: `${PRIMARY}55`,
-              color: PRIMARY,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: dotColor,
+              boxShadow: `0 0 8px ${dotColor}`,
+            }}
+          />
+          {statusText}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPersonaModalOpen(true)}
+          title="Switch between Male and Female interface editions"
+          style={{
+            ...pillBase,
+            padding: "5px 10px",
+            fontSize: "0.58rem",
+            background: theme.barBg,
+            borderColor: `${PRIMARY}38`,
+            color: PRIMARY,
+          }}
+        >
+          {activePersona === "female" ? "♀ FEMALE" : "♂ MALE"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setConsoleOpen((o) => !o)}
+          title="Toggle live transcript console"
+          style={{
+            ...pillBase,
+            padding: "5px 10px",
+            fontSize: "0.58rem",
+            background: consoleOpen ? `${PRIMARY}20` : theme.barBg,
+            borderColor: consoleOpen ? `${PRIMARY}55` : `${PRIMARY}26`,
+            color: consoleOpen ? PRIMARY : "rgba(240, 237, 232, 0.80)",
+          }}
+        >
+          <Terminal size={11} />
+          {logs.length > 0 ? logs.length : "LOG"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMaleMenuOpen((o) => !o)}
+          aria-label="Open JARVIS workspace menu"
+          style={{
+            ...pillBase,
+            padding: "5px 11px",
+            fontSize: "0.58rem",
+            background: maleMenuOpen ? `${PRIMARY}20` : theme.barBg,
+            borderColor: maleMenuOpen ? `${PRIMARY}55` : `${PRIMARY}28`,
+            color: maleMenuOpen ? PRIMARY : "rgba(240, 237, 232, 0.84)",
+          }}
+        >
+          <Sliders size={11} />
+          HUD ▾
+        </button>
+
+        {maleMenuOpen && (
+          <div
+            role="menu"
+            aria-label="JARVIS HUD workspaces"
+            style={{
+              position: "absolute",
+              top: 38,
+              right: 0,
+              width: 236,
+              padding: "10px 8px",
+              borderRadius: 15,
+              background: theme.drawerBg,
+              border: `1px solid ${PRIMARY}36`,
+              backdropFilter: "blur(22px)",
+              boxShadow: "0 18px 48px rgba(0, 0, 0, 0.74)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 3,
             }}
           >
-            <Sparkles size={12} />
-            {activePersona === "female" ? "♀ FEMALE" : "♂ MALE"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setBrainModalOpen(true)}
-            title="Open The Brain & Forever Timeline (Memories, Timeline, Files & Outputs)"
-            style={{
-              ...pillBase,
-              borderColor: brainModalOpen
-                ? `${PRIMARY}88`
-                : `${SECONDARY}55`,
-              color: brainModalOpen ? PRIMARY : SECONDARY,
-            }}
-          >
-            <Brain size={12} />
-            BRAIN
-            {brainCounts.memories + brainCounts.files + brainCounts.outputs > 0
-              ? ` (${brainCounts.memories + brainCounts.files + brainCounts.outputs})`
-              : ""}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStudioModalOpen(true)}
-            title="Open Companions, Behavior Interview, Skills & Themes Studio"
-            style={{
-              ...pillBase,
-              borderColor: studioModalOpen
-                ? `${PRIMARY}88`
-                : "rgba(240,237,232,0.22)",
-              color: studioModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
-            }}
-          >
-            <Sparkles size={12} />
-            STUDIO
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setAutomationsModalOpen(true)}
-            title="Open Automations, Custom REST/Webhook Builder & MCP Servers"
-            style={{
-              ...pillBase,
-              borderColor: automationsModalOpen
-                ? `${PRIMARY}88`
-                : "rgba(240,237,232,0.22)",
-              color: automationsModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
-            }}
-          >
-            <Zap size={12} />
-            AUTOMATE
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setDevModalOpen(true)}
-            title="Open Live Streaming Dev Terminal, Codebase Map & Colorized Diffs"
-            style={{
-              ...pillBase,
-              borderColor: devModalOpen
-                ? `${PRIMARY}88`
-                : "rgba(240,237,232,0.22)",
-              color: devModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
-            }}
-          >
-            <Code2 size={12} />
-            CODE
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSecurityModalOpen(true)}
-            title="Open Encrypted Vault, Tamper-Evident Audit Log & Scoped Guest Portals"
-            style={{
-              ...pillBase,
-              borderColor: securityModalOpen
-                ? `${PRIMARY}88`
-                : "rgba(240,237,232,0.22)",
-              color: securityModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
-            }}
-          >
-            <ShieldCheck size={12} />
-            SHIELD
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIntegrationsModalOpen(true)}
-            title="Connect or manage optional integrations (Email, Drive, Notion, Slack, GitHub, Discord...)"
-            style={{
-              ...pillBase,
-              borderColor:
-                integrations.connected_count > 0
-                  ? `${GREEN}55`
-                  : "rgba(240,237,232,0.18)",
-              color:
-                integrations.connected_count > 0
-                  ? GREEN
-                  : "rgba(240,237,232,0.82)",
-            }}
-          >
-            <Link2 size={12} />
-            LINKS
-            {integrations.connected_count > 0
-              ? ` (${integrations.connected_count})`
-              : ""}
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleMute}
-            title={muted ? "Click to unmute microphone" : "Click to mute microphone"}
-            style={{
-              ...pillBase,
-              borderColor: muted ? `${RED}55` : `${dotColor}44`,
-            }}
-          >
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: dotColor,
-                boxShadow: `0 0 8px ${dotColor}`,
-              }}
-            />
-            {statusText}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setConsoleOpen((o) => !o)}
-            style={{
-              ...pillBase,
-              borderColor: consoleOpen ? `${PRIMARY}66` : "rgba(240,237,232,0.18)",
-              color: consoleOpen ? PRIMARY : "rgba(240,237,232,0.82)",
-            }}
-          >
-            <Terminal size={13} />
-            CONSOLE{logs.length > 0 ? ` (${logs.length})` : ""}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Open JARVIS settings"
-            style={pillBase}
-          >
-            <Sliders size={13} />
-            HUD
-          </button>
-        </div>
-      )}
+            {[
+              {
+                section: "INTELLIGENCE",
+                items: [
+                  {
+                    label: `Brain & Memory${
+                      brainCounts.memories + brainCounts.files + brainCounts.outputs > 0
+                        ? ` (${brainCounts.memories + brainCounts.files + brainCounts.outputs})`
+                        : ""
+                    }`,
+                    icon: <Brain size={12} />,
+                    active: brainModalOpen,
+                    run: () => setBrainModalOpen(true),
+                  },
+                  {
+                    label: "Companions & Studio",
+                    icon: <Sparkles size={12} />,
+                    active: studioModalOpen,
+                    run: () => setStudioModalOpen(true),
+                  },
+                ],
+              },
+              {
+                section: "WORKSPACE & OPS",
+                items: [
+                  {
+                    label: "Automations & MCP",
+                    icon: <Zap size={12} />,
+                    active: automationsModalOpen,
+                    run: () => setAutomationsModalOpen(true),
+                  },
+                  {
+                    label: "Dev Workspace",
+                    icon: <Code2 size={12} />,
+                    active: devModalOpen,
+                    run: () => setDevModalOpen(true),
+                  },
+                  {
+                    label: "Worker Activity",
+                    icon: <Play size={12} />,
+                    active: activityOpen,
+                    run: () => setActivityOpen((o) => !o),
+                  },
+                  {
+                    label: `Integrations${
+                      integrations.connected_count > 0
+                        ? ` (${integrations.connected_count})`
+                        : ""
+                    }`,
+                    icon: <Link2 size={12} />,
+                    active: integrationsModalOpen,
+                    run: () => setIntegrationsModalOpen(true),
+                  },
+                ],
+              },
+              {
+                section: "SYSTEM",
+                items: [
+                  {
+                    label: "Security & Vault",
+                    icon: <ShieldCheck size={12} />,
+                    active: securityModalOpen,
+                    run: () => setSecurityModalOpen(true),
+                  },
+                  {
+                    label: "Audio & HUD Settings",
+                    icon: <Sliders size={12} />,
+                    active: settingsOpen,
+                    run: () => setSettingsOpen(true),
+                  },
+                ],
+              },
+            ].map((group, gi) => (
+              <div
+                key={group.section}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  marginTop: gi > 0 ? 6 : 0,
+                  paddingTop: gi > 0 ? 6 : 0,
+                  borderTop: gi > 0 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "2px 10px 3px",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 8.5,
+                    letterSpacing: "0.2em",
+                    color: `${PRIMARY}99`,
+                  }}
+                >
+                  {group.section}
+                </div>
+                {group.items.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      item.run();
+                      setMaleMenuOpen(false);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 9,
+                      width: "100%",
+                      padding: "7px 10px",
+                      borderRadius: 9,
+                      border: "none",
+                      background: item.active ? `${PRIMARY}22` : "transparent",
+                      color: item.active ? PRIMARY : "rgba(240, 237, 232, 0.88)",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 10,
+                      letterSpacing: "0.07em",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ color: PRIMARY, display: "flex" }}>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── Unforgeable Confirmation Banner (core/confirm.py) ── */}
       {confirm && (
@@ -758,7 +625,7 @@ export default function JarvisHudOverlays() {
       )}
 
       {/* ── Rich Content Card (show_content from tools/skills) ── */}
-      {content && (!isMale || maleContentExpanded) && (
+      {content && maleContentExpanded && (
         <div
           role="dialog"
           aria-label={content.title || "JARVIS output"}
@@ -1006,21 +873,17 @@ export default function JarvisHudOverlays() {
           left: "50%",
           bottom: 12,
           transform: "translateX(-50%)",
-          width: isMale ? "min(500px, 86vw)" : "min(620px, 94vw)",
+          width: "min(510px, 88vw)",
           zIndex: 40,
           display: "flex",
           alignItems: "center",
           gap: 6,
-          padding: isMale ? "4px 7px" : "5px 8px",
+          padding: "4px 7px",
           borderRadius: 999,
-          background: isMale ? "rgba(3, 8, 15, 0.48)" : theme.barBg,
-          border: isMale
-            ? "1px solid rgba(79, 210, 255, 0.14)"
-            : `1px solid ${theme.primaryBorder}`,
+          background: isMale ? "rgba(3, 8, 15, 0.48)" : "rgba(14, 5, 16, 0.54)",
+          border: `1px solid ${PRIMARY}28`,
           backdropFilter: "blur(16px)",
-          boxShadow: isMale
-            ? "0 6px 24px rgba(0,0,0,0.42)"
-            : "0 8px 28px rgba(0,0,0,0.5)",
+          boxShadow: "0 6px 24px rgba(0,0,0,0.44)",
           transition: "border-color 0.35s ease, background 0.35s ease",
         }}
       >

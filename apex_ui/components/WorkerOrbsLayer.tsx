@@ -343,7 +343,7 @@ export function ActivityTimelineHud() {
   };
 
   const showFloatingActivityPill =
-    activePersona !== "male" || runningCount > 0 || queuedCount > 0 || activityOpen;
+    runningCount > 0 || queuedCount > 0 || activityOpen;
 
   return (
     <>

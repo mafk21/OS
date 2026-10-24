@@ -200,24 +200,32 @@ def test_male_humanoid_3d_camera_parallax_and_mouse_gaze_directions() -> None:
     assert (left_wx - left_nx) > 135.0
 
 
-def test_male_hud_decluttered_and_no_speech_box() -> None:
+def test_male_and_female_hud_decluttered_and_no_speech_box() -> None:
     world_src = (REPO_ROOT / "apex_ui" / "components" / "ApexWorld.tsx").read_text(encoding="utf-8")
     overlays_src = (REPO_ROOT / "apex_ui" / "components" / "JarvisHudOverlays.tsx").read_text(
+        encoding="utf-8"
+    )
+    orb_bar_src = (REPO_ROOT / "apex_ui" / "components" / "OrbStatusBar.jsx").read_text(
         encoding="utf-8"
     )
     workers_src = (REPO_ROOT / "apex_ui" / "components" / "WorkerOrbsLayer.tsx").read_text(
         encoding="utf-8"
     )
 
-    # 1. Constellation web & labels off by default in Male mode so stage is clean
+    # 1. Constellation web & labels off by default in BOTH Male & Female so stage is clean
     assert "const [maleWebVisible, setMaleWebVisible] = useState(false)" in world_src
-    # 2. No OrbStatusBar subtitle box or mini-orb rendered over Male chest when speaking
+    assert "{maleWebVisible && (" in world_src
+    # 2. No OrbStatusBar over Male chest, and NO bordered subtitle box in Female OrbStatusBar either
     assert "{!isMale && (\n        <OrbStatusBarComp" in world_src
-    # 3. Rich tool content card never auto-pops over Male hologram unless user clicks OUTPUT
-    assert "content && (!isMale || maleContentExpanded)" in overlays_src
+    assert "subtitle.text" not in orb_bar_src
+    # 3. Categorized HUD menu + on-demand OUTPUT pill for BOTH Male & Female
+    assert "content && maleContentExpanded" in overlays_src
     assert "HUD ▾" in overlays_src
-    # 4. Activity pill never overlaps top-left clock
+    assert "INTELLIGENCE" in overlays_src
+    assert "WORKSPACE & OPS" in overlays_src
+    # 4. Activity pill never overlaps top-left clock and hides when idle
     assert "top: 124" in workers_src
+    assert "runningCount > 0 || queuedCount > 0 || activityOpen" in workers_src
 
 
 def test_female_orb_components_strictly_untouched() -> None:

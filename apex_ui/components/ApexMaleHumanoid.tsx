@@ -428,13 +428,17 @@ function buildHumanoidParticles(
     }
   }
 
-  // Seamless 3D background wave-continuity filaments strictly behind the head (`ny = 0.33..0.63`, `Z ~ -0.92`, `skinW = 0`)
-  // ZERO synthetic skull-wrap/hair shells — keeps the cranium 100% sleek, smooth, and bald from every angle!
-  const waveBridgeCount = tier === "high" ? 16000 : tier === "medium" ? 6500 : 3000;
+  // Lush volumetric 3D layers:
+  // 1) waveBridgeCount: seamless behind-head 3D wave ribbons (`Z ~ -0.96`, `skinW = 0`)
+  // 2) internalCoreCount: internal golden 3D cerebral & cervical spinal core strictly inside skull/neck (`r <= 0.34`)
+  // 3) emberCount: subtle deep-space floating light motes strictly outside center face
+  const waveBridgeCount = tier === "high" ? 20000 : tier === "medium" ? 8000 : 3600;
+  const internalCoreCount = tier === "high" ? 12000 : tier === "medium" ? 5000 : 2200;
+  const emberCount = tier === "high" ? 950 : tier === "medium" ? 450 : 220;
 
   const cols = Math.ceil(W / step);
   const rows = Math.ceil(H / step);
-  const maxCount = cols * rows + waveBridgeCount;
+  const maxCount = cols * rows + waveBridgeCount + internalCoreCount + emberCount;
 
   const positions = new Float32Array(maxCount * 3);
   const colors = new Float32Array(maxCount * 3);
@@ -563,7 +567,7 @@ function buildHumanoidParticles(
       const max8 = r8 > g8 ? (r8 > b8 ? r8 : b8) : g8 > b8 ? g8 : b8;
       const brightness = max8 / 255;
 
-      const minBright = regionClass > 0.85 ? 0.14 : regionClass < 0.24 ? 0.048 : 0.052;
+      const minBright = regionClass > 0.85 ? 0.11 : 0.038;
       if (brightness < minBright) continue;
 
       const skinWeight = depth[pIdx + 1] / 255;
@@ -697,6 +701,91 @@ function buildHumanoidParticles(
       0.12,
       bNx,
       bNy
+    );
+  }
+
+  // --- LAYER C: Internal Golden 3D Cerebral & Cervical Spinal Core (`r <= 0.34`, never touches silhouette) ---
+  for (let i = 0; i < internalCoreCount; i++) {
+    const s1 = hash01(i * 3.11 + 1.41);
+    const s2 = hash01(i * 5.23 + 2.71);
+    const s3 = hash01(i * 7.09 + 0.33);
+
+    const nyRaw = 0.22 + s1 * 0.70;
+    const nyC = Math.round(nyRaw * 108) / 108 + (s3 - 0.5) * 0.0025;
+    const isBrain = nyC < 0.55;
+    const rad = isBrain ? 0.02 + s2 * 0.32 : 0.015 + s2 * 0.105;
+    const ang = s3 * Math.PI * 2;
+
+    const wx = Math.cos(ang) * rad;
+    const wy = (0.5 - nyC) * worldH;
+    const wz = isBrain
+      ? 0.22 + Math.sin(ang) * rad * 0.85
+      : 0.12 + Math.sin(ang) * rad * 0.75;
+
+    const tCerv = THREE.MathUtils.clamp((nyC - 0.575) / (0.76 - 0.575), 0, 1);
+    const skinW = 1 - tCerv * tCerv * (3 - 2 * tCerv);
+    const glow = 0.42 + 0.44 * hash01(i * 1.97 + 4.2);
+    const cR = Math.pow(1.0 * glow, 2.2);
+    const cG = Math.pow(0.66 * glow, 2.2);
+    const cB = Math.pow(0.20 * glow, 2.2);
+    const voiceW = isBrain ? 0.48 : 0.62;
+
+    pushParticle(
+      wx,
+      wy,
+      wz,
+      cR,
+      cG,
+      cB,
+      0,
+      0,
+      1,
+      0,
+      0.92,
+      0.06,
+      voiceW,
+      skinW,
+      0.62,
+      0.5 + wx / WORLD_W,
+      nyC
+    );
+  }
+
+  // --- LAYER D: Subtle Deep-Space Atmospheric Light Embers (strictly outside face zone) ---
+  for (let i = 0; i < emberCount; i++) {
+    const s1 = hash01(i * 5.81 + 0.29);
+    const s2 = hash01(i * 8.17 + 1.19);
+    const s3 = hash01(i * 3.49 + 2.63);
+
+    const wx = (s1 - 0.5) * 6.8;
+    const wy = (s2 - 0.5) * 4.0;
+    const wz = -1.5 + s3 * 2.9;
+    if (Math.abs(wx) < 1.38 && wy > -0.82 && wy < 1.88) continue;
+
+    const isGold = hash01(i * 9.31) < 0.32;
+    const fade = 0.30 + 0.42 * hash01(i * 2.47);
+    const cR = Math.pow((isGold ? 1.0 : 0.20) * fade, 2.2);
+    const cG = Math.pow((isGold ? 0.70 : 0.86) * fade, 2.2);
+    const cB = Math.pow((isGold ? 0.25 : 1.0) * fade, 2.2);
+
+    pushParticle(
+      wx,
+      wy,
+      wz,
+      cR,
+      cG,
+      cB,
+      0,
+      0,
+      1,
+      0,
+      isGold ? 0.72 : 0,
+      isGold ? 0.1 : 0.82,
+      0,
+      0,
+      0.92,
+      0.5 + wx / WORLD_W,
+      0.5 - wy / worldH
     );
   }
 
@@ -932,25 +1021,37 @@ void main() {
   float brainRhythm = 0.72 + 0.28 * sin(uTime * 6.6 + seed * 6.2831853);
   float brainPulse = uBrainActivity * (0.42 + (1.0 - radialZone) * 0.58) * brainRhythm * uEffects;
 
+  // Travelling bio-electric pulses racing outward along wave ribbons & ascending up the golden spine
+  float wavePulse = waveMask * pow(0.5 + 0.5 * sin(abs(p.x) * 2.35 - uTime * 2.25 + seed * 1.4), 5.0) * 0.42 * uEffects;
+  float spinalPulse =
+    warmTrait *
+    (1.0 - smoothstep(0.18, 0.48, abs(p.x))) *
+    pow(0.5 + 0.5 * sin(p.y * 4.4 - uTime * 2.55), 4.0) *
+    (0.32 + uVoice * 0.45) *
+    uEffects;
+
   float cyanEnergy =
     cyanTrait * stateCyan +
-    edgeTrait * (0.08 + stateCyan * 0.36) +
-    fresnelRim * 0.85 +
-    moodWave * (1.0 - stateTone) * 0.32 +
-    shockRing * (0.42 + travel * 0.28) +
-    assemblyGlow * 0.26;
+    edgeTrait * (0.10 + stateCyan * 0.38) +
+    fresnelRim * 0.96 +
+    wavePulse * 0.85 +
+    moodWave * (1.0 - stateTone) * 0.34 +
+    shockRing * (0.45 + travel * 0.30) +
+    assemblyGlow * 0.28;
 
   float warmEnergy =
     warmTrait * stateWarm +
-    moodWave * stateTone * 0.36 +
-    shockCore * 0.68 +
-    shockRing * (1.0 - travel) * 0.20;
+    spinalPulse * 0.92 +
+    wavePulse * warmTrait * 0.55 +
+    moodWave * stateTone * 0.38 +
+    shockCore * 0.72 +
+    shockRing * (1.0 - travel) * 0.22;
 
   float zoneEnergy = (1.0 - radialZone * 0.72) * stateZone;
-  float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.45) * uEffects;
+  float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.48) * uEffects;
 
-  vec3 electricCyan = vec3(0.24, 0.92, 1.0);
-  vec3 moltenAmber = vec3(1.0, 0.62, 0.16);
+  vec3 electricCyan = vec3(0.20, 0.94, 1.0);
+  vec3 moltenAmber = vec3(1.0, 0.66, 0.18);
   vec3 emeraldSignal = vec3(0.38, 1.0, 0.70);
   vec3 synapticViolet = vec3(0.68, 0.48, 1.0);
 
@@ -961,12 +1062,12 @@ void main() {
 
   vec3 moodTint = mix(electricCyan, moltenAmber, clamp(stateTone, 0.0, 1.0));
 
-  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.88)) * depthShade * aerialDepth;
+  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.84)) * depthShade * aerialDepth;
   vec3 boosted =
-    lifted * 1.08 +
-    electricCyan * (cyanEnergy * 0.16 + fresnelRim * 0.42) +
-    moltenAmber * (warmEnergy + voiceEnergy * 1.15) * 0.21 +
-    brainColor * brainPulse * 0.15;
+    lifted * 1.15 +
+    electricCyan * (cyanEnergy * 0.18 + fresnelRim * 0.48) +
+    moltenAmber * (warmEnergy + voiceEnergy * 1.22) * 0.24 +
+    brainColor * brainPulse * 0.16;
 
   float peak = max(boosted.r, max(boosted.g, boosted.b));
   if (peak > 1.0) {
@@ -976,14 +1077,14 @@ void main() {
   vCoreColor = clamp(boosted, 0.0, 1.0);
   vCoreAlpha = birthVisibility * backfaceVis;
 
-  float gE = clamp(totalEnergy, 0.0, 1.35);
-  vec3 glowBase = mix(moodTint, vCoreColor, 0.46);
+  float gE = clamp(totalEnergy, 0.0, 1.45);
+  vec3 glowBase = mix(moodTint, vCoreColor, 0.48);
   vHaloColor =
     mix(glowBase, brainColor, clamp(brainPulse * 0.36, 0.0, 0.45)) *
-    (0.58 + gE * 0.76) *
+    (0.64 + gE * 0.82) *
     aerialDepth;
   vHaloAlpha =
-    clamp(0.020 + gE * 0.105 + shockEnergy * 0.10 + brainPulse * 0.04, 0.0, 0.21) *
+    clamp(0.024 + gE * 0.115 + shockEnergy * 0.11 + brainPulse * 0.045, 0.0, 0.24) *
     birthVisibility *
     mix(0.35, 1.0, backfaceVis);
 
@@ -1441,7 +1542,7 @@ function HumanoidPointCloud({
     }
 
     const chestBreath = reducedMotion ? 0 : Math.sin(t * 1.12) * 0.020;
-    const pointSize = data.tier === "high" ? 2.35 : data.tier === "medium" ? 3.55 : 4.65;
+    const pointSize = data.tier === "high" ? 2.52 : data.tier === "medium" ? 3.65 : 4.75;
 
     uniforms.uTime.value = t;
     uniforms.uDpr.value = dpr;

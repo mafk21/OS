@@ -75,15 +75,16 @@ export default function OrbStatusBar({
   const GOLD = theme.secondary;
   const GOLD_BRIGHT = theme.secondaryBright;
 
-  const W = 440,
-    H = 112;
+  const W = 240,
+    H = 54;
   const cx = W / 2,
-    cy = 38;
+    cy = 18;
   const isActive = state !== "idle";
+  const waveColor = state === "speaking" ? GOLD : PRIMARY;
   const rawUpper = String(rawState || "").toUpperCase();
   const label =
     rawUpper === "MUTED"
-      ? "MICROPHONE MUTED"
+      ? "MUTED"
       : rawUpper === "PAUSED"
       ? "PAUSED"
       : state === "listening"
@@ -110,146 +111,38 @@ export default function OrbStatusBar({
     >
       <style>{`@keyframes sbBar { from { transform: scaleY(0.35); } to { transform: scaleY(1.15); } }`}</style>
 
-      {subtitle && subtitle.text && (
-        <div
-          style={{
-            maxWidth: "min(680px, 88vw)",
-            marginBottom: 4,
-            padding: "5px 14px",
-            borderRadius: 14,
-            background: theme.barBg,
-            border: `1px solid ${
-              subtitle.role === "user" ? `${PRIMARY}48` : `${GOLD}48`
-            }`,
-            backdropFilter: "blur(10px)",
-            fontSize: 12,
-            lineHeight: 1.45,
-            color: "rgba(240,237,232,0.92)",
-            textAlign: "center",
-            overflow: "hidden",
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-          }}
-        >
-          <span
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
-              letterSpacing: "0.16em",
-              marginRight: 8,
-              color: subtitle.role === "user" ? PRIMARY : GOLD,
-              textTransform: "uppercase",
-            }}
-          >
-            {subtitle.role === "user" ? "YOU" : assistantName}
-          </span>
-          {subtitle.text}
-        </div>
-      )}
-
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} fill="none">
-        <defs>
-          <filter id="sbBlur" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="4" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        <line
-          x1={cx - 150}
-          y1={cy}
-          x2={cx - 28}
-          y2={cy}
-          stroke={GOLD}
-          strokeWidth="1"
-          opacity={isActive ? 0.5 : 0.18}
-          strokeDasharray="4 3"
-        />
-        <line
-          x1={cx + 28}
-          y1={cy}
-          x2={cx + 150}
-          y2={cy}
-          stroke={GOLD}
-          strokeWidth="1"
-          opacity={isActive ? 0.5 : 0.18}
-          strokeDasharray="4 3"
-        />
-
         <Waveform
           active={isActive}
           level={effLevel}
           speaking={state === "speaking"}
           cx={cx}
           cy={cy}
-          width={170}
-          color={GOLD}
+          width={136}
+          color={waveColor}
         />
 
         <circle
           cx={cx}
           cy={cy}
-          r={20}
-          stroke={GOLD}
-          strokeWidth="1.5"
-          strokeOpacity="0.7"
-          fill="#030200"
-          filter="url(#sbBlur)"
-          className="orb-center-ring"
-        />
-        <circle
-          cx={cx}
-          cy={cy}
-          r={6}
-          fill={GOLD_BRIGHT}
-          opacity="0.95"
-          className="orb-center"
-          style={{ filter: `drop-shadow(0 0 10px ${GOLD})` }}
+          r={4.5}
+          fill={state === "speaking" ? GOLD_BRIGHT : PRIMARY}
+          opacity="0.92"
+          style={{ filter: `drop-shadow(0 0 8px ${waveColor})` }}
         />
 
         <text
           x={cx}
-          y={cy + 42}
+          y={cy + 26}
           textAnchor="middle"
-          fill={GOLD}
-          fontSize="12"
+          fill={waveColor}
+          fontSize="9.5"
           fontFamily="'Share Tech Mono', monospace"
-          letterSpacing="0.38em"
-          opacity="0.82"
+          letterSpacing="0.34em"
+          opacity="0.72"
         >
           {label}
         </text>
-
-        {[0, 1, 2].map((i) => (
-          <circle
-            key={i}
-            cx={cx + (i - 1) * 12}
-            cy={cy + 58}
-            r={2.4}
-            fill={GOLD}
-            className={`orb-dot-blink blink-${i}`}
-          />
-        ))}
-
-        {!isActive && (
-          <text
-            className="sb-hint"
-            x={cx}
-            y={cy + 73}
-            textAnchor="middle"
-            fill={GOLD}
-            fontSize="8.5"
-            fontFamily="'Share Tech Mono', monospace"
-            letterSpacing="0.14em"
-            opacity="0.36"
-          >
-            TAP THE CORE · CLICK AN AGENT · SPEAK OR TYPE BELOW
-          </text>
-        )}
       </svg>
     </div>
   );
