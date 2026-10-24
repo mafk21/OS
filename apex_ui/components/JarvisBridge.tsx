@@ -52,11 +52,93 @@ export type IntegrationsSummary = {
   onboarding_done: boolean;
 };
 
+export type PrivacySettings = {
+  personalization_enabled: boolean;
+  adaptive_learning_enabled: boolean;
+  timeline_persistence_enabled: boolean;
+};
+
+export type BrainCounts = {
+  memories: number;
+  files: number;
+  outputs: number;
+  timeline: number;
+};
+
+export type WorkerStep = {
+  step: number;
+  action: string;
+  result: string;
+  ts: number;
+};
+
+export type WorkerItem = {
+  id: string;
+  kind: "subagent" | "tool";
+  title: string;
+  goal: string;
+  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+  tools: string[];
+  nodes?: string[];
+  steps: WorkerStep[];
+  step_count: number;
+  max_steps: number;
+  result?: string | null;
+  error?: string | null;
+  created_at: number;
+  updated_at: number;
+  elapsed_s: number;
+};
+
+export type CompanionSummary = {
+  id: string;
+  name: string;
+  role: string;
+  persona: PersonaMode;
+  voice: string;
+  instructions?: string;
+  allowed_tools?: string[];
+  assigned_skills?: string[];
+  builtin?: boolean;
+};
+
+export type ThemeCustomConfig = {
+  preset: string;
+  custom_primary: string;
+  custom_secondary: string;
+  effective_primary: string;
+  effective_secondary: string;
+};
+
+function hexToRgbTuple(hex: string): string | null {
+  const m = /^#([0-9a-fA-F]{6})$/.exec((hex || "").trim());
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return `${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}`;
+}
+
+export type TerminalSession = {
+  id: string;
+  command: string;
+  cwd: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  exit_code?: number | null;
+  started_at: number;
+  elapsed_s: number;
+  output: string;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
   integrationsReady: boolean;
   integrations: IntegrationsSummary;
+  privacy: PrivacySettings;
+  brainCounts: BrainCounts;
+  workers: WorkerItem[];
+  terminalSessions: TerminalSession[];
+  activeCompanion: CompanionSummary | null;
+  themeCustom: ThemeCustomConfig;
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -87,13 +169,27 @@ export type JarvisContextValue = {
   settingsOpen: boolean;
   setupOpen: boolean;
   integrationsModalOpen: boolean;
+  brainModalOpen: boolean;
+  studioModalOpen: boolean;
+  automationsModalOpen: boolean;
+  devModalOpen: boolean;
+  securityModalOpen: boolean;
+  activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setStudioModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setAutomationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setDevModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setSecurityModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setTerminalSessions: React.Dispatch<React.SetStateAction<TerminalSession[]>>;
+  setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
+  setThemeCustom: React.Dispatch<React.SetStateAction<ThemeCustomConfig>>;
   choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
   saveIntegrations: (payload: Record<string, unknown>) => Promise<boolean>;
   skipIntegrations: () => Promise<void>;
@@ -102,6 +198,11 @@ export type JarvisContextValue = {
     clientId: string,
     clientSecret: string
   ) => Promise<{ ok: boolean; auth_url?: string; error?: string }>;
+  updatePrivacy: (patch: Partial<PrivacySettings>) => Promise<void>;
+  spawnWorker: (goal: string, tools?: string[]) => Promise<void>;
+  cancelWorker: (workerId: string) => Promise<void>;
+  clearCompletedWorkers: () => Promise<void>;
+  showContentCard: (card: ContentCard) => void;
   clearContent: () => void;
   sendText: (text: string, traceNode?: string) => void;
   tapOrb: () => void;
@@ -165,6 +266,17 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     connected_services: [],
     onboarding_done: true,
   });
+  const [privacy, setPrivacyState] = useState<PrivacySettings>({
+    personalization_enabled: true,
+    adaptive_learning_enabled: true,
+    timeline_persistence_enabled: true,
+  });
+  const [brainCounts, setBrainCounts] = useState<BrainCounts>({
+    memories: 0,
+    files: 0,
+    outputs: 0,
+    timeline: 0,
+  });
   const [persona, setPersona] = useState<PersonaMode>("male");
   const [previewPersona, setPreviewPersona] = useState<PersonaMode | null>(null);
   const [personaChosen, setPersonaChosen] = useState(true);
@@ -205,7 +317,23 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
+  const [brainModalOpen, setBrainModalOpen] = useState(false);
+  const [studioModalOpen, setStudioModalOpen] = useState(false);
+  const [automationsModalOpen, setAutomationsModalOpen] = useState(false);
+  const [devModalOpen, setDevModalOpen] = useState(false);
+  const [securityModalOpen, setSecurityModalOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
+  const [workers, setWorkers] = useState<WorkerItem[]>([]);
+  const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
+  const [activeCompanion, setActiveCompanion] = useState<CompanionSummary | null>(null);
+  const [themeCustom, setThemeCustom] = useState<ThemeCustomConfig>({
+    preset: "default",
+    custom_primary: "",
+    custom_secondary: "",
+    effective_primary: "",
+    effective_secondary: "",
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(1);
@@ -215,7 +343,34 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const targetLevelRef = useRef(0);
 
   const activePersona: PersonaMode = previewPersona ?? persona;
-  const theme = PERSONA_THEMES[activePersona];
+  const theme = useMemo<PersonaTheme>(() => {
+    const base = PERSONA_THEMES[activePersona];
+    const pri = themeCustom.effective_primary || "";
+    const sec = themeCustom.effective_secondary || "";
+    if (!pri && !sec) return base;
+    const priRgb = pri ? hexToRgbTuple(pri) : null;
+    const secRgb = sec ? hexToRgbTuple(sec) : null;
+    return {
+      ...base,
+      ...(pri
+        ? {
+            primary: pri,
+            primaryBright: pri,
+            spokeHot: pri,
+            primarySoftBg: priRgb ? `rgba(${priRgb}, 0.09)` : base.primarySoftBg,
+            primaryBorder: priRgb ? `rgba(${priRgb}, 0.30)` : base.primaryBorder,
+            orbGlowRgb: priRgb || base.orbGlowRgb,
+          }
+        : {}),
+      ...(sec
+        ? {
+            secondary: sec,
+            secondaryBright: sec,
+            secondarySoftBg: secRgb ? `rgba(${secRgb}, 0.10)` : base.secondarySoftBg,
+          }
+        : {}),
+    };
+  }, [activePersona, themeCustom]);
 
   const pushLogLine = useCallback((line: string, ts?: string) => {
     if (!line || !line.trim()) return;
@@ -292,6 +447,21 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
 
       if (d.integrations && typeof d.integrations === "object") {
         setIntegrations(d.integrations as IntegrationsSummary);
+      }
+      if (d.privacy && typeof d.privacy === "object") {
+        setPrivacyState(d.privacy as PrivacySettings);
+      }
+      if (d.brain_counts && typeof d.brain_counts === "object") {
+        setBrainCounts(d.brain_counts as BrainCounts);
+      }
+      if (Array.isArray(d.workers)) {
+        setWorkers(d.workers as WorkerItem[]);
+      }
+      if (d.active_companion && typeof d.active_companion === "object") {
+        setActiveCompanion(d.active_companion as CompanionSummary);
+      }
+      if (d.theme_custom && typeof d.theme_custom === "object") {
+        setThemeCustom(d.theme_custom as ThemeCustomConfig);
       }
 
       if (d.persona === "female" || d.persona === "male") {
@@ -440,6 +610,20 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
               break;
             case "content":
               setContent(msg.content || null);
+              break;
+            case "activity":
+              if (Array.isArray(msg.workers)) {
+                setWorkers(msg.workers as WorkerItem[]);
+              }
+              break;
+            case "terminal":
+              if (msg.session && typeof msg.session === "object") {
+                const incoming = msg.session as TerminalSession;
+                setTerminalSessions((prev) => {
+                  const rest = prev.filter((x) => x.id !== incoming.id);
+                  return [incoming, ...rest].slice(0, 20);
+                });
+              }
               break;
             case "reconfig":
               setReady(false);
@@ -782,7 +966,95 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updatePrivacy = useCallback(
+    async (patch: Partial<PrivacySettings>) => {
+      setPrivacyState((prev) => ({ ...prev, ...patch }));
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "brain_set_privacy", ...patch }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.privacy && typeof data.privacy === "object") {
+            setPrivacyState(data.privacy as PrivacySettings);
+          }
+        }
+      } catch {
+        sendAction({ action: "brain_set_privacy", ...patch });
+      }
+    },
+    [sendAction]
+  );
+
+  const showContentCard = useCallback((card: ContentCard) => {
+    setContent(card);
+  }, []);
+
   const clearContent = useCallback(() => setContent(null), []);
+
+  const spawnWorker = useCallback(
+    async (goal: string, tools?: string[]) => {
+      if (!goal.trim()) return;
+      fireLocalTrace(["strategist", "chief_of_staff"]);
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "spawn_worker",
+            goal: goal.trim(),
+            tools: tools || [],
+            auto_start: true,
+          }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+        }
+      } catch {
+        sendAction({ action: "spawn_worker", goal: goal.trim(), tools: tools || [] });
+      }
+    },
+    [fireLocalTrace, sendAction]
+  );
+
+  const cancelWorker = useCallback(
+    async (workerId: string) => {
+      if (!workerId) return;
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel_worker", worker_id: workerId }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+        }
+      } catch {
+        sendAction({ action: "cancel_worker", worker_id: workerId });
+      }
+    },
+    [sendAction]
+  );
+
+  const clearCompletedWorkers = useCallback(async () => {
+    try {
+      const r = await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_completed_workers" }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+      }
+    } catch {
+      sendAction({ action: "clear_completed_workers" });
+    }
+  }, [sendAction]);
 
   const value = useMemo<JarvisContextValue>(
     () => ({
@@ -790,6 +1062,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       ready,
       integrationsReady,
       integrations,
+      privacy,
+      brainCounts,
+      workers,
+      terminalSessions,
+      activeCompanion,
+      themeCustom,
       persona,
       activePersona,
       theme,
@@ -820,18 +1098,37 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       settingsOpen,
       setupOpen,
       integrationsModalOpen,
+      brainModalOpen,
+      studioModalOpen,
+      automationsModalOpen,
+      devModalOpen,
+      securityModalOpen,
+      activityOpen,
       personaModalOpen,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
       setIntegrationsModalOpen,
+      setBrainModalOpen,
+      setStudioModalOpen,
+      setAutomationsModalOpen,
+      setDevModalOpen,
+      setSecurityModalOpen,
+      setTerminalSessions,
+      setActivityOpen,
       setPersonaModalOpen,
       setPreviewPersona,
+      setThemeCustom,
       choosePersona,
       saveIntegrations,
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      updatePrivacy,
+      spawnWorker,
+      cancelWorker,
+      clearCompletedWorkers,
+      showContentCard,
       clearContent,
       sendText,
       tapOrb,
@@ -854,6 +1151,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       ready,
       integrationsReady,
       integrations,
+      privacy,
+      brainCounts,
+      workers,
+      terminalSessions,
+      activeCompanion,
+      themeCustom,
       persona,
       activePersona,
       theme,
@@ -885,12 +1188,23 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       settingsOpen,
       setupOpen,
       integrationsModalOpen,
+      brainModalOpen,
+      studioModalOpen,
+      automationsModalOpen,
+      devModalOpen,
+      securityModalOpen,
+      activityOpen,
       personaModalOpen,
       choosePersona,
       saveIntegrations,
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      updatePrivacy,
+      spawnWorker,
+      cancelWorker,
+      clearCompletedWorkers,
+      showContentCard,
       clearContent,
       sendText,
       tapOrb,

@@ -380,6 +380,12 @@ def format_memory_for_prompt(memory: dict | None) -> str:
     already speaks before any slow step."""
     if not memory:
         return ""
+    try:
+        from memory.config_manager import get_personalization_enabled
+        if not get_personalization_enabled():
+            return ""
+    except Exception:
+        pass
 
     core_lines: list[str] = []
 
@@ -566,12 +572,32 @@ def all_entries_for_ui() -> list[dict]:
     rows.sort(key=lambda r: (r["updated"] or "0000-00-00"), reverse=True)
     return rows
 
-def remember(key: str, value: str, category: str = "notes") -> str:
+def remember(key: str, value: str, category: str = "notes", *, manual: bool = False) -> str:
+    if not manual:
+        try:
+            from memory.config_manager import get_adaptive_learning_enabled
+            if not get_adaptive_learning_enabled():
+                return "Adaptive learning is currently paused in HUD -> Brain -> Privacy."
+        except Exception:
+            pass
     valid = {"identity", "preferences", "projects", "relationships", "wishes", "notes"}
     if category not in valid:
         category = "notes"
-    update_memory({category: {key: {"value": value}}})
-    return f"Remembered: {category}/{key} = {value}"
+    clean_key = re.sub(r"[^a-zA-Z0-9_\- ]+", "", str(key or "").strip()).strip().replace(" ", "_").lower() or "note"
+    update_memory({category: {clean_key: {"value": value}}})
+    return f"Remembered: {category}/{clean_key} = {value}"
+
+
+def clear_all_memories() -> str:
+    """Wipe all stored memories in long_term.json on explicit user request."""
+    empty = _empty_memory()
+    with _lock:
+        MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        MEMORY_PATH.write_text(
+            json.dumps(empty, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    return "Cleared all stored personal memories."
 
 
 def forget(key: str, category: str = "notes") -> str:

@@ -66,6 +66,12 @@ export default function IntegrationsModal() {
   const [spotifySecret, setSpotifySecret] = useState("");
   const [trelloKey, setTrelloKey] = useState("");
   const [trelloToken, setTrelloToken] = useState("");
+  const [linearToken, setLinearToken] = useState("");
+  const [linearTeamId, setLinearTeamId] = useState("");
+  const [outlookToken, setOutlookToken] = useState("");
+  const [dropboxToken, setDropboxToken] = useState("");
+  const [hubspotToken, setHubspotToken] = useState("");
+  const [calendlyToken, setCalendlyToken] = useState("");
 
   const [saving, setSaving] = useState(false);
 
@@ -86,6 +92,11 @@ export default function IntegrationsModal() {
       telegram: Boolean(svcs.telegram?.ignored),
       spotify: Boolean(svcs.spotify?.ignored),
       trello: Boolean(svcs.trello?.ignored),
+      linear: Boolean(svcs.linear?.ignored),
+      outlook: Boolean(svcs.outlook?.ignored),
+      dropbox: Boolean(svcs.dropbox?.ignored),
+      hubspot: Boolean(svcs.hubspot?.ignored),
+      calendly: Boolean(svcs.calendly?.ignored),
     });
     if (svcs.email?.email && !emailAddr) {
       setEmailAddr(svcs.email.email);
@@ -161,6 +172,27 @@ export default function IntegrationsModal() {
         ignore: Boolean(ignoredMap.trello),
         api_key: trelloKey,
         token: trelloToken,
+      },
+      linear: {
+        ignore: Boolean(ignoredMap.linear),
+        token: linearToken,
+        team_id: linearTeamId,
+      },
+      outlook: {
+        ignore: Boolean(ignoredMap.outlook),
+        token: outlookToken,
+      },
+      dropbox: {
+        ignore: Boolean(ignoredMap.dropbox),
+        token: dropboxToken,
+      },
+      hubspot: {
+        ignore: Boolean(ignoredMap.hubspot),
+        token: hubspotToken,
+      },
+      calendly: {
+        ignore: Boolean(ignoredMap.calendly),
+        token: calendlyToken,
       },
     });
     setSaving(false);
@@ -862,6 +894,89 @@ export default function IntegrationsModal() {
               </div>
             )}
           </div>
+
+          {/* 10. Linear, Microsoft Outlook/Graph, Dropbox, HubSpot, Calendly */}
+          {(
+            [
+              {
+                key: "linear",
+                title: "10 · LINEAR",
+                sub: "Linear GraphQL API — list & create engineering issues",
+                val: linearToken,
+                setVal: setLinearToken,
+                ph: "Linear API Key (lin_api_...)",
+                extraVal: linearTeamId,
+                setExtra: setLinearTeamId,
+                extraPh: "Optional Default Team ID",
+              },
+              {
+                key: "outlook",
+                title: "11 · MICROSOFT OUTLOOK / GRAPH",
+                sub: "Outlook Mail & Calendar via Microsoft Graph v1.0",
+                val: outlookToken,
+                setVal: setOutlookToken,
+                ph: "Microsoft Graph Access Token",
+              },
+              {
+                key: "dropbox",
+                title: "12 · DROPBOX",
+                sub: "Dropbox API v2 — list & search cloud folders",
+                val: dropboxToken,
+                setVal: setDropboxToken,
+                ph: "Dropbox Access Token (sl....)",
+              },
+              {
+                key: "hubspot",
+                title: "13 · HUBSPOT CRM",
+                sub: "HubSpot CRM v3 — contacts & pipeline deals",
+                val: hubspotToken,
+                setVal: setHubspotToken,
+                ph: "HubSpot Private App Token (pat-...)",
+              },
+              {
+                key: "calendly",
+                title: "14 · CALENDLY",
+                sub: "Calendly API v2 — upcoming scheduled meetings",
+                val: calendlyToken,
+                setVal: setCalendlyToken,
+                ph: "Calendly Personal Access Token",
+              },
+            ] as const
+          ).map((item) => {
+            const isConn = Boolean(integrations.services?.[item.key]?.connected);
+            const isIgn = Boolean(ignoredMap[item.key]);
+            return (
+              <div key={item.key} style={cardWrap(isIgn, isConn)}>
+                {renderCardHeader(item.key, item.title, item.sub, isConn, item.key)}
+                {!isIgn && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    <input
+                      type="password"
+                      value={item.val}
+                      onChange={(e) => item.setVal(e.target.value)}
+                      placeholder={item.ph}
+                      style={inputStyle}
+                    />
+                    {"extraVal" in item && item.setExtra && (
+                      <input
+                        type="text"
+                        value={item.extraVal}
+                        onChange={(e) => item.setExtra(e.target.value)}
+                        placeholder={item.extraPh}
+                        style={inputStyle}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Sticky Footer */}

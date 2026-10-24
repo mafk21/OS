@@ -12,15 +12,26 @@ import {
   Terminal,
   Scan,
   ShieldAlert,
+  ShieldCheck,
+  Brain,
+  Code2,
+  ExternalLink,
   KeyRound,
   Link2,
   Sparkles,
   Volume2,
   X,
+  Zap,
 } from "lucide-react";
+import AutomationsModal from "./AutomationsModal";
+import BrainModal from "./BrainModal";
+import DevWorkspaceModal from "./DevWorkspaceModal";
 import IntegrationsModal from "./IntegrationsModal";
+import SecurityModal from "./SecurityModal";
+import StudioModal from "./StudioModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
+import { ActivityTimelineHud } from "./WorkerOrbsLayer";
 
 const RED = "#ff5b79";
 const GREEN = "#34d399";
@@ -31,6 +42,8 @@ export default function JarvisHudOverlays() {
     connected,
     integrationsReady,
     integrations,
+    privacy,
+    brainCounts,
     persona,
     activePersona,
     theme,
@@ -58,14 +71,25 @@ export default function JarvisHudOverlays() {
     settingsOpen,
     setupOpen,
     integrationsModalOpen,
+    brainModalOpen,
+    studioModalOpen,
+    automationsModalOpen,
+    devModalOpen,
+    securityModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
     setSetupOpen,
     setIntegrationsModalOpen,
+    setBrainModalOpen,
+    setStudioModalOpen,
+    setAutomationsModalOpen,
+    setDevModalOpen,
+    setSecurityModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
+    updatePrivacy,
     clearContent,
     sendText,
     toggleMute,
@@ -90,7 +114,36 @@ export default function JarvisHudOverlays() {
   const [keyError, setKeyError] = useState("");
   const [draftPersona, setDraftPersona] = useState<PersonaMode>("male");
   const [activatingPersona, setActivatingPersona] = useState(false);
+  const [consoleWidth, setConsoleWidth] = useState<number>(390);
+  const resizingRef = useRef<boolean>(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("jarvis_console_width"));
+      if (saved >= 320 && saved <= 860) setConsoleWidth(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const next = Math.max(320, Math.min(860, window.innerWidth - e.clientX - 16));
+      setConsoleWidth(next);
+      try {
+        window.localStorage.setItem("jarvis_console_width", String(next));
+      } catch {}
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const activePersonaRef = useRef<PersonaMode>(activePersona);
   activePersonaRef.current = activePersona;
@@ -188,6 +241,11 @@ export default function JarvisHudOverlays() {
 
   return (
     <>
+      <ActivityTimelineHud />
+      <StudioModal />
+      <AutomationsModal />
+      <DevWorkspaceModal />
+      <SecurityModal />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -214,6 +272,89 @@ export default function JarvisHudOverlays() {
         >
           <Sparkles size={12} />
           {activePersona === "female" ? "♀ FEMALE" : "♂ MALE"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setBrainModalOpen(true)}
+          title="Open The Brain & Forever Timeline (Memories, Timeline, Files & Outputs)"
+          style={{
+            ...pillBase,
+            borderColor: brainModalOpen
+              ? `${PRIMARY}88`
+              : `${SECONDARY}55`,
+            color: brainModalOpen ? PRIMARY : SECONDARY,
+          }}
+        >
+          <Brain size={12} />
+          BRAIN
+          {brainCounts.memories + brainCounts.files + brainCounts.outputs > 0
+            ? ` (${brainCounts.memories + brainCounts.files + brainCounts.outputs})`
+            : ""}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStudioModalOpen(true)}
+          title="Open Companions, Behavior Interview, Skills & Themes Studio"
+          style={{
+            ...pillBase,
+            borderColor: studioModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: studioModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Sparkles size={12} />
+          STUDIO
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAutomationsModalOpen(true)}
+          title="Open Automations, Custom REST/Webhook Builder & MCP Servers"
+          style={{
+            ...pillBase,
+            borderColor: automationsModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: automationsModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Zap size={12} />
+          AUTOMATE
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setDevModalOpen(true)}
+          title="Open Live Streaming Dev Terminal, Codebase Map & Colorized Diffs"
+          style={{
+            ...pillBase,
+            borderColor: devModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: devModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Code2 size={12} />
+          CODE
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSecurityModalOpen(true)}
+          title="Open Encrypted Vault, Tamper-Evident Audit Log & Scoped Guest Portals"
+          style={{
+            ...pillBase,
+            borderColor: securityModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: securityModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <ShieldCheck size={12} />
+          SHIELD
         </button>
 
         <button
@@ -436,7 +577,7 @@ export default function JarvisHudOverlays() {
         </div>
       )}
 
-      {/* ── Collapsible Right-Side Live Console Drawer ── */}
+      {/* ── Collapsible & Resizable Right-Side Live Console Drawer ── */}
       {consoleOpen && (
         <aside
           aria-label="JARVIS live transcript console"
@@ -445,7 +586,7 @@ export default function JarvisHudOverlays() {
             top: 56,
             right: 16,
             bottom: 68,
-            width: "min(390px, 92vw)",
+            width: `min(${consoleWidth}px, 92vw)`,
             zIndex: 50,
             background: theme.drawerBg,
             border: `1px solid ${PRIMARY}33`,
@@ -457,10 +598,31 @@ export default function JarvisHudOverlays() {
             overflow: "hidden",
           }}
         >
+          {/* Left-edge drag resize grip */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize console"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              resizingRef.current = true;
+            }}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              cursor: "ew-resize",
+              zIndex: 2,
+            }}
+          />
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
+              gap: 8,
               padding: "12px 16px",
               borderBottom: `1px solid ${PRIMARY}22`,
             }}
@@ -476,6 +638,34 @@ export default function JarvisHudOverlays() {
             >
               {assistantName.toUpperCase()} · LIVE STREAM
             </span>
+            <button
+              type="button"
+              onClick={() => {
+                window.open(
+                  "/?view=console",
+                  "jarvis_console",
+                  "width=580,height=880,noopener"
+                );
+              }}
+              title="Pop out console to secondary monitor"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 999,
+                border: `1px solid ${PRIMARY}44`,
+                background: `${PRIMARY}14`,
+                color: PRIMARY,
+                fontFamily: "var(--font-mono)",
+                fontSize: 8.5,
+                letterSpacing: "0.1em",
+                cursor: "pointer",
+              }}
+            >
+              <ExternalLink size={10} />
+              POP OUT
+            </button>
             <button
               type="button"
               onClick={() => setConsoleOpen(false)}
@@ -989,6 +1179,63 @@ export default function JarvisHudOverlays() {
               </label>
             </div>
 
+            {/* Privacy Tier Toggles */}
+            <div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9.5,
+                  letterSpacing: "0.16em",
+                  color: "rgba(240,237,232,0.55)",
+                  marginBottom: 8,
+                }}
+              >
+                BRAIN & PRIVACY GOVERNANCE
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePrivacy({
+                      personalization_enabled: !privacy.personalization_enabled,
+                    })
+                  }
+                  style={{
+                    ...pillBase,
+                    padding: "5px 10px",
+                    borderColor: privacy.personalization_enabled
+                      ? `${GREEN}66`
+                      : "rgba(255,255,255,0.18)",
+                    color: privacy.personalization_enabled
+                      ? GREEN
+                      : "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  PERSONALIZATION: {privacy.personalization_enabled ? "ON" : "OFF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePrivacy({
+                      adaptive_learning_enabled: !privacy.adaptive_learning_enabled,
+                    })
+                  }
+                  style={{
+                    ...pillBase,
+                    padding: "5px 10px",
+                    borderColor: privacy.adaptive_learning_enabled
+                      ? `${GREEN}66`
+                      : "rgba(255,255,255,0.18)",
+                    color: privacy.adaptive_learning_enabled
+                      ? GREEN
+                      : "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  ADAPTIVE: {privacy.adaptive_learning_enabled ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
+
             <div
               style={{
                 display: "flex",
@@ -1000,6 +1247,22 @@ export default function JarvisHudOverlays() {
               }}
             >
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setBrainModalOpen(true);
+                  }}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${SECONDARY}66`,
+                    color: SECONDARY,
+                  }}
+                >
+                  <Brain size={12} />
+                  BRAIN
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1051,6 +1314,9 @@ export default function JarvisHudOverlays() {
           </div>
         </div>
       )}
+
+      {/* ── The Brain & Forever Timeline Modal ── */}
+      <BrainModal />
 
       {/* ── Optional Integrations Onboarding / Manager Modal ── */}
       <IntegrationsModal />

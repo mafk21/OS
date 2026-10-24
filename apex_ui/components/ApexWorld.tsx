@@ -6,6 +6,7 @@ import ReasoningWebJs from "./ReasoningWeb";
 import ShaderBackgroundJs from "./ShaderBackground";
 import OrbStatusBar from "./OrbStatusBar";
 import { useJarvis } from "./JarvisBridge";
+import { WorkerOrbsLayer } from "./WorkerOrbsLayer";
 
 export type NodeSel = { name: string; key: string; color: string };
 
@@ -547,6 +548,7 @@ export default function ApexWorld() {
   } = useJarvis();
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
+  const [cam, setCam] = useState({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 });
 
   const openAgent = (n: NodeSel) => {
     fireLocalTrace([n.key]);
@@ -560,6 +562,80 @@ export default function ApexWorld() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+
+  // Keyboard 3D World Navigation (WASD / Arrow pan+tilt, +/- zoom, 0/Home reset)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.tagName === "SELECT" ||
+          el.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "a":
+        case "A":
+          setCam((c) => ({
+            ...c,
+            x: Math.min(180, c.x + 22),
+            tiltY: Math.max(-14, c.tiltY - 2),
+          }));
+          break;
+        case "ArrowRight":
+        case "d":
+        case "D":
+          setCam((c) => ({
+            ...c,
+            x: Math.max(-180, c.x - 22),
+            tiltY: Math.min(14, c.tiltY + 2),
+          }));
+          break;
+        case "ArrowUp":
+        case "w":
+        case "W":
+          setCam((c) => ({
+            ...c,
+            y: Math.min(140, c.y + 18),
+            tiltX: Math.min(12, c.tiltX + 1.8),
+          }));
+          break;
+        case "ArrowDown":
+        case "s":
+        case "S":
+          setCam((c) => ({
+            ...c,
+            y: Math.max(-140, c.y - 18),
+            tiltX: Math.max(-12, c.tiltX - 1.8),
+          }));
+          break;
+        case "+":
+        case "=":
+          setCam((c) => ({ ...c, zoom: Math.min(1.36, +(c.zoom + 0.08).toFixed(2)) }));
+          break;
+        case "-":
+        case "_":
+          setCam((c) => ({ ...c, zoom: Math.max(0.8, +(c.zoom - 0.08).toFixed(2)) }));
+          break;
+        case "0":
+        case "Home":
+          setCam({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 });
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const camShifted =
+    cam.x !== 0 || cam.y !== 0 || cam.zoom !== 1 || cam.tiltX !== 0 || cam.tiltY !== 0;
 
   const webState =
     orbState === "thinking"
@@ -621,26 +697,114 @@ export default function ApexWorld() {
       />
 
       <div
-        aria-hidden="true"
         style={{
           position: "absolute",
           inset: 0,
           zIndex: 2,
-          pointerEvents: "none",
+          transform: camShifted
+            ? `perspective(1200px) translate3d(${cam.x}px, ${cam.y}px, 0) scale(${cam.zoom}) rotateX(${cam.tiltX}deg) rotateY(${cam.tiltY}deg)`
+            : undefined,
+          transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)",
+          transformStyle: "preserve-3d",
         }}
       >
-        <ReasoningWeb
-          key={activePersona}
-          persona={activePersona}
-          state={webState}
-          trace={trace}
-          mode="full"
-          coreless
-          onSelect={(n: NodeSel) => {
-            openAgent(n);
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+          }}
+        >
+          <ReasoningWeb
+            key={activePersona}
+            persona={activePersona}
+            state={webState}
+            trace={trace}
+            mode="full"
+            coreless
+            onSelect={(n: NodeSel) => {
+              openAgent(n);
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            width: "min(560px, 58vw)",
+            height: "min(500px, 56vw, 70vh)",
+            transform: "translate(-50%, -50%)",
+            zIndex: 3,
+            pointerEvents: "none",
+          }}
+        >
+          <ApexHeroOrb
+            state={orbState}
+            interactive={false}
+            primaryColor={theme.primary}
+            primaryBright={theme.primaryBright}
+            secondaryColor={theme.secondary}
+            secondaryBright={theme.secondaryBright}
+          />
+        </div>
+
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="JARVIS core - tap to interrupt or wake"
+          onClick={tapOrb}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              tapOrb();
+            }
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: "min(340px, 36vw)",
+            height: "min(340px, 36vw)",
+            borderRadius: "50%",
+            zIndex: 4,
+            cursor: "pointer",
+            background: "transparent",
+            border: "none",
+            userSelect: "none",
           }}
         />
+
+        <WorkerOrbsLayer />
       </div>
+
+      {camShifted && (
+        <button
+          type="button"
+          onClick={() => setCam({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 })}
+          style={{
+            position: "fixed",
+            left: 16,
+            bottom: 18,
+            zIndex: 35,
+            padding: "5px 11px",
+            borderRadius: 999,
+            border: `1px solid ${theme.primary}44`,
+            background: "rgba(5, 11, 22, 0.78)",
+            color: theme.primary,
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.1em",
+            cursor: "pointer",
+          }}
+        >
+          CAM {Math.round(cam.zoom * 100)}% · PRESS 0 TO RESET
+        </button>
+      )}
 
       <nav className="visually-hidden" aria-label="JARVIS agents">
         <ul>
@@ -667,56 +831,6 @@ export default function ApexWorld() {
           ))}
         </ul>
       </nav>
-
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          width: "min(560px, 58vw)",
-          height: "min(500px, 56vw, 70vh)",
-          transform: "translate(-50%, -50%)",
-          zIndex: 3,
-          pointerEvents: "none",
-        }}
-      >
-        <ApexHeroOrb
-          state={orbState}
-          interactive={false}
-          primaryColor={theme.primary}
-          primaryBright={theme.primaryBright}
-          secondaryColor={theme.secondary}
-          secondaryBright={theme.secondaryBright}
-        />
-      </div>
-
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label="JARVIS core - tap to interrupt or wake"
-        onClick={tapOrb}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            tapOrb();
-          }
-        }}
-        onMouseDown={(e) => e.preventDefault()}
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          width: "min(340px, 36vw)",
-          height: "min(340px, 36vw)",
-          borderRadius: "50%",
-          zIndex: 4,
-          cursor: "pointer",
-          background: "transparent",
-          border: "none",
-          userSelect: "none",
-        }}
-      />
 
       <OrbStatusBarComp
         state={orbState}

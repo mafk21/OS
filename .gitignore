@@ -6,6 +6,7 @@
 
 # ── Secrets. Committing any of these publishes them. ──────────────────────────
 config/api_keys.json          # your Gemini API key, plus per-plugin credentials
+config/.vault.key             # local 256-bit credential vault master key
 config/certs/                 # the dashboard's TLS private key and certificate
 config/whatsapp_web/          # a LINKED WhatsApp session — committing it hands
                               # somebody your WhatsApp account, not just a key
@@ -17,6 +18,12 @@ config/whatsapp_web/          # a LINKED WhatsApp session — committing it hand
 
 # ── Personal data the assistant accumulates about you ─────────────────────────
 memory/long_term.json
+memory/accounts.json
+memory/companions.json
+memory/custom_tools.json
+memory/automations.json
+memory/knowledge_files/
+memory/custom_skills/
 memory/*.db
 
 # ── Python build noise ────────────────────────────────────────────────────────

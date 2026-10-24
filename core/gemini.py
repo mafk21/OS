@@ -309,7 +309,11 @@ def api_key(refresh: bool = False) -> str:
             return _cached_key
         try:
             data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
-            _cached_key = str(data.get("gemini_api_key") or "")
+            raw_k = str(data.get("gemini_api_key") or "")
+            if raw_k.startswith("enc:v1:"):
+                from core.security_vault import decrypt_secret
+                raw_k = decrypt_secret(raw_k)
+            _cached_key = raw_k
         except Exception:
             _cached_key = ""
         return _cached_key

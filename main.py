@@ -1491,6 +1491,16 @@ class JarvisLive:
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
             return
+        try:
+            from memory.timeline import append_turn
+            append_turn("user", text, speaker="You", channel="text")
+        except Exception:
+            pass
+        try:
+            from core.companions import detect_and_record_correction
+            detect_and_record_correction(text)
+        except Exception:
+            pass
         asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
@@ -1734,6 +1744,20 @@ class JarvisLive:
             pass
         if mem_str:
             parts.append(mem_str)
+        try:
+            from memory.timeline import format_timeline_for_prompt
+            tl_str = format_timeline_for_prompt(recent_limit=8)
+            if tl_str:
+                parts.append(tl_str)
+        except Exception:
+            pass
+        try:
+            from core.companions import format_behavior_and_companion_for_prompt
+            beh_str = format_behavior_and_companion_for_prompt()
+            if beh_str:
+                parts.append(beh_str)
+        except Exception:
+            pass
         parts.append(sys_prompt)
 
         # gemini-3.8-live defaults tool calls to ASYNC (NON_BLOCKING); this
@@ -1860,6 +1884,13 @@ class JarvisLive:
         _notify_tool = getattr(self.ui, "notify_tool_call", None)
         if callable(_notify_tool):
             _notify_tool(name)
+        _task_id = f"fc-{getattr(fc, 'id', None) or int(time.time() * 1000)}-{name}"
+        _notify_start = getattr(self.ui, "notify_tool_start", None)
+        if callable(_notify_start):
+            _arg_preview = ", ".join(
+                f"{k}={str(v)[:28]}" for k, v in list(args.items())[:2]
+            )
+            _notify_start(_task_id, name, _arg_preview)
 
         # Learning-loop census: window restarts after 10 quiet minutes so the
         # hint measures one burst of work, not a whole day of chatting.
@@ -1869,6 +1900,22 @@ class JarvisLive:
         self._skill_window_start = _now
         self._skill_window_tools += 1
 
+        # Enforce scoped tool permissions when a Specialist Companion is active
+        try:
+            from core.companions import is_tool_allowed_for_active_companion
+            _allowed_ok, _deny_msg = is_tool_allowed_for_active_companion(name)
+            if not _allowed_ok:
+                _nf = getattr(self.ui, "notify_tool_finish", None)
+                if callable(_nf):
+                    _nf(_task_id, _deny_msg, "failed")
+                if not self.ui.muted:
+                    self.ui.set_state("LISTENING")
+                return types.FunctionResponse(
+                    id=fc.id, name=name, response={"result": _deny_msg}
+                )
+        except Exception:
+            pass
+
         if name == "save_memory":
             category = args.get("category", "notes")
             key      = args.get("key", "")
@@ -1876,6 +1923,9 @@ class JarvisLive:
             if key and value:
                 update_memory({category: {key: {"value": value}}})
                 print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+            _nf = getattr(self.ui, "notify_tool_finish", None)
+            if callable(_nf):
+                _nf(_task_id, f"{category}/{key}", "completed")
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
@@ -1888,19 +1938,30 @@ class JarvisLive:
 
         try:
             if name == "recall_memory":
-                # Local file search: no network, no second model. Kept out of
-                # the executor deliberately — it is a dictionary scan over a few
-                # hundred short strings, and a thread hop would cost more than
-                # the work itself.
-                result = search_memory(args.get("query", ""), limit=8)
+                # Unified local Brain recall: searches personal memories,
+                # uploaded Brain knowledge files, Forever Timeline, and outputs.
+                try:
+                    from memory.timeline import unified_brain_search
+                    result = unified_brain_search(args.get("query", ""), limit=8)
+                except Exception:
+                    result = search_memory(args.get("query", ""), limit=8)
 
             elif name == "skill_read":
                 # Skills live on disk as SKILL.md folders; metadata is already in
                 # the prompt, this is Level 2/3 — body or a bundled file. Pure
                 # read, dictionary-cheap: stays in the loop like recall_memory.
-                result = self._skill_registry.read(
-                    args.get("name", ""), args.get("path") or None
-                )
+                sname = args.get("name", "")
+                spath = args.get("path") or None
+                if sname in self._skill_registry.names():
+                    result = self._skill_registry.read(sname, spath)
+                else:
+                    from core.companions import CUSTOM_SKILLS_DIR
+                    from core.skill_loader import discover_skills
+                    cust_reg = discover_skills(CUSTOM_SKILLS_DIR, logger=lambda _: None)
+                    if sname in cust_reg.names():
+                        result = cust_reg.read(sname, spath)
+                    else:
+                        result = self._skill_registry.read(sname, spath)
 
             elif name == "skill_manage":
                 # The learning loop's write path. Validation lives in
@@ -2107,6 +2168,23 @@ class JarvisLive:
 
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
+
+        _nf = getattr(self.ui, "notify_tool_finish", None)
+        if callable(_nf):
+            _st = "failed" if str(result).startswith(f"Tool '{name}' failed:") else "completed"
+            _nf(_task_id, str(result)[:220], _st)
+
+        try:
+            from core.security_vault import log_audit_event
+            log_audit_event(
+                actor=self._asst_name.lower(),
+                action=name,
+                args=args,
+                result_summary=str(result)[:220],
+                status="error" if str(result).startswith(f"Tool '{name}' failed:") else "ok",
+            )
+        except Exception:
+            pass
 
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
 
@@ -2579,6 +2657,16 @@ class JarvisLive:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                try:
+                                    from memory.timeline import append_turn
+                                    append_turn("user", full_in, speaker="You", channel="voice")
+                                except Exception:
+                                    pass
+                                try:
+                                    from core.companions import detect_and_record_correction
+                                    detect_and_record_correction(full_in)
+                                except Exception:
+                                    pass
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -2598,6 +2686,11 @@ class JarvisLive:
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
+                                try:
+                                    from memory.timeline import append_turn
+                                    append_turn("jarvis", full_out, speaker=self._asst_name, channel="voice")
+                                except Exception:
+                                    pass
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
@@ -2971,6 +3064,12 @@ class JarvisLive:
         if len(log) < 3:          # need at least one exchange to be worth saving
             return
         self._session_log = []    # reset immediately so the next session starts clean
+        try:
+            from memory.config_manager import get_adaptive_learning_enabled
+            if not get_adaptive_learning_enabled():
+                return
+        except Exception:
+            pass
 
         memory = load_memory()
         lang_entry = memory.get("identity", {}).get("language", {})

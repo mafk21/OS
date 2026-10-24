@@ -38,10 +38,32 @@ def load_api_keys() -> dict:
     if not CONFIG_FILE.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return {}
+        try:
+            from core.security_vault import decrypt_dict_secrets
+            return decrypt_dict_secrets(raw)
+        except Exception:
+            return raw
     except Exception as e:
         print(f"❌ Failed to load api_keys.json: {e}")
         return {}
+
+
+def set_strict_config_encryption(enabled: bool) -> bool:
+    """Encrypt or decrypt secret keys inside config/api_keys.json on disk."""
+    if not CONFIG_FILE.exists():
+        return False
+    plain = load_api_keys()
+    plain["strict_vault_config"] = bool(enabled)
+    if enabled:
+        from core.security_vault import encrypt_dict_secrets
+        disk_obj = encrypt_dict_secrets(plain)
+    else:
+        disk_obj = plain
+    CONFIG_FILE.write_text(json.dumps(disk_obj, indent=2), encoding="utf-8")
+    return True
 
 def get_gemini_key() -> str | None:
     return load_api_keys().get("gemini_api_key")
@@ -58,6 +80,44 @@ def is_integrations_onboarding_done() -> bool:
 
 def save_integrations_onboarding_done(done: bool = True) -> None:
     _save_flag("integrations_onboarding_done", bool(done))
+
+
+# ── Brain & Privacy Tier Toggles ─────────────────────────────────────────────
+
+def get_personalization_enabled() -> bool:
+    """Tier 3: Whether stored memories & timeline context are injected into prompts."""
+    return bool(load_api_keys().get("personalization_enabled", True))
+
+
+def save_personalization_enabled(enabled: bool) -> None:
+    _save_flag("personalization_enabled", bool(enabled))
+
+
+def get_adaptive_learning_enabled() -> bool:
+    """Tier 4: Whether JARVIS automatically records new preferences/facts during chats."""
+    return bool(load_api_keys().get("adaptive_learning_enabled", True))
+
+
+def save_adaptive_learning_enabled(enabled: bool) -> None:
+    _save_flag("adaptive_learning_enabled", bool(enabled))
+
+
+def get_timeline_persistence_enabled() -> bool:
+    """Whether spoken, typed, and Telegram turns are persisted to the Forever Timeline."""
+    return bool(load_api_keys().get("timeline_persistence_enabled", True))
+
+
+def save_timeline_persistence_enabled(enabled: bool) -> None:
+    _save_flag("timeline_persistence_enabled", bool(enabled))
+
+
+def get_privacy_settings() -> dict:
+    cfg = load_api_keys()
+    return {
+        "personalization_enabled": bool(cfg.get("personalization_enabled", True)),
+        "adaptive_learning_enabled": bool(cfg.get("adaptive_learning_enabled", True)),
+        "timeline_persistence_enabled": bool(cfg.get("timeline_persistence_enabled", True)),
+    }
 
 
 def get_assistant_name() -> str:

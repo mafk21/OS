@@ -31,9 +31,19 @@ try:
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
     FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
-from core import audio_devices
+from core import (
+    audio_devices,
+    automations,
+    companions,
+    dev_workspace,
+    mcp_adapter,
+    security_vault,
+)
 from core import confirm as confirm_gate
 from memory import accounts
+from memory import config_manager as cfg
+from memory import memory_manager as mm
+from memory import timeline
 from memory import config_manager as cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -46,6 +56,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "web_search": ["researcher"],
     "youtube_video": ["researcher", "social_media"],
     "memory": ["memory"],
+    "brain_control": ["memory", "editor"],
     "smart_notes": ["memory", "editor"],
     "lecture_capture": ["memory", "editor"],
     "code_helper": ["developer", "engineering"],
@@ -68,6 +79,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "morning_briefing": ["chief_of_staff", "strategist"],
     "focus_guardian": ["chief_of_staff", "strategist"],
     "cloud_integrations": ["email", "drive", "calendar"],
+    "custom_connector": ["developer", "ops"],
     "manage_accounts": ["chief_of_staff", "email"],
     "gws_pack": ["email", "drive", "calendar"],
     "github_automation": ["developer", "engineering"],
@@ -130,9 +142,26 @@ class ApexHudBridge:
         self._offline = False
         self._offline_reason = ""
         self._logs: deque[str] = deque(maxlen=140)
+        try:
+            for seed_ln in timeline.get_console_seed_lines(limit=80):
+                self._logs.append(seed_ln)
+        except Exception:
+            pass
         self._confirm: dict[str, str] | None = None
         self._content: dict[str, str] | None = None
         self._last_level_push = 0.0
+        self._tool_tasks: dict[str, dict[str, Any]] = {}
+        self._cancelled_task_ids: set[str] = set()
+
+        try:
+            from core.subagents import get_subagent_manager
+            get_subagent_manager().add_listener(self.push_activity)
+        except Exception:
+            pass
+        try:
+            dev_workspace.get_terminal_manager().add_listener(self.push_terminal_session)
+        except Exception:
+            pass
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set[Any] = set()
@@ -144,6 +173,7 @@ class ApexHudBridge:
 
         self._wx_cache: dict[str, Any] | None = None
         self._wx_cached_at = 0.0
+        self._auto_scheduler = automations.AutomationScheduler(on_log=self.push_log)
 
     # ── State inspection helpers ──────────────────────────────────────────────
 
@@ -222,11 +252,21 @@ class ApexHudBridge:
         except Exception:
             out_devs = [audio_devices.DEFAULT_LABEL]
 
+        try:
+            b_counts = timeline.get_brain_snapshot()["counts"]
+        except Exception:
+            b_counts = {"memories": 0, "files": 0, "outputs": 0, "timeline": 0}
+
         return {
             "type": "bootstrap",
             "ready": self._is_ready(),
             "integrations_ready": self._is_integrations_ready(),
             "integrations": accounts.get_integrations_status_summary(),
+            "privacy": cfg.get_privacy_settings(),
+            "brain_counts": b_counts,
+            "workers": self.get_activity_snapshot(),
+            "active_companion": companions.get_active_companion(),
+            "theme_custom": companions.get_theme_customization(),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -331,6 +371,99 @@ class ApexHudBridge:
                 }
             )
 
+    def get_activity_snapshot(self) -> list[dict[str, Any]]:
+        """Unified live worker list combining SubagentManager + running/recent tool tasks."""
+        items: list[dict[str, Any]] = []
+        try:
+            from core.subagents import get_subagent_manager
+            items.extend(get_subagent_manager().list_detailed())
+        except Exception:
+            pass
+
+        now = time.time()
+        with self._lock:
+            tasks = list(self._tool_tasks.values())
+        for t in tasks:
+            end_ts = t["updated_at"] if t["status"] in ("completed", "failed", "cancelled") else now
+            items.append(
+                {
+                    **t,
+                    "elapsed_s": round(max(0.0, end_ts - float(t["created_at"])), 1),
+                }
+            )
+
+        # Sort active/pending first, then newest first
+        rank = {"in_progress": 0, "pending": 1, "completed": 2, "failed": 2, "cancelled": 2}
+        items.sort(key=lambda w: (rank.get(str(w.get("status")), 3), -float(w.get("created_at") or 0)))
+        return items[:36]
+
+    def push_activity(self) -> None:
+        self._broadcast_threadsafe(
+            {"type": "activity", "workers": self.get_activity_snapshot()}
+        )
+
+    def push_terminal_session(self, session: dict[str, Any]) -> None:
+        self._broadcast_threadsafe({"type": "terminal", "session": session})
+
+    def notify_tool_start(
+        self, task_id: str, tool_name: str, args_summary: str = ""
+    ) -> None:
+        now = time.time()
+        tid = str(task_id or f"tool-{int(now * 1000)}")
+        label = f"{tool_name}" + (f" · {args_summary[:64]}" if args_summary else "")
+        rec: dict[str, Any] = {
+            "id": tid,
+            "kind": "tool",
+            "title": label,
+            "goal": label,
+            "status": "in_progress",
+            "tools": [tool_name],
+            "nodes": map_tool_to_nodes(tool_name)[:3],
+            "steps": [{"step": 1, "action": tool_name, "result": args_summary[:180] or "Running…", "ts": now}],
+            "step_count": 1,
+            "max_steps": 1,
+            "result": None,
+            "error": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self._lock:
+            self._tool_tasks[tid] = rec
+            if len(self._tool_tasks) > 32:
+                # Prune oldest finished entries first
+                finished = [
+                    k for k, v in self._tool_tasks.items()
+                    if v.get("status") in ("completed", "failed", "cancelled")
+                ]
+                for k in finished[:8]:
+                    self._tool_tasks.pop(k, None)
+        self.push_activity()
+
+    def notify_tool_finish(
+        self, task_id: str, result_summary: str = "", status: str = "completed"
+    ) -> None:
+        now = time.time()
+        with self._lock:
+            rec = self._tool_tasks.get(str(task_id))
+            if rec is None:
+                return
+            if str(task_id) in self._cancelled_task_ids:
+                rec["status"] = "cancelled"
+            else:
+                rec["status"] = status if status in ("completed", "failed", "cancelled") else "completed"
+            rec["updated_at"] = now
+            if rec["status"] == "failed":
+                rec["error"] = str(result_summary or "")[:300]
+            else:
+                rec["result"] = str(result_summary or "")[:300]
+            if rec.get("steps"):
+                rec["steps"][-1]["result"] = str(result_summary or "Done.")[:220]
+        self.push_activity()
+
+    def is_task_cancelled(self, task_id: str) -> bool:
+        with self._lock:
+            return str(task_id) in self._cancelled_task_ids
+
     def push_confirm(self, title: str, detail: str) -> None:
         obj = {"title": str(title)[:120], "detail": str(detail)[:300]}
         with self._lock:
@@ -346,6 +479,10 @@ class ApexHudBridge:
         obj = {"title": str(title)[:64], "text": str(text)[:4000]}
         with self._lock:
             self._content = obj
+        try:
+            timeline.record_output(str(title)[:120], str(text)[:12000])
+        except Exception:
+            pass
         self._broadcast_threadsafe({"type": "content", "content": obj})
 
     def push_offline(self, offline: bool, reason: str = "") -> None:
@@ -467,6 +604,12 @@ class ApexHudBridge:
                 cb = getattr(ui, "on_text_command", None) if ui else None
                 if callable(cb):
                     threading.Thread(target=cb, args=(txt,), daemon=True).start()
+                else:
+                    try:
+                        timeline.append_turn("user", txt, speaker="You", channel="text")
+                        companions.detect_and_record_correction(txt)
+                    except Exception:
+                        pass
             return {"ok": True}
 
         if action == "orb_tap":
@@ -622,6 +765,480 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "brain_get":
+            return {"ok": True, "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_search":
+            q = str(data.get("query") or "").strip()
+            return {
+                "ok": True,
+                "memories": mm.all_entries_for_ui()
+                if not q
+                else [
+                    m
+                    for m in mm.all_entries_for_ui()
+                    if q.lower() in m["key"].lower()
+                    or q.lower() in m["value"].lower()
+                    or q.lower() in m["category"].lower()
+                ],
+                "timeline": timeline.search_timeline(
+                    q, limit=40, channel=str(data.get("channel") or "")
+                ),
+                "files": [
+                    f
+                    for f in timeline.list_knowledge_files()
+                    if not q
+                    or q.lower() in f["filename"].lower()
+                    or q.lower() in f["preview"].lower()
+                ],
+                "outputs": timeline.list_outputs(q, limit=40),
+            }
+
+        if action == "brain_save_memory":
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            val = str(data.get("value") or "").strip()
+            if not key or not val:
+                return {"ok": False, "error": "Both key and value are required."}
+            mm.remember(key, val, category=cat, manual=True)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_forget_memory":
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            mm.forget(key, category=cat)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_clear_memories":
+            mm.clear_all_memories()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_upload_file":
+            fname = str(data.get("filename") or "note.md").strip()
+            content_val = str(data.get("content") or "")
+            is_b64 = bool(data.get("is_base64", False))
+            if not content_val:
+                return {"ok": False, "error": "Empty file content."}
+            rec = timeline.ingest_knowledge_file(fname, content_val, is_base64=is_b64)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "file": rec, "brain": snap}
+
+        if action == "brain_read_file":
+            fid = int(data.get("file_id") or 0)
+            doc = timeline.read_knowledge_file(fid)
+            return {"ok": doc is not None, "file": doc}
+
+        if action == "brain_delete_file":
+            fid = int(data.get("file_id") or 0)
+            timeline.delete_knowledge_file(fid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_delete_turn":
+            mid = int(data.get("id") or 0)
+            timeline.delete_timeline_message(mid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_clear_timeline":
+            timeline.clear_timeline()
+            with self._lock:
+                self._logs.clear()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_pin_output":
+            oid = int(data.get("id") or 0)
+            pinned = timeline.toggle_pin_output(oid)
+            return {"ok": True, "pinned": pinned, "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_delete_output":
+            oid = int(data.get("id") or 0)
+            timeline.delete_output(oid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_set_privacy":
+            if "personalization_enabled" in data:
+                cfg.save_personalization_enabled(bool(data["personalization_enabled"]))
+            if "adaptive_learning_enabled" in data:
+                cfg.save_adaptive_learning_enabled(bool(data["adaptive_learning_enabled"]))
+            if "timeline_persistence_enabled" in data:
+                cfg.save_timeline_persistence_enabled(bool(data["timeline_persistence_enabled"]))
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "privacy": cfg.get_privacy_settings(), "brain": snap}
+
+        if action == "brain_import_json":
+            payload = data.get("payload")
+            if not isinstance(payload, dict):
+                return {"ok": False, "error": "Invalid Brain JSON payload."}
+            restored = timeline.import_brain_json(payload)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "restored": restored, "brain": snap}
+
+        # ── 3D World View Worker Orbs & Activity Timeline actions ─────────────
+
+        if action == "activity_get":
+            return {"ok": True, "workers": self.get_activity_snapshot()}
+
+        if action == "spawn_worker":
+            goal = str(data.get("goal") or "").strip()
+            if not goal:
+                return {"ok": False, "error": "Worker goal is required."}
+            raw_tools = data.get("tools")
+            tools = [str(t) for t in raw_tools] if isinstance(raw_tools, list) else []
+            auto_start = bool(data.get("auto_start", True))
+            from core.subagents import get_subagent_manager
+            mgr = get_subagent_manager()
+            wid = mgr.spawn(goal=goal, tools=tools, max_steps=int(data.get("max_steps") or 10))
+            if auto_start:
+                mgr.start(wid)
+            self.push_log(f"SYS: Spawned worker {wid} — {goal[:72]}")
+            if tools:
+                self.push_tool_trace(tools)
+            return {"ok": True, "worker_id": wid, "workers": self.get_activity_snapshot()}
+
+        if action == "step_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            step_act = str(data.get("step_action") or "step").strip()
+            step_res = str(data.get("step_result") or "").strip()
+            from core.subagents import get_subagent_manager
+            ok = get_subagent_manager().add_step(wid, step_act, step_res)
+            return {"ok": ok, "workers": self.get_activity_snapshot()}
+
+        if action == "complete_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            res_txt = str(data.get("result") or "Completed.").strip()
+            from core.subagents import get_subagent_manager
+            ok = get_subagent_manager().complete(wid, res_txt)
+            return {"ok": ok, "workers": self.get_activity_snapshot()}
+
+        if action == "cancel_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            cancelled = False
+            try:
+                from core.subagents import get_subagent_manager
+                cancelled = get_subagent_manager().cancel(wid)
+            except Exception:
+                pass
+            if not cancelled:
+                with self._lock:
+                    self._cancelled_task_ids.add(wid)
+                    rec = self._tool_tasks.get(wid)
+                    if rec and rec.get("status") in ("in_progress", "pending"):
+                        rec["status"] = "cancelled"
+                        rec["updated_at"] = time.time()
+                        cancelled = True
+                if cancelled:
+                    self.push_activity()
+            if cancelled:
+                self.push_log(f"SYS: Cancelled worker {wid}.")
+            return {"ok": cancelled, "workers": self.get_activity_snapshot()}
+
+        if action == "clear_completed_workers":
+            removed = 0
+            try:
+                from core.subagents import get_subagent_manager
+                removed += get_subagent_manager().clear_finished()
+            except Exception:
+                pass
+            with self._lock:
+                done_keys = [
+                    k for k, v in self._tool_tasks.items()
+                    if v.get("status") in ("completed", "failed", "cancelled")
+                ]
+                for k in done_keys:
+                    self._tool_tasks.pop(k, None)
+                    removed += 1
+            self.push_activity()
+            return {"ok": True, "removed": removed, "workers": self.get_activity_snapshot()}
+
+        # ── Behavior Interviews, Companions & Visual Skills/Themes Studio ─────
+
+        if action == "studio_get":
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_interview":
+            answers = data.get("answers")
+            iv = companions.save_behavior_interview(answers if isinstance(answers, dict) else {})
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            return {"ok": True, "interview": iv, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_add_rule":
+            rule_txt = str(data.get("rule") or "").strip()
+            companions.add_learned_rule(rule_txt)
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_rule":
+            rid = str(data.get("rule_id") or "").strip()
+            companions.delete_learned_rule(rid)
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_companion":
+            try:
+                comp = companions.save_companion(data.get("companion") if isinstance(data.get("companion"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "companion": comp, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_companion":
+            cid = str(data.get("companion_id") or "").strip()
+            companions.delete_companion(cid)
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_activate_companion":
+            cid = str(data.get("companion_id") or "default").strip()
+            comp = companions.set_active_companion(cid)
+            self.push_log(f"SYS: Active companion switched to {comp.get('name')} ({comp.get('role')}).")
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_persona_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, args=(comp.get("persona", "male"), comp.get("voice", "")), daemon=True).start()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "active_companion": comp, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_skill":
+            try:
+                res = companions.save_custom_skill(
+                    name=str(data.get("name") or ""),
+                    description=str(data.get("description") or ""),
+                    body=str(data.get("body") or ""),
+                )
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, **res, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_skill":
+            sname = str(data.get("name") or "").strip()
+            ok = companions.delete_custom_skill(sname)
+            return {"ok": ok, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_theme":
+            th = companions.save_theme_customization(
+                preset=str(data.get("preset") or "default"),
+                custom_primary=str(data.get("custom_primary") or ""),
+                custom_secondary=str(data.get("custom_secondary") or ""),
+            )
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "theme": th}
+
+        # ── Automations Center, Custom REST/Webhooks & MCP Builder ────────────
+
+        def _auto_state() -> dict[str, Any]:
+            return {
+                "automations": automations.list_automations(),
+                "rest_connectors": mcp_adapter.list_rest_connectors(),
+                "mcp_servers": mcp_adapter.list_mcp_servers(),
+                "available_tools": sorted(set(TOOL_NODE_MAP.keys())),
+            }
+
+        if action == "auto_get":
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_save":
+            try:
+                rec = automations.save_automation(data.get("automation") if isinstance(data.get("automation"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "automation": rec, **_auto_state()}
+
+        if action == "auto_toggle":
+            aid = str(data.get("id") or "").strip()
+            enabled = data.get("enabled") if isinstance(data.get("enabled"), bool) else None
+            automations.toggle_automation(aid, enabled=enabled)
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_delete":
+            aid = str(data.get("id") or "").strip()
+            automations.delete_automation(aid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_run_now":
+            aid = str(data.get("id") or "").strip()
+            try:
+                run_rec = automations.run_automation_now(aid, on_log=self.push_log)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "run": run_rec, **_auto_state()}
+
+        if action == "rest_save":
+            try:
+                rec = mcp_adapter.save_rest_connector(data.get("connector") if isinstance(data.get("connector"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "connector": rec, **_auto_state()}
+
+        if action == "rest_delete":
+            cid = str(data.get("id") or data.get("name") or "").strip()
+            mcp_adapter.delete_rest_connector(cid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "rest_test":
+            cid = str(data.get("id") or data.get("name") or "").strip()
+            params = data.get("params") if isinstance(data.get("params"), dict) else {}
+            try:
+                out = mcp_adapter.invoke_rest_connector(cid, params)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "output": out, **_auto_state()}
+
+        if action == "mcp_save":
+            try:
+                srv = mcp_adapter.save_mcp_server(data.get("server") if isinstance(data.get("server"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "server": srv, **_auto_state()}
+
+        if action == "mcp_delete":
+            sid = str(data.get("id") or data.get("name") or "").strip()
+            mcp_adapter.delete_mcp_server(sid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "mcp_discover":
+            sid = str(data.get("id") or data.get("name") or "").strip()
+            try:
+                tools = mcp_adapter.discover_mcp_tools(sid)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "tools": tools, **_auto_state()}
+
+        if action == "mcp_call":
+            sid = str(data.get("server") or "").strip()
+            tname = str(data.get("tool_name") or "").strip()
+            args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+            try:
+                out = mcp_adapter.call_mcp_tool(sid, tname, args)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "output": out}
+
+        # ── Live Streaming Dev Terminal, Codebase Map & Diffs ─────────────────
+
+        if action == "dev_run":
+            cmd = str(data.get("command") or "").strip()
+            cwd = str(data.get("cwd") or "").strip()
+            try:
+                sess = dev_workspace.get_terminal_manager().start_command(cmd, cwd=cwd)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            self.push_tool_trace(["shell_agent", "dev_agent"])
+            return {"ok": True, "session": sess, "sessions": dev_workspace.get_terminal_manager().list_sessions()}
+
+        if action == "dev_stdin":
+            sid = str(data.get("session_id") or "").strip()
+            txt = str(data.get("text") or "")
+            ok = dev_workspace.get_terminal_manager().send_stdin(sid, txt)
+            return {"ok": ok}
+
+        if action == "dev_stop":
+            sid = str(data.get("session_id") or "").strip()
+            ok = dev_workspace.get_terminal_manager().stop_command(sid)
+            return {"ok": ok, "sessions": dev_workspace.get_terminal_manager().list_sessions()}
+
+        if action == "dev_tree":
+            rdir = str(data.get("root_dir") or "").strip()
+            return {"ok": True, "tree": dev_workspace.build_codebase_tree(rdir)}
+
+        if action == "dev_read_file":
+            rdir = str(data.get("root_dir") or "").strip()
+            fpath = str(data.get("path") or "").strip()
+            try:
+                fobj = dev_workspace.read_workspace_file(rdir, fpath)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "file": fobj}
+
+        if action == "dev_diffs":
+            rdir = str(data.get("root_dir") or "").strip()
+            return {"ok": True, "diffs": dev_workspace.get_workspace_diffs(rdir)}
+
+        # ── Encrypted Vault, Hash-Chained Audit Log & Guest Portals ───────────
+
+        def _sec_snap() -> dict[str, Any]:
+            return security_vault.get_security_snapshot(
+                accounts.ACCOUNTS_FILE, cfg.CONFIG_FILE
+            )
+
+        if action == "security_get":
+            return {"ok": True, "security": _sec_snap()}
+
+        if action == "vault_rotate_key":
+            res = security_vault.rotate_vault_master_key(
+                accounts.ACCOUNTS_FILE, cfg.CONFIG_FILE
+            )
+            return {**res, "security": _sec_snap()}
+
+        if action == "vault_encrypt_config":
+            enabled = bool(data.get("enabled", True))
+            ok = cfg.set_strict_config_encryption(enabled)
+            security_vault.log_audit_event(
+                "hud",
+                "vault_encrypt_config",
+                {"enabled": enabled},
+                f"Strict api_keys.json encryption={'ON' if enabled else 'OFF'}",
+            )
+            return {"ok": ok, "security": _sec_snap()}
+
+        if action == "audit_verify":
+            return {"ok": True, "chain": security_vault.verify_audit_chain(), "security": _sec_snap()}
+
+        if action == "audit_search":
+            q = str(data.get("query") or "")
+            return {"ok": True, "audit_logs": security_vault.list_audit_events(q, limit=80)}
+
+        if action == "portal_create":
+            title = str(data.get("title") or "").strip()
+            body = str(data.get("content_body") or "").strip()
+            oid = data.get("output_id")
+            if not body and oid:
+                for o in timeline.list_outputs(limit=100):
+                    if int(o["id"]) == int(oid):
+                        title = title or o["title"]
+                        body = o["body"]
+                        break
+            try:
+                created = security_vault.create_portal(
+                    title=title or "Shared Deliverable",
+                    content_body=body,
+                    scope_type=str(data.get("scope_type") or "output"),
+                    expires_hours=float(data.get("expires_hours") or 24.0),
+                    max_views=int(data.get("max_views") or 50),
+                )
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "portal": created, "security": _sec_snap()}
+
+        if action == "portal_revoke":
+            pid = str(data.get("portal_id") or "").strip()
+            ok = security_vault.revoke_portal(pid)
+            return {"ok": ok, "security": _sec_snap()}
+
+        if action == "portal_revoke_all":
+            cnt = security_vault.revoke_all_portals()
+            return {"ok": True, "revoked_count": cnt, "security": _sec_snap()}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -678,6 +1295,71 @@ class ApexHudBridge:
         @app.get("/api/hud/bootstrap")
         async def _bootstrap():
             return JSONResponse(self.snapshot())
+
+        @app.get("/api/hud/brain")
+        async def _brain_get():
+            snap = await asyncio.to_thread(timeline.get_brain_snapshot)
+            return JSONResponse({"ok": True, "brain": snap})
+
+        @app.get("/api/hud/brain/export")
+        async def _brain_export():
+            exp = await asyncio.to_thread(timeline.export_brain_json)
+            return JSONResponse(exp)
+
+        @app.get("/api/hud/activity")
+        async def _activity_get():
+            return JSONResponse({"ok": True, "workers": self.get_activity_snapshot()})
+
+        @app.get("/api/hud/studio")
+        async def _studio_get():
+            st = await asyncio.to_thread(
+                companions.get_studio_snapshot, list(TOOL_NODE_MAP.keys())
+            )
+            return JSONResponse({"ok": True, "studio": st})
+
+        @app.get("/api/hud/automations")
+        async def _automations_get():
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "automations": automations.list_automations(),
+                    "rest_connectors": mcp_adapter.list_rest_connectors(),
+                    "mcp_servers": mcp_adapter.list_mcp_servers(),
+                    "available_tools": sorted(set(TOOL_NODE_MAP.keys())),
+                }
+            )
+
+        @app.get("/api/hud/dev")
+        async def _dev_get(req: Request):
+            rdir = req.query_params.get("root_dir", "")
+            tree = await asyncio.to_thread(dev_workspace.build_codebase_tree, rdir)
+            diffs = await asyncio.to_thread(dev_workspace.get_workspace_diffs, rdir)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "sessions": dev_workspace.get_terminal_manager().list_sessions(),
+                    "tree": tree,
+                    "diffs": diffs,
+                }
+            )
+
+        @app.get("/api/hud/security")
+        async def _security_get():
+            sec = await asyncio.to_thread(
+                security_vault.get_security_snapshot,
+                accounts.ACCOUNTS_FILE,
+                cfg.CONFIG_FILE,
+            )
+            return JSONResponse({"ok": True, "security": sec})
+
+        @app.get("/portal/{token}")
+        async def _guest_portal(token: str, req: Request):
+            ip = (req.client.host if req.client else "127.0.0.1") or "127.0.0.1"
+            ua = req.headers.get("user-agent", "")
+            status_code, html_doc = await asyncio.to_thread(
+                security_vault.access_portal_by_token, token, ip, ua
+            )
+            return HTMLResponse(content=html_doc, status_code=status_code)
 
         @app.post("/api/hud/action")
         async def _action(req: Request):
@@ -841,10 +1523,12 @@ class ApexHudBridge:
             target=_runner, daemon=True, name="jarvis-apex-hud"
         )
         self._thread.start()
+        self._auto_scheduler.start()
         self._started.wait(timeout=timeout)
         return self.url
 
     def stop(self) -> None:
+        self._auto_scheduler.stop()
         if self._close_timer is not None:
             self._close_timer.cancel()
         if self._server is not None:
