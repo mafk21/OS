@@ -1491,6 +1491,11 @@ class JarvisLive:
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
             return
+        try:
+            from memory.timeline import append_turn
+            append_turn("user", text, speaker="You", channel="text")
+        except Exception:
+            pass
         asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
@@ -1734,6 +1739,13 @@ class JarvisLive:
             pass
         if mem_str:
             parts.append(mem_str)
+        try:
+            from memory.timeline import format_timeline_for_prompt
+            tl_str = format_timeline_for_prompt(recent_limit=8)
+            if tl_str:
+                parts.append(tl_str)
+        except Exception:
+            pass
         parts.append(sys_prompt)
 
         # gemini-3.8-live defaults tool calls to ASYNC (NON_BLOCKING); this
@@ -1888,11 +1900,13 @@ class JarvisLive:
 
         try:
             if name == "recall_memory":
-                # Local file search: no network, no second model. Kept out of
-                # the executor deliberately — it is a dictionary scan over a few
-                # hundred short strings, and a thread hop would cost more than
-                # the work itself.
-                result = search_memory(args.get("query", ""), limit=8)
+                # Unified local Brain recall: searches personal memories,
+                # uploaded Brain knowledge files, Forever Timeline, and outputs.
+                try:
+                    from memory.timeline import unified_brain_search
+                    result = unified_brain_search(args.get("query", ""), limit=8)
+                except Exception:
+                    result = search_memory(args.get("query", ""), limit=8)
 
             elif name == "skill_read":
                 # Skills live on disk as SKILL.md folders; metadata is already in
@@ -2579,6 +2593,11 @@ class JarvisLive:
                                 self._last_out_logged = ""   # new exchange
                                 self.ui.write_log(f"You: {full_in}")
                                 self._session_log.append(f"User: {full_in}")
+                                try:
+                                    from memory.timeline import append_turn
+                                    append_turn("user", full_in, speaker="You", channel="voice")
+                                except Exception:
+                                    pass
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "user",
@@ -2598,6 +2617,11 @@ class JarvisLive:
                                 self._last_out_logged = full_out
                                 self.ui.write_log(f"{self._asst_name}: {full_out}")
                                 self._session_log.append(f"{self._asst_name}: {full_out}")
+                                try:
+                                    from memory.timeline import append_turn
+                                    append_turn("jarvis", full_out, speaker=self._asst_name, channel="voice")
+                                except Exception:
+                                    pass
                                 if self._dashboard:
                                     asyncio.create_task(self._dashboard.broadcast({
                                         "type": "log", "speaker": "jarvis",
@@ -2971,6 +2995,12 @@ class JarvisLive:
         if len(log) < 3:          # need at least one exchange to be worth saving
             return
         self._session_log = []    # reset immediately so the next session starts clean
+        try:
+            from memory.config_manager import get_adaptive_learning_enabled
+            if not get_adaptive_learning_enabled():
+                return
+        except Exception:
+            pass
 
         memory = load_memory()
         lang_entry = memory.get("identity", {}).get("language", {})

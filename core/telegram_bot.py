@@ -84,13 +84,35 @@ def handle_inbound(text: str, user_id: int = 0, player=None, loop=None) -> str:
         # Use provider text
         from core.provider import text as prov_text
         prompt=text
-        # Add minimal context
-        sys_hint="You are JARVIS, a helpful assistant. Reply concisely (Telegram, <300 chars ideally). User via Telegram: "
+        ctx_parts = []
+        try:
+            from memory.memory_manager import load_memory, format_memory_for_prompt
+            from memory.timeline import format_timeline_for_prompt, append_turn
+            mem_ctx = format_memory_for_prompt(load_memory())
+            if mem_ctx:
+                ctx_parts.append(mem_ctx)
+            tl_ctx = format_timeline_for_prompt(recent_limit=4)
+            if tl_ctx:
+                ctx_parts.append(tl_ctx)
+            append_turn("user", text, speaker="You", channel="telegram")
+        except Exception:
+            append_turn = None  # type: ignore
+        ctx_block = ("\n".join(ctx_parts) + "\n") if ctx_parts else ""
+        sys_hint=(
+            "You are JARVIS, a helpful assistant sharing one continuous Forever Timeline "
+            "across desktop voice, text, and Telegram. Reply concisely (<300 chars ideally).\n"
+            f"{ctx_block}User via Telegram: "
+        )
         reply=prov_text(sys_hint+prompt, tier="fast", timeout_ms=15000, default="")
         if not reply:
             from core.llm_client import call_llm
             raw=call_llm([{"role":"user","content": prompt}], timeout=20)
             reply=(raw.get("content") or "").strip()
+        if reply and callable(append_turn):
+            try:
+                append_turn("jarvis", reply, speaker="JARVIS", channel="telegram")
+            except Exception:
+                pass
         return reply or "…"
     except Exception as e:
         return f"(telegram error: {e})"

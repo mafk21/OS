@@ -6592,6 +6592,12 @@ class JarvisUI:
                 self._apex_bridge.push_content(title, text)
             except Exception:
                 pass
+        else:
+            try:
+                from memory.timeline import record_output
+                record_output(title, text)
+            except Exception:
+                pass
 
     def show_quiz(self, topic: str, questions, grade=None) -> None:
         """Thread-safe: put an interactive quiz on the board.

@@ -60,6 +60,44 @@ def save_integrations_onboarding_done(done: bool = True) -> None:
     _save_flag("integrations_onboarding_done", bool(done))
 
 
+# ── Brain & Privacy Tier Toggles ─────────────────────────────────────────────
+
+def get_personalization_enabled() -> bool:
+    """Tier 3: Whether stored memories & timeline context are injected into prompts."""
+    return bool(load_api_keys().get("personalization_enabled", True))
+
+
+def save_personalization_enabled(enabled: bool) -> None:
+    _save_flag("personalization_enabled", bool(enabled))
+
+
+def get_adaptive_learning_enabled() -> bool:
+    """Tier 4: Whether JARVIS automatically records new preferences/facts during chats."""
+    return bool(load_api_keys().get("adaptive_learning_enabled", True))
+
+
+def save_adaptive_learning_enabled(enabled: bool) -> None:
+    _save_flag("adaptive_learning_enabled", bool(enabled))
+
+
+def get_timeline_persistence_enabled() -> bool:
+    """Whether spoken, typed, and Telegram turns are persisted to the Forever Timeline."""
+    return bool(load_api_keys().get("timeline_persistence_enabled", True))
+
+
+def save_timeline_persistence_enabled(enabled: bool) -> None:
+    _save_flag("timeline_persistence_enabled", bool(enabled))
+
+
+def get_privacy_settings() -> dict:
+    cfg = load_api_keys()
+    return {
+        "personalization_enabled": bool(cfg.get("personalization_enabled", True)),
+        "adaptive_learning_enabled": bool(cfg.get("adaptive_learning_enabled", True)),
+        "timeline_persistence_enabled": bool(cfg.get("timeline_persistence_enabled", True)),
+    }
+
+
 def get_assistant_name() -> str:
     """Return the configured assistant name, or 'JARVIS' if not set."""
     return load_api_keys().get("assistant_name", "JARVIS") or "JARVIS"

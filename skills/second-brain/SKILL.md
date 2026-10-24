@@ -14,7 +14,7 @@ Search across all three local memory layers — personal facts, saved notes/vaul
 ## Procedure
 
 1. **Pick the right recall layer (run 2+ when uncertain where it lives)**:
-   - **Personal facts & past sessions**: Call `recall_memory` (`query="..."`).
+   - **Unified Brain & Forever Timeline (`brain_control` / `recall_memory`)**: Call `recall_memory` (`query="..."`) or `brain_control` (`action="search" | "timeline" | "outputs" | "ingest_file"`) to search personal memories, uploaded Brain knowledge files, months of spoken/typed/Telegram Forever Timeline turns, and past generated reports in one shot.
    - **What appeared visually on screen (OCR + window titles)**: Call `screen_memory_search` (`query="..."`) for error messages, URLs, slides, code snippets, or chats the user viewed earlier.
    - **Saved notes**: Call `manage_notes` (`action="search"`, `query="..."`).
    - **Local folders / Obsidian vaults**: Call `rag_docs` (`action="search"`, `query="..."`). If no RAG index exists yet or the user specifies a folder, run `rag_docs` (`action="index"`, `path="<folder>"`) first, then `action="search"`.

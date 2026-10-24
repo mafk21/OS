@@ -35,6 +35,9 @@ from core import audio_devices
 from core import confirm as confirm_gate
 from memory import accounts
 from memory import config_manager as cfg
+from memory import memory_manager as mm
+from memory import timeline
+from memory import config_manager as cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_HUD_DIR = BASE_DIR / "apex_ui" / "static_hud"
@@ -46,6 +49,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "web_search": ["researcher"],
     "youtube_video": ["researcher", "social_media"],
     "memory": ["memory"],
+    "brain_control": ["memory", "editor"],
     "smart_notes": ["memory", "editor"],
     "lecture_capture": ["memory", "editor"],
     "code_helper": ["developer", "engineering"],
@@ -130,6 +134,11 @@ class ApexHudBridge:
         self._offline = False
         self._offline_reason = ""
         self._logs: deque[str] = deque(maxlen=140)
+        try:
+            for seed_ln in timeline.get_console_seed_lines(limit=80):
+                self._logs.append(seed_ln)
+        except Exception:
+            pass
         self._confirm: dict[str, str] | None = None
         self._content: dict[str, str] | None = None
         self._last_level_push = 0.0
@@ -222,11 +231,18 @@ class ApexHudBridge:
         except Exception:
             out_devs = [audio_devices.DEFAULT_LABEL]
 
+        try:
+            b_counts = timeline.get_brain_snapshot()["counts"]
+        except Exception:
+            b_counts = {"memories": 0, "files": 0, "outputs": 0, "timeline": 0}
+
         return {
             "type": "bootstrap",
             "ready": self._is_ready(),
             "integrations_ready": self._is_integrations_ready(),
             "integrations": accounts.get_integrations_status_summary(),
+            "privacy": cfg.get_privacy_settings(),
+            "brain_counts": b_counts,
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -346,6 +362,10 @@ class ApexHudBridge:
         obj = {"title": str(title)[:64], "text": str(text)[:4000]}
         with self._lock:
             self._content = obj
+        try:
+            timeline.record_output(str(title)[:120], str(text)[:12000])
+        except Exception:
+            pass
         self._broadcast_threadsafe({"type": "content", "content": obj})
 
     def push_offline(self, offline: bool, reason: str = "") -> None:
@@ -467,6 +487,11 @@ class ApexHudBridge:
                 cb = getattr(ui, "on_text_command", None) if ui else None
                 if callable(cb):
                     threading.Thread(target=cb, args=(txt,), daemon=True).start()
+                else:
+                    try:
+                        timeline.append_turn("user", txt, speaker="You", channel="text")
+                    except Exception:
+                        pass
             return {"ok": True}
 
         if action == "orb_tap":
@@ -622,6 +647,134 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "brain_get":
+            return {"ok": True, "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_search":
+            q = str(data.get("query") or "").strip()
+            return {
+                "ok": True,
+                "memories": mm.all_entries_for_ui()
+                if not q
+                else [
+                    m
+                    for m in mm.all_entries_for_ui()
+                    if q.lower() in m["key"].lower()
+                    or q.lower() in m["value"].lower()
+                    or q.lower() in m["category"].lower()
+                ],
+                "timeline": timeline.search_timeline(
+                    q, limit=40, channel=str(data.get("channel") or "")
+                ),
+                "files": [
+                    f
+                    for f in timeline.list_knowledge_files()
+                    if not q
+                    or q.lower() in f["filename"].lower()
+                    or q.lower() in f["preview"].lower()
+                ],
+                "outputs": timeline.list_outputs(q, limit=40),
+            }
+
+        if action == "brain_save_memory":
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            val = str(data.get("value") or "").strip()
+            if not key or not val:
+                return {"ok": False, "error": "Both key and value are required."}
+            mm.remember(key, val, category=cat, manual=True)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_forget_memory":
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            mm.forget(key, category=cat)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_clear_memories":
+            mm.clear_all_memories()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_upload_file":
+            fname = str(data.get("filename") or "note.md").strip()
+            content_val = str(data.get("content") or "")
+            is_b64 = bool(data.get("is_base64", False))
+            if not content_val:
+                return {"ok": False, "error": "Empty file content."}
+            rec = timeline.ingest_knowledge_file(fname, content_val, is_base64=is_b64)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "file": rec, "brain": snap}
+
+        if action == "brain_read_file":
+            fid = int(data.get("file_id") or 0)
+            doc = timeline.read_knowledge_file(fid)
+            return {"ok": doc is not None, "file": doc}
+
+        if action == "brain_delete_file":
+            fid = int(data.get("file_id") or 0)
+            timeline.delete_knowledge_file(fid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_delete_turn":
+            mid = int(data.get("id") or 0)
+            timeline.delete_timeline_message(mid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_clear_timeline":
+            timeline.clear_timeline()
+            with self._lock:
+                self._logs.clear()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_pin_output":
+            oid = int(data.get("id") or 0)
+            pinned = timeline.toggle_pin_output(oid)
+            return {"ok": True, "pinned": pinned, "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_delete_output":
+            oid = int(data.get("id") or 0)
+            timeline.delete_output(oid)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "brain": snap}
+
+        if action == "brain_set_privacy":
+            if "personalization_enabled" in data:
+                cfg.save_personalization_enabled(bool(data["personalization_enabled"]))
+            if "adaptive_learning_enabled" in data:
+                cfg.save_adaptive_learning_enabled(bool(data["adaptive_learning_enabled"]))
+            if "timeline_persistence_enabled" in data:
+                cfg.save_timeline_persistence_enabled(bool(data["timeline_persistence_enabled"]))
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "privacy": cfg.get_privacy_settings(), "brain": snap}
+
+        if action == "brain_import_json":
+            payload = data.get("payload")
+            if not isinstance(payload, dict):
+                return {"ok": False, "error": "Invalid Brain JSON payload."}
+            restored = timeline.import_brain_json(payload)
+            snap = timeline.get_brain_snapshot()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "restored": restored, "brain": snap}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -678,6 +831,16 @@ class ApexHudBridge:
         @app.get("/api/hud/bootstrap")
         async def _bootstrap():
             return JSONResponse(self.snapshot())
+
+        @app.get("/api/hud/brain")
+        async def _brain_get():
+            snap = await asyncio.to_thread(timeline.get_brain_snapshot)
+            return JSONResponse({"ok": True, "brain": snap})
+
+        @app.get("/api/hud/brain/export")
+        async def _brain_export():
+            exp = await asyncio.to_thread(timeline.export_brain_json)
+            return JSONResponse(exp)
 
         @app.post("/api/hud/action")
         async def _action(req: Request):

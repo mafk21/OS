@@ -12,12 +12,14 @@ import {
   Terminal,
   Scan,
   ShieldAlert,
+  Brain,
   KeyRound,
   Link2,
   Sparkles,
   Volume2,
   X,
 } from "lucide-react";
+import BrainModal from "./BrainModal";
 import IntegrationsModal from "./IntegrationsModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
@@ -31,6 +33,8 @@ export default function JarvisHudOverlays() {
     connected,
     integrationsReady,
     integrations,
+    privacy,
+    brainCounts,
     persona,
     activePersona,
     theme,
@@ -58,14 +62,17 @@ export default function JarvisHudOverlays() {
     settingsOpen,
     setupOpen,
     integrationsModalOpen,
+    brainModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
     setSetupOpen,
     setIntegrationsModalOpen,
+    setBrainModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
+    updatePrivacy,
     clearContent,
     sendText,
     toggleMute,
@@ -214,6 +221,25 @@ export default function JarvisHudOverlays() {
         >
           <Sparkles size={12} />
           {activePersona === "female" ? "♀ FEMALE" : "♂ MALE"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setBrainModalOpen(true)}
+          title="Open The Brain & Forever Timeline (Memories, Timeline, Files & Outputs)"
+          style={{
+            ...pillBase,
+            borderColor: brainModalOpen
+              ? `${PRIMARY}88`
+              : `${SECONDARY}55`,
+            color: brainModalOpen ? PRIMARY : SECONDARY,
+          }}
+        >
+          <Brain size={12} />
+          BRAIN
+          {brainCounts.memories + brainCounts.files + brainCounts.outputs > 0
+            ? ` (${brainCounts.memories + brainCounts.files + brainCounts.outputs})`
+            : ""}
         </button>
 
         <button
@@ -989,6 +1015,63 @@ export default function JarvisHudOverlays() {
               </label>
             </div>
 
+            {/* Privacy Tier Toggles */}
+            <div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9.5,
+                  letterSpacing: "0.16em",
+                  color: "rgba(240,237,232,0.55)",
+                  marginBottom: 8,
+                }}
+              >
+                BRAIN & PRIVACY GOVERNANCE
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePrivacy({
+                      personalization_enabled: !privacy.personalization_enabled,
+                    })
+                  }
+                  style={{
+                    ...pillBase,
+                    padding: "5px 10px",
+                    borderColor: privacy.personalization_enabled
+                      ? `${GREEN}66`
+                      : "rgba(255,255,255,0.18)",
+                    color: privacy.personalization_enabled
+                      ? GREEN
+                      : "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  PERSONALIZATION: {privacy.personalization_enabled ? "ON" : "OFF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updatePrivacy({
+                      adaptive_learning_enabled: !privacy.adaptive_learning_enabled,
+                    })
+                  }
+                  style={{
+                    ...pillBase,
+                    padding: "5px 10px",
+                    borderColor: privacy.adaptive_learning_enabled
+                      ? `${GREEN}66`
+                      : "rgba(255,255,255,0.18)",
+                    color: privacy.adaptive_learning_enabled
+                      ? GREEN
+                      : "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  ADAPTIVE: {privacy.adaptive_learning_enabled ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
+
             <div
               style={{
                 display: "flex",
@@ -1000,6 +1083,22 @@ export default function JarvisHudOverlays() {
               }}
             >
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setBrainModalOpen(true);
+                  }}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${SECONDARY}66`,
+                    color: SECONDARY,
+                  }}
+                >
+                  <Brain size={12} />
+                  BRAIN
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1051,6 +1150,9 @@ export default function JarvisHudOverlays() {
           </div>
         </div>
       )}
+
+      {/* ── The Brain & Forever Timeline Modal ── */}
+      <BrainModal />
 
       {/* ── Optional Integrations Onboarding / Manager Modal ── */}
       <IntegrationsModal />

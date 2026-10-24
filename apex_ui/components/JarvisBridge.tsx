@@ -52,11 +52,26 @@ export type IntegrationsSummary = {
   onboarding_done: boolean;
 };
 
+export type PrivacySettings = {
+  personalization_enabled: boolean;
+  adaptive_learning_enabled: boolean;
+  timeline_persistence_enabled: boolean;
+};
+
+export type BrainCounts = {
+  memories: number;
+  files: number;
+  outputs: number;
+  timeline: number;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
   integrationsReady: boolean;
   integrations: IntegrationsSummary;
+  privacy: PrivacySettings;
+  brainCounts: BrainCounts;
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -87,11 +102,13 @@ export type JarvisContextValue = {
   settingsOpen: boolean;
   setupOpen: boolean;
   integrationsModalOpen: boolean;
+  brainModalOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
   choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
@@ -102,6 +119,8 @@ export type JarvisContextValue = {
     clientId: string,
     clientSecret: string
   ) => Promise<{ ok: boolean; auth_url?: string; error?: string }>;
+  updatePrivacy: (patch: Partial<PrivacySettings>) => Promise<void>;
+  showContentCard: (card: ContentCard) => void;
   clearContent: () => void;
   sendText: (text: string, traceNode?: string) => void;
   tapOrb: () => void;
@@ -165,6 +184,17 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     connected_services: [],
     onboarding_done: true,
   });
+  const [privacy, setPrivacyState] = useState<PrivacySettings>({
+    personalization_enabled: true,
+    adaptive_learning_enabled: true,
+    timeline_persistence_enabled: true,
+  });
+  const [brainCounts, setBrainCounts] = useState<BrainCounts>({
+    memories: 0,
+    files: 0,
+    outputs: 0,
+    timeline: 0,
+  });
   const [persona, setPersona] = useState<PersonaMode>("male");
   const [previewPersona, setPreviewPersona] = useState<PersonaMode | null>(null);
   const [personaChosen, setPersonaChosen] = useState(true);
@@ -205,6 +235,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
+  const [brainModalOpen, setBrainModalOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -292,6 +323,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
 
       if (d.integrations && typeof d.integrations === "object") {
         setIntegrations(d.integrations as IntegrationsSummary);
+      }
+      if (d.privacy && typeof d.privacy === "object") {
+        setPrivacyState(d.privacy as PrivacySettings);
+      }
+      if (d.brain_counts && typeof d.brain_counts === "object") {
+        setBrainCounts(d.brain_counts as BrainCounts);
       }
 
       if (d.persona === "female" || d.persona === "male") {
@@ -782,6 +819,32 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updatePrivacy = useCallback(
+    async (patch: Partial<PrivacySettings>) => {
+      setPrivacyState((prev) => ({ ...prev, ...patch }));
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "brain_set_privacy", ...patch }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.privacy && typeof data.privacy === "object") {
+            setPrivacyState(data.privacy as PrivacySettings);
+          }
+        }
+      } catch {
+        sendAction({ action: "brain_set_privacy", ...patch });
+      }
+    },
+    [sendAction]
+  );
+
+  const showContentCard = useCallback((card: ContentCard) => {
+    setContent(card);
+  }, []);
+
   const clearContent = useCallback(() => setContent(null), []);
 
   const value = useMemo<JarvisContextValue>(
@@ -790,6 +853,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       ready,
       integrationsReady,
       integrations,
+      privacy,
+      brainCounts,
       persona,
       activePersona,
       theme,
@@ -820,11 +885,13 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       settingsOpen,
       setupOpen,
       integrationsModalOpen,
+      brainModalOpen,
       personaModalOpen,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
       setIntegrationsModalOpen,
+      setBrainModalOpen,
       setPersonaModalOpen,
       setPreviewPersona,
       choosePersona,
@@ -832,6 +899,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      updatePrivacy,
+      showContentCard,
       clearContent,
       sendText,
       tapOrb,
@@ -854,6 +923,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       ready,
       integrationsReady,
       integrations,
+      privacy,
+      brainCounts,
       persona,
       activePersona,
       theme,
@@ -885,12 +956,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       settingsOpen,
       setupOpen,
       integrationsModalOpen,
+      brainModalOpen,
       personaModalOpen,
       choosePersona,
       saveIntegrations,
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      updatePrivacy,
+      showContentCard,
       clearContent,
       sendText,
       tapOrb,
