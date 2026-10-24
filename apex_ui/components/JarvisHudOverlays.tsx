@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import BrainModal from "./BrainModal";
 import IntegrationsModal from "./IntegrationsModal";
+import StudioModal from "./StudioModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
 import { ActivityTimelineHud } from "./WorkerOrbsLayer";
@@ -65,12 +66,14 @@ export default function JarvisHudOverlays() {
     setupOpen,
     integrationsModalOpen,
     brainModalOpen,
+    studioModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
     setSetupOpen,
     setIntegrationsModalOpen,
     setBrainModalOpen,
+    setStudioModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
@@ -227,6 +230,7 @@ export default function JarvisHudOverlays() {
   return (
     <>
       <ActivityTimelineHud />
+      <StudioModal />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -272,6 +276,22 @@ export default function JarvisHudOverlays() {
           {brainCounts.memories + brainCounts.files + brainCounts.outputs > 0
             ? ` (${brainCounts.memories + brainCounts.files + brainCounts.outputs})`
             : ""}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStudioModalOpen(true)}
+          title="Open Companions, Behavior Interview, Skills & Themes Studio"
+          style={{
+            ...pillBase,
+            borderColor: studioModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: studioModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Sparkles size={12} />
+          STUDIO
         </button>
 
         <button

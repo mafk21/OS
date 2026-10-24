@@ -31,7 +31,7 @@ try:
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
     FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
-from core import audio_devices
+from core import audio_devices, companions
 from core import confirm as confirm_gate
 from memory import accounts
 from memory import config_manager as cfg
@@ -252,6 +252,8 @@ class ApexHudBridge:
             "privacy": cfg.get_privacy_settings(),
             "brain_counts": b_counts,
             "workers": self.get_activity_snapshot(),
+            "active_companion": companions.get_active_companion(),
+            "theme_custom": companions.get_theme_customization(),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -589,6 +591,7 @@ class ApexHudBridge:
                 else:
                     try:
                         timeline.append_turn("user", txt, speaker="You", channel="text")
+                        companions.detect_and_record_correction(txt)
                     except Exception:
                         pass
             return {"ok": True}
@@ -951,6 +954,79 @@ class ApexHudBridge:
             self.push_activity()
             return {"ok": True, "removed": removed, "workers": self.get_activity_snapshot()}
 
+        # ── Behavior Interviews, Companions & Visual Skills/Themes Studio ─────
+
+        if action == "studio_get":
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_interview":
+            answers = data.get("answers")
+            iv = companions.save_behavior_interview(answers if isinstance(answers, dict) else {})
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            return {"ok": True, "interview": iv, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_add_rule":
+            rule_txt = str(data.get("rule") or "").strip()
+            companions.add_learned_rule(rule_txt)
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_rule":
+            rid = str(data.get("rule_id") or "").strip()
+            companions.delete_learned_rule(rid)
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_companion":
+            try:
+                comp = companions.save_companion(data.get("companion") if isinstance(data.get("companion"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "companion": comp, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_companion":
+            cid = str(data.get("companion_id") or "").strip()
+            companions.delete_companion(cid)
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_activate_companion":
+            cid = str(data.get("companion_id") or "default").strip()
+            comp = companions.set_active_companion(cid)
+            self.push_log(f"SYS: Active companion switched to {comp.get('name')} ({comp.get('role')}).")
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_persona_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, args=(comp.get("persona", "male"), comp.get("voice", "")), daemon=True).start()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "active_companion": comp, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_skill":
+            try:
+                res = companions.save_custom_skill(
+                    name=str(data.get("name") or ""),
+                    description=str(data.get("description") or ""),
+                    body=str(data.get("body") or ""),
+                )
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, **res, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_delete_skill":
+            sname = str(data.get("name") or "").strip()
+            ok = companions.delete_custom_skill(sname)
+            return {"ok": ok, "studio": companions.get_studio_snapshot(list(TOOL_NODE_MAP.keys()))}
+
+        if action == "studio_save_theme":
+            th = companions.save_theme_customization(
+                preset=str(data.get("preset") or "default"),
+                custom_primary=str(data.get("custom_primary") or ""),
+                custom_secondary=str(data.get("custom_secondary") or ""),
+            )
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "theme": th}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -1021,6 +1097,13 @@ class ApexHudBridge:
         @app.get("/api/hud/activity")
         async def _activity_get():
             return JSONResponse({"ok": True, "workers": self.get_activity_snapshot()})
+
+        @app.get("/api/hud/studio")
+        async def _studio_get():
+            st = await asyncio.to_thread(
+                companions.get_studio_snapshot, list(TOOL_NODE_MAP.keys())
+            )
+            return JSONResponse({"ok": True, "studio": st})
 
         @app.post("/api/hud/action")
         async def _action(req: Request):

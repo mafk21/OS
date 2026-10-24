@@ -1496,6 +1496,11 @@ class JarvisLive:
             append_turn("user", text, speaker="You", channel="text")
         except Exception:
             pass
+        try:
+            from core.companions import detect_and_record_correction
+            detect_and_record_correction(text)
+        except Exception:
+            pass
         asyncio.run_coroutine_threadsafe(
             self.session.send_client_content(
                 turns={"role": "user", "parts": [{"text": text}]},
@@ -1746,6 +1751,13 @@ class JarvisLive:
                 parts.append(tl_str)
         except Exception:
             pass
+        try:
+            from core.companions import format_behavior_and_companion_for_prompt
+            beh_str = format_behavior_and_companion_for_prompt()
+            if beh_str:
+                parts.append(beh_str)
+        except Exception:
+            pass
         parts.append(sys_prompt)
 
         # gemini-3.8-live defaults tool calls to ASYNC (NON_BLOCKING); this
@@ -1888,6 +1900,22 @@ class JarvisLive:
         self._skill_window_start = _now
         self._skill_window_tools += 1
 
+        # Enforce scoped tool permissions when a Specialist Companion is active
+        try:
+            from core.companions import is_tool_allowed_for_active_companion
+            _allowed_ok, _deny_msg = is_tool_allowed_for_active_companion(name)
+            if not _allowed_ok:
+                _nf = getattr(self.ui, "notify_tool_finish", None)
+                if callable(_nf):
+                    _nf(_task_id, _deny_msg, "failed")
+                if not self.ui.muted:
+                    self.ui.set_state("LISTENING")
+                return types.FunctionResponse(
+                    id=fc.id, name=name, response={"result": _deny_msg}
+                )
+        except Exception:
+            pass
+
         if name == "save_memory":
             category = args.get("category", "notes")
             key      = args.get("key", "")
@@ -1922,9 +1950,18 @@ class JarvisLive:
                 # Skills live on disk as SKILL.md folders; metadata is already in
                 # the prompt, this is Level 2/3 — body or a bundled file. Pure
                 # read, dictionary-cheap: stays in the loop like recall_memory.
-                result = self._skill_registry.read(
-                    args.get("name", ""), args.get("path") or None
-                )
+                sname = args.get("name", "")
+                spath = args.get("path") or None
+                if sname in self._skill_registry.names():
+                    result = self._skill_registry.read(sname, spath)
+                else:
+                    from core.companions import CUSTOM_SKILLS_DIR
+                    from core.skill_loader import discover_skills
+                    cust_reg = discover_skills(CUSTOM_SKILLS_DIR, logger=lambda _: None)
+                    if sname in cust_reg.names():
+                        result = cust_reg.read(sname, spath)
+                    else:
+                        result = self._skill_registry.read(sname, spath)
 
             elif name == "skill_manage":
                 # The learning loop's write path. Validation lives in
@@ -2611,6 +2648,11 @@ class JarvisLive:
                                 try:
                                     from memory.timeline import append_turn
                                     append_turn("user", full_in, speaker="You", channel="voice")
+                                except Exception:
+                                    pass
+                                try:
+                                    from core.companions import detect_and_record_correction
+                                    detect_and_record_correction(full_in)
                                 except Exception:
                                     pass
                                 if self._dashboard:

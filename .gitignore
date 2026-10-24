@@ -18,7 +18,9 @@ config/whatsapp_web/          # a LINKED WhatsApp session — committing it hand
 # ── Personal data the assistant accumulates about you ─────────────────────────
 memory/long_term.json
 memory/accounts.json
+memory/companions.json
 memory/knowledge_files/
+memory/custom_skills/
 memory/*.db
 
 # ── Python build noise ────────────────────────────────────────────────────────

@@ -94,6 +94,14 @@ def handle_inbound(text: str, user_id: int = 0, player=None, loop=None) -> str:
             tl_ctx = format_timeline_for_prompt(recent_limit=4)
             if tl_ctx:
                 ctx_parts.append(tl_ctx)
+            from core.companions import (
+                detect_and_record_correction,
+                format_behavior_and_companion_for_prompt,
+            )
+            beh_ctx = format_behavior_and_companion_for_prompt()
+            if beh_ctx:
+                ctx_parts.append(beh_ctx)
+            detect_and_record_correction(text)
             append_turn("user", text, speaker="You", channel="telegram")
         except Exception:
             append_turn = None  # type: ignore

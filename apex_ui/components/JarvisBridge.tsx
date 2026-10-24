@@ -90,6 +90,33 @@ export type WorkerItem = {
   elapsed_s: number;
 };
 
+export type CompanionSummary = {
+  id: string;
+  name: string;
+  role: string;
+  persona: PersonaMode;
+  voice: string;
+  instructions?: string;
+  allowed_tools?: string[];
+  assigned_skills?: string[];
+  builtin?: boolean;
+};
+
+export type ThemeCustomConfig = {
+  preset: string;
+  custom_primary: string;
+  custom_secondary: string;
+  effective_primary: string;
+  effective_secondary: string;
+};
+
+function hexToRgbTuple(hex: string): string | null {
+  const m = /^#([0-9a-fA-F]{6})$/.exec((hex || "").trim());
+  if (!m) return null;
+  const v = parseInt(m[1], 16);
+  return `${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}`;
+}
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
@@ -98,6 +125,8 @@ export type JarvisContextValue = {
   privacy: PrivacySettings;
   brainCounts: BrainCounts;
   workers: WorkerItem[];
+  activeCompanion: CompanionSummary | null;
+  themeCustom: ThemeCustomConfig;
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -129,6 +158,7 @@ export type JarvisContextValue = {
   setupOpen: boolean;
   integrationsModalOpen: boolean;
   brainModalOpen: boolean;
+  studioModalOpen: boolean;
   activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -136,9 +166,11 @@ export type JarvisContextValue = {
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setStudioModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
+  setThemeCustom: React.Dispatch<React.SetStateAction<ThemeCustomConfig>>;
   choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
   saveIntegrations: (payload: Record<string, unknown>) => Promise<boolean>;
   skipIntegrations: () => Promise<void>;
@@ -267,9 +299,18 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [setupOpen, setSetupOpen] = useState(false);
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [brainModalOpen, setBrainModalOpen] = useState(false);
+  const [studioModalOpen, setStudioModalOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
   const [workers, setWorkers] = useState<WorkerItem[]>([]);
+  const [activeCompanion, setActiveCompanion] = useState<CompanionSummary | null>(null);
+  const [themeCustom, setThemeCustom] = useState<ThemeCustomConfig>({
+    preset: "default",
+    custom_primary: "",
+    custom_secondary: "",
+    effective_primary: "",
+    effective_secondary: "",
+  });
 
   const wsRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(1);
@@ -279,7 +320,34 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const targetLevelRef = useRef(0);
 
   const activePersona: PersonaMode = previewPersona ?? persona;
-  const theme = PERSONA_THEMES[activePersona];
+  const theme = useMemo<PersonaTheme>(() => {
+    const base = PERSONA_THEMES[activePersona];
+    const pri = themeCustom.effective_primary || "";
+    const sec = themeCustom.effective_secondary || "";
+    if (!pri && !sec) return base;
+    const priRgb = pri ? hexToRgbTuple(pri) : null;
+    const secRgb = sec ? hexToRgbTuple(sec) : null;
+    return {
+      ...base,
+      ...(pri
+        ? {
+            primary: pri,
+            primaryBright: pri,
+            spokeHot: pri,
+            primarySoftBg: priRgb ? `rgba(${priRgb}, 0.09)` : base.primarySoftBg,
+            primaryBorder: priRgb ? `rgba(${priRgb}, 0.30)` : base.primaryBorder,
+            orbGlowRgb: priRgb || base.orbGlowRgb,
+          }
+        : {}),
+      ...(sec
+        ? {
+            secondary: sec,
+            secondaryBright: sec,
+            secondarySoftBg: secRgb ? `rgba(${secRgb}, 0.10)` : base.secondarySoftBg,
+          }
+        : {}),
+    };
+  }, [activePersona, themeCustom]);
 
   const pushLogLine = useCallback((line: string, ts?: string) => {
     if (!line || !line.trim()) return;
@@ -365,6 +433,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       }
       if (Array.isArray(d.workers)) {
         setWorkers(d.workers as WorkerItem[]);
+      }
+      if (d.active_companion && typeof d.active_companion === "object") {
+        setActiveCompanion(d.active_companion as CompanionSummary);
+      }
+      if (d.theme_custom && typeof d.theme_custom === "object") {
+        setThemeCustom(d.theme_custom as ThemeCustomConfig);
       }
 
       if (d.persona === "female" || d.persona === "male") {
@@ -959,6 +1033,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       brainCounts,
       workers,
+      activeCompanion,
+      themeCustom,
       persona,
       activePersona,
       theme,
@@ -990,6 +1066,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setupOpen,
       integrationsModalOpen,
       brainModalOpen,
+      studioModalOpen,
       activityOpen,
       personaModalOpen,
       setConsoleOpen,
@@ -997,9 +1074,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setSetupOpen,
       setIntegrationsModalOpen,
       setBrainModalOpen,
+      setStudioModalOpen,
       setActivityOpen,
       setPersonaModalOpen,
       setPreviewPersona,
+      setThemeCustom,
       choosePersona,
       saveIntegrations,
       skipIntegrations,
@@ -1035,6 +1114,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       brainCounts,
       workers,
+      activeCompanion,
+      themeCustom,
       persona,
       activePersona,
       theme,
@@ -1067,6 +1148,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setupOpen,
       integrationsModalOpen,
       brainModalOpen,
+      studioModalOpen,
       activityOpen,
       personaModalOpen,
       choosePersona,
