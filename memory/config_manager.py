@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -66,11 +67,23 @@ def set_strict_config_encryption(enabled: bool) -> bool:
     return True
 
 def get_gemini_key() -> str | None:
-    return load_api_keys().get("gemini_api_key")
+    val = (load_api_keys().get("gemini_api_key") or os.environ.get("GEMINI_API_KEY") or "").strip()
+    return val or None
+
+
+def get_api_key() -> str | None:
+    return get_gemini_key()
+
+
+def get_openai_key() -> str | None:
+    val = (load_api_keys().get("openai_api_key") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    return val or None
+
 
 def is_configured() -> bool:
-    key = get_gemini_key()
-    return bool(key and len(key) > 15)
+    gkey = get_gemini_key()
+    okey = get_openai_key()
+    return bool((gkey and len(gkey) > 15) or (okey and len(okey) > 15))
 
 
 def is_integrations_onboarding_done() -> bool:
@@ -565,32 +578,73 @@ def save_offline_fallback_enabled(enabled: bool) -> None:
 
 def get_openai_cfg() -> dict:
     cfg = load_api_keys()
+    api_k = str(cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY") or "").strip()
     return {
-        "api_key":  str(cfg.get("openai_api_key", "") or "").strip(),
-        "base_url": str(cfg.get("openai_base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1").rstrip("/"),
-        "model":    str(cfg.get("openai_model", "gpt-4o-mini") or "gpt-4o-mini").strip(),
+        "api_key":        api_k,
+        "base_url":       str(cfg.get("openai_base_url", "https://api.openai.com/v1") or "https://api.openai.com/v1").rstrip("/"),
+        "model":          str(cfg.get("openai_model", "gpt-4o") or "gpt-4o").strip(),
+        "realtime_model": str(cfg.get("openai_realtime_model", "gpt-4o-realtime-preview") or "gpt-4o-realtime-preview").strip(),
     }
 
-def save_openai_cfg(api_key: str = None, base_url: str = None, model: str = None) -> None:
+
+def save_openai_cfg(
+    api_key: str = None,
+    base_url: str = None,
+    model: str = None,
+    realtime_model: str = None,
+) -> None:
     cur = get_openai_cfg()
     if api_key is not None:
         cur["api_key"] = str(api_key or "").strip()
     if base_url is not None:
         cur["base_url"] = str(base_url or "https://api.openai.com/v1").rstrip("/")
     if model is not None:
-        cur["model"] = str(model or "gpt-4o-mini").strip()
+        cur["model"] = str(model or "gpt-4o").strip()
+    if realtime_model is not None:
+        cur["realtime_model"] = str(realtime_model or "gpt-4o-realtime-preview").strip()
     ensure_config_dir()
-    import json
-    data = {}
-    if CONFIG_FILE.exists():
-        try:
-            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            data = {}
-    data["openai_api_key"]  = cur["api_key"]
+    data = load_api_keys()
+    data["openai_api_key"] = cur["api_key"]
     data["openai_base_url"] = cur["base_url"]
-    data["openai_model"]    = cur["model"]
+    data["openai_model"] = cur["model"]
+    data["openai_realtime_model"] = cur["realtime_model"]
+    if data.get("strict_vault_config") or data.get("vault_encrypt_api_keys"):
+        try:
+            from core.security_vault import encrypt_dict_secrets
+            data = encrypt_dict_secrets(data)
+        except Exception:
+            pass
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+def resolve_cloud_engine(skip_engine: str = "") -> str:
+    """Choose 'openai' or 'gemini' based on provider preference and configured keys."""
+    pref = get_provider()
+    gkey = get_gemini_key()
+    okey = get_openai_key()
+    has_g = bool(gkey and len(gkey) > 15) and skip_engine != "gemini"
+    has_o = bool(okey and len(okey) > 15) and skip_engine != "openai"
+
+    if pref == "openai":
+        if has_o:
+            return "openai"
+        if has_g:
+            return "gemini"
+    elif pref == "gemini":
+        if has_g:
+            return "gemini"
+        if has_o:
+            return "openai"
+    else:
+        # 'auto' — use Gemini first when present, else OpenAI, with full failover
+        if has_g:
+            return "gemini"
+        if has_o:
+            return "openai"
+    # If skip_engine filtered out the only configured key, still return what exists
+    if okey and len(okey) > 15 and not (gkey and len(gkey) > 15):
+        return "openai"
+    return "gemini"
 
 def get_local_llm_cfg() -> dict:
     cfg = load_api_keys()

@@ -42,6 +42,8 @@ SECRET_FIELD_NAMES = {
     "webhook_url",
     "bearer_token",
     "gemini_api_key",
+    "openai_api_key",
+    "composio_api_key",
     "github_token",
     "telegram_bot_token",
     "spotify_client_secret",

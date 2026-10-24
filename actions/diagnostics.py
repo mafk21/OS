@@ -9,8 +9,16 @@ import shutil
 def _check_api_key() -> tuple[str, str]:
     try:
         import memory.config_manager as cm
-        k = cm.get_gemini_key() or ""
-        return ("ok" if k and len(k) > 15 else "missing", k[:6] + "…" if k else "—")
+        gk = cm.get_gemini_key() or ""
+        ok = cm.get_openai_key() or ""
+        parts = []
+        if gk and len(gk) > 15:
+            parts.append(f"Gemini:{gk[:6]}…")
+        if ok and len(ok) > 15:
+            parts.append(f"OpenAI:{ok[:7]}…")
+        if parts:
+            return ("ok", " | ".join(parts))
+        return ("missing", "—")
     except Exception as e:
         return ("error", str(e))
 
@@ -40,8 +48,15 @@ def _check_speaker() -> tuple[str, str]:
 def _check_connectivity() -> tuple[str, str]:
     try:
         import requests
-        r = requests.get("https://generativelanguage.googleapis.com", timeout=5)
-        return ("ok", f"HTTP {r.status_code}")
+        import memory.config_manager as cm
+        engine = cm.resolve_cloud_engine()
+        url = (
+            cm.get_openai_cfg().get("base_url", "https://api.openai.com/v1")
+            if engine == "openai"
+            else "https://generativelanguage.googleapis.com"
+        )
+        r = requests.get(url, timeout=5)
+        return ("ok", f"{engine} HTTP {r.status_code}")
     except Exception as e:
         return ("offline", str(e)[:80])
 

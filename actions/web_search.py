@@ -74,8 +74,13 @@ API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 
 def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+    try:
+        from memory.config_manager import get_gemini_key, get_openai_key
+        return get_gemini_key() or get_openai_key() or ""
+    except Exception:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            d = json.load(f)
+            return d.get("gemini_api_key") or d.get("openai_api_key") or ""
 
 
 def _gemini_search(query: str) -> str:

@@ -258,6 +258,15 @@ class ApexHudBridge:
         except Exception:
             b_counts = {"memories": 0, "files": 0, "outputs": 0, "timeline": 0}
 
+        gkey = cfg.get_gemini_key() or ""
+        okey = cfg.get_openai_key() or ""
+        ocfg = cfg.get_openai_cfg()
+
+        def _mask_key(k: str) -> str:
+            if not k or len(k) < 10:
+                return ""
+            return f"{k[:7]}••••{k[-4:]}"
+
         return {
             "type": "bootstrap",
             "ready": self._is_ready(),
@@ -268,6 +277,15 @@ class ApexHudBridge:
             "workers": self.get_activity_snapshot(),
             "active_companion": companions.get_active_companion(),
             "theme_custom": companions.get_theme_customization(),
+            "provider": cfg.get_provider(),
+            "active_engine": cfg.resolve_cloud_engine(),
+            "has_gemini_key": bool(gkey and len(gkey) > 15),
+            "has_openai_key": bool(okey and len(okey) > 15),
+            "gemini_key_masked": _mask_key(gkey),
+            "openai_key_masked": _mask_key(okey),
+            "openai_model": ocfg.get("model", "gpt-4o"),
+            "openai_realtime_model": ocfg.get("realtime_model", "gpt-4o-realtime-preview"),
+            "openai_base_url": ocfg.get("base_url", "https://api.openai.com/v1"),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -512,20 +530,69 @@ class ApexHudBridge:
         ui = self._ui
         win = getattr(ui, "_win", None) if ui is not None else None
 
-        if action == "save_api_key":
-            key = str(data.get("key") or "").strip()
-            if len(key) < 15:
-                return {"ok": False, "error": "Invalid API key"}
-            os_name = platform.system()
+        if action in ("save_api_key", "save_ai_providers"):
+            single_key = str(data.get("key") or "").strip()
+            g_key = str(data.get("gemini_key") or "").strip()
+            o_key = str(data.get("openai_key") or "").strip()
+            prov = str(data.get("provider") or "").strip().lower()
+            o_model = str(data.get("openai_model") or "").strip()
+            o_rt_model = str(data.get("openai_realtime_model") or "").strip()
+            o_base = str(data.get("openai_base_url") or "").strip()
+
+            # Smart single-field routing (`sk-...` -> OpenAI, `AIza...` -> Gemini)
+            if single_key and not g_key and not o_key:
+                if single_key.startswith("sk-"):
+                    o_key = single_key
+                else:
+                    g_key = single_key
+
             cfg.ensure_config_dir()
             existing = cfg.load_api_keys()
-            if existing.get("vault_encrypt_api_keys"):
-                existing["gemini_api_key"] = security_vault.encrypt_secret(key)
+            was_live = self._is_persona_chosen() and self._is_ready()
+
+            if action == "save_api_key":
+                has_existing_any = bool(
+                    (existing.get("gemini_api_key") and len(str(existing.get("gemini_api_key"))) > 15)
+                    or (existing.get("openai_api_key") and len(str(existing.get("openai_api_key"))) > 15)
+                )
+                if len(g_key) < 15 and len(o_key) < 15 and not has_existing_any:
+                    return {"ok": False, "error": "Please enter a valid OpenAI (sk-...) or Gemini (AIza...) API key"}
+
+            if g_key and len(g_key) >= 15:
+                existing["gemini_api_key"] = g_key
+            if o_key and len(o_key) >= 15:
+                existing["openai_api_key"] = o_key
+            if data.get("clear_gemini_key"):
+                existing["gemini_api_key"] = ""
+            if data.get("clear_openai_key"):
+                existing["openai_api_key"] = ""
+
+            if o_model:
+                existing["openai_model"] = o_model
+            if o_rt_model:
+                existing["openai_realtime_model"] = o_rt_model
+            if o_base:
+                existing["openai_base_url"] = o_base.rstrip("/")
+
+            if prov in cfg.PROVIDERS:
+                existing["provider"] = prov
             else:
-                existing["gemini_api_key"] = key
+                # Auto-pick sensible provider when saving keys during setup
+                has_g = bool(existing.get("gemini_api_key"))
+                has_o = bool(existing.get("openai_api_key"))
+                if has_o and not has_g:
+                    existing["provider"] = "openai"
+                elif has_g and not has_o:
+                    existing["provider"] = "auto"
+
+            os_name = platform.system()
             existing.setdefault("os_system", os_name)
+
+            to_write = dict(existing)
+            if to_write.get("vault_encrypt_api_keys") or to_write.get("strict_vault_config"):
+                to_write = security_vault.encrypt_dict_secrets(to_write)
             cfg.CONFIG_FILE.write_text(
-                json.dumps(existing, indent=4), encoding="utf-8"
+                json.dumps(to_write, indent=4), encoding="utf-8"
             )
             try:
                 from core import gemini as _gem_mod
@@ -534,9 +601,16 @@ class ApexHudBridge:
                 pass
             if win is not None:
                 win._ready = True
-                self._invoke_qt(lambda: win._on_setup_done(key, os_name))
+                if not was_live:
+                    self._invoke_qt(lambda: win._on_setup_done("", os_name))
+            if was_live and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            active_eng = cfg.resolve_cloud_engine()
+            self.push_log(f"SYS: AI engine configured — active backend: {active_eng.upper()}.")
             self._broadcast_threadsafe(self.snapshot())
-            return {"ok": True}
+            return {"ok": True, "active_engine": active_eng, "provider": cfg.get_provider()}
 
         if action == "save_integrations":
             was_live = self._is_persona_chosen()

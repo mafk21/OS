@@ -55,7 +55,12 @@ def _get_os() -> str:
 
 
 def _get_api_key() -> str:
-    return _load_config().get("gemini_api_key", "")
+    try:
+        from memory.config_manager import get_gemini_key, get_openai_key
+        return get_gemini_key() or get_openai_key() or ""
+    except Exception:
+        cfg_d = _load_config()
+        return cfg_d.get("gemini_api_key") or cfg_d.get("openai_api_key") or ""
 
 _SAFE_SCREENSHOT_ROOTS = (
     Path.home(),
@@ -334,9 +339,6 @@ def _screen_find(description: str) -> tuple[int, int] | None:
         return None
 
     try:
-        from google import genai
-        from google.genai import types as gtypes
-
         _require_pyautogui()
         w, h  = pyautogui.size()
         img   = pyautogui.screenshot()
@@ -352,8 +354,13 @@ def _screen_find(description: str) -> tuple[int, int] | None:
         )
 
         from core import gemini
+        try:
+            from google.genai import types as gtypes
+            img_part = gtypes.Part.from_bytes(data=image_bytes, mime_type="image/png")
+        except Exception:
+            img_part = image_bytes
         response = gemini.call(
-            [gtypes.Part.from_bytes(data=image_bytes, mime_type="image/png"), prompt],
+            [img_part, prompt],
             tier=gemini.FAST, timeout_ms=20_000,
         )
         if response is None:
