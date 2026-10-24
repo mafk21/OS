@@ -11,13 +11,13 @@ const PORTRAIT_URL = "/hologram/male_portrait.png";
 const DEPTH_URL = "/hologram/male_depth.png";
 
 const WORLD_W = 7.4;
-const CAM_Y = 0.04;
-const CAM_Z = 6.80;
-const DEPTH_Z_MIN = -2.40;
-const DEPTH_Z_SPAN = 4.00;
+const CAM_Y = 0.02;
+const CAM_Z = 6.85;
+const DEPTH_Z_MIN = -1.60;
+const DEPTH_Z_SPAN = 3.20;
 
 const Y_PIVOT = -0.68;
-const Z_PIVOT = 0.06;
+const Z_PIVOT = 0.08;
 const TORSO_Y_PIVOT = -1.85;
 
 const ASSEMBLY_DURATION_SECONDS = 2.85;
@@ -28,9 +28,9 @@ const MOOD_BLOOM_SECONDS = 0.68;
 const EYE_SCREEN_X = 0.5;
 const EYE_SCREEN_Y = 0.38;
 
-const MAX_HEAD_YAW = 0.44; // ~25 deg 3D head turn
-const MAX_HEAD_PITCH_UP = 0.30; // ~17 deg 3D chin lift
-const MAX_HEAD_PITCH_DOWN = 0.32; // ~18 deg 3D downward nod
+const MAX_HEAD_YAW = 0.36; // ~21 deg sleek 3D head turn
+const MAX_HEAD_PITCH_UP = 0.26; // ~15 deg 3D chin lift
+const MAX_HEAD_PITCH_DOWN = 0.28; // ~16 deg 3D downward nod
 
 export type HumanoidQualityMode = "auto" | "high" | "balanced";
 type RenderTier = "high" | "medium" | "low";
@@ -85,11 +85,6 @@ const cachedParticleTiers = new Map<RenderTier, HumanoidParticleData>();
 function hash01(v: number): number {
   const raw = Math.sin(v * 12.9898 + 0.1234) * 43758.5453;
   return raw - Math.floor(raw);
-}
-
-function sstep(e0: number, e1: number, x: number): number {
-  const t = x <= e0 ? 0 : x >= e1 ? 1 : (x - e0) / (e1 - e0);
-  return t * t * (3 - 2 * t);
 }
 
 function criticallyDampedSpring(
@@ -433,58 +428,17 @@ function buildHumanoidParticles(
     }
   }
 
-  // Measure exact row-by-row bright anatomical half-width Rx(y) so volumetric 3D side/back skull & neck wrap
-  // joins the front 3D silhouette with 0.0mm seam!
-  const rxMeasured = new Float32Array(H);
-  for (let y = 0; y < H; y++) {
-    const nyV = y / (H - 1);
-    const lim = nyV < 0.655 ? 0.149 - Math.max(0, nyV - 0.44) * 0.30 : 0.43;
-    const bMin = nyV < 0.15 ? 0.13 : nyV < 0.655 ? 0.22 : 0.20;
-    let maxHalf = 0;
-    let found = 0;
-    for (let x = 0; x < W; x++) {
-      const nxV = x / (W - 1);
-      const absDx = Math.abs(nxV - 0.5);
-      if (absDx > lim) continue;
-      const pIdx = (y * W + x) * 4;
-      const b8 = Math.max(portrait[pIdx], portrait[pIdx + 1], portrait[pIdx + 2]) / 255;
-      if (b8 >= bMin) {
-        found += 1;
-        if (absDx > maxHalf) maxHalf = absDx;
-      }
-    }
-    rxMeasured[y] = found >= 2 ? maxHalf * WORLD_W : 0;
-  }
-
-  const rxSmoothRows = new Float32Array(H);
-  for (let y = 0; y < H; y++) {
-    let wSum = 0;
-    let acc = 0;
-    for (let k = -6; k <= 6; k++) {
-      const yy = y + k < 0 ? 0 : y + k >= H ? H - 1 : y + k;
-      const w = Math.exp(-0.5 * Math.pow(k / 2.4, 2));
-      acc += rxMeasured[yy] * w;
-      wSum += w;
-    }
-    rxSmoothRows[y] = acc / wSum;
-  }
-
-  const sampleRxByNy = (nyVal: number): number => {
-    const yf = THREE.MathUtils.clamp(nyVal * (H - 1), 0, H - 1.001);
-    const y0 = yf | 0;
-    const t = yf - y0;
-    return Math.max(0.03, rxSmoothRows[y0] * (1 - t) + rxSmoothRows[y0 + 1] * t);
-  };
-
-  // Volumetric 3D extra layers budget scaled cleanly by tier
-  const wrapCount = tier === "high" ? 38000 : tier === "medium" ? 14000 : 6000;
-  const coreCount = tier === "high" ? 22000 : tier === "medium" ? 8000 : 3500;
-  const bgWaveCount = tier === "high" ? 22000 : tier === "medium" ? 8000 : 3500;
-  const fgMoteCount = tier === "high" ? 2400 : tier === "medium" ? 1000 : 500;
+  // Lush volumetric 3D layers:
+  // 1) waveBridgeCount: seamless behind-head 3D wave ribbons (`Z ~ -0.96`, `skinW = 0`)
+  // 2) internalCoreCount: internal golden 3D cerebral & cervical spinal core strictly inside skull/neck (`r <= 0.34`)
+  // 3) emberCount: subtle deep-space floating light motes strictly outside center face
+  const waveBridgeCount = tier === "high" ? 20000 : tier === "medium" ? 8000 : 3600;
+  const internalCoreCount = tier === "high" ? 12000 : tier === "medium" ? 5000 : 2200;
+  const emberCount = tier === "high" ? 950 : tier === "medium" ? 450 : 220;
 
   const cols = Math.ceil(W / step);
   const rows = Math.ceil(H / step);
-  const maxCount = cols * rows + wrapCount + coreCount + bgWaveCount + fgMoteCount;
+  const maxCount = cols * rows + waveBridgeCount + internalCoreCount + emberCount;
 
   const positions = new Float32Array(maxCount * 3);
   const colors = new Float32Array(maxCount * 3);
@@ -613,7 +567,7 @@ function buildHumanoidParticles(
       const max8 = r8 > g8 ? (r8 > b8 ? r8 : b8) : g8 > b8 ? g8 : b8;
       const brightness = max8 / 255;
 
-      const minBright = regionClass > 0.85 ? 0.14 : regionClass < 0.24 ? 0.048 : 0.052;
+      const minBright = regionClass > 0.85 ? 0.11 : 0.038;
       if (brightness < minBright) continue;
 
       const skinWeight = depth[pIdx + 1] / 255;
@@ -696,93 +650,85 @@ function buildHumanoidParticles(
     }
   }
 
-  // --- LAYER B: 3D Lateral & Occipital Skull, Jaw, Cylindrical Neck & Deltoid Contour Wrap ---
-  for (let i = 0; i < wrapCount; i++) {
-    const s1 = hash01(i * 1.79 + 0.13);
-    const s2 = hash01(i * 2.93 + 0.57);
-    const s3 = hash01(i * 4.17 + 0.89);
+  // --- LAYER B: Seamless 3D Wave Continuity Behind Head (`ny = 0.33..0.63`, `Z ~ -0.92`, `skinW = 0`) ---
+  // Interpolates real left & right wave scanlines from `male_portrait.png` strictly behind the jaw/ears
+  // (never near the bald crown `ny < 0.33`!), eliminating any silhouette cutout gap when the head turns.
+  for (let i = 0; i < waveBridgeCount; i++) {
+    const s1 = hash01(i * 2.13 + 0.61);
+    const s2 = hash01(i * 4.67 + 1.83);
+    const s3 = hash01(i * 6.31 + 3.07);
 
-    const nyW = 0.088 + s1 * (0.955 - 0.088);
-    const rxScreen = sampleRxByNy(nyW) * 0.985;
-    const sideSign = s2 < 0.5 ? -1 : 1;
-    const uSide = (s2 < 0.5 ? s2 * 2 : (s2 - 0.5) * 2);
-    const theta = sideSign * (0.38 * Math.PI + uSide * 0.58 * Math.PI);
+    const bRow = Math.min(H - 1, Math.floor((0.33 + s1 * 0.30) * (H - 1)));
+    const xLeft = Math.min(W - 1, Math.floor((0.20 + s2 * 0.08) * (W - 1)));
+    const xRight = Math.min(W - 1, Math.floor((0.72 + s2 * 0.08) * (W - 1)));
+    const pL = (bRow * W + xLeft) * 4;
+    const pR = (bRow * W + xRight) * 4;
 
-    const crownW = Math.sqrt(
-      Math.max(0.04, 1 - Math.pow(Math.max(0, (0.245 - nyW) / 0.165), 2))
-    );
-    const torsoTw = sstep(0.68, 0.87, nyW);
-    const rzW =
-      nyW <= 0.658
-        ? 1.16 * crownW * (1 - 0.30 * sstep(0.58, 0.658, nyW))
-        : 0.54 + 0.28 * torsoTw;
+    const r8 = Math.round((portrait[pL] * (1 - s3) + portrait[pR] * s3) * 0.85);
+    const g8 = Math.round((portrait[pL + 1] * (1 - s3) + portrait[pR + 1] * s3) * 0.85);
+    const b8 = Math.round((portrait[pL + 2] * (1 - s3) + portrait[pR + 2] * s3) * 0.85);
+    const max8 = r8 > g8 ? (r8 > b8 ? r8 : b8) : g8 > b8 ? g8 : b8;
+    if (max8 / 255 < 0.05) continue;
 
-    const wz = -0.06 + Math.cos(theta) * rzW + (s3 - 0.5) * 0.018;
-    const perspW = (CAM_Z - wz) / CAM_Z;
-    const wxScreen = Math.sin(theta) * rxScreen;
-    const wx = wxScreen * perspW;
-    const wy = ((0.5 - nyW) * worldH - CAM_Y) * perspW + CAM_Y;
+    const bNy = bRow / (H - 1);
+    const bNx = 0.27 + 0.46 * s3;
+    const wz =
+      -0.92 +
+      0.32 * Math.sin(bNy * 22.0 + bNx * 3.5) +
+      0.18 * Math.cos(bNx * 8.5 - bNy * 12.0);
+    const perspB = (CAM_Z - wz) / CAM_Z;
+    const wx = (bNx - 0.5) * WORLD_W * perspB;
+    const wy = ((0.5 - bNy) * worldH - CAM_Y) * perspB + CAM_Y;
 
-    const ringMod = 0.55 + 0.45 * Math.pow(Math.cos(nyW * 210 * Math.PI), 2);
-    const occFade =
-      (0.24 + 0.56 * THREE.MathUtils.clamp((Math.cos(theta) + 0.9) / 1.4, 0, 1)) * ringMod;
-
-    // Convert display sRGB-equivalent intensity to linear space
-    const cR = Math.pow(0.09 * occFade, 2.2);
-    const cG = Math.pow(0.74 * occFade, 2.2);
-    const cB = Math.pow(0.98 * occFade, 2.2);
-
-    const skinW =
-      (1 - sstep(0.585, 0.765, nyW)) *
-      (1 - sstep(0.185, 0.255, Math.abs(wxScreen) / WORLD_W));
-    const regW = nyW <= 0.665 ? 0.70 : 0.40;
-    const nxHint = 0.5 + wxScreen / WORLD_W;
+    const warmRatio = r8 > b8 * 1.2 ? 0.72 : 0.05;
+    const cyanRatio = b8 >= r8 ? 0.78 : 0.1;
 
     pushParticle(
       wx,
       wy,
       wz,
-      cR,
-      cG,
-      cB,
-      Math.sin(theta),
+      SRGB_TO_LINEAR[r8],
+      SRGB_TO_LINEAR[g8],
+      SRGB_TO_LINEAR[b8],
       0,
-      Math.cos(theta),
-      0.85,
       0,
-      0.82,
+      1,
       0,
-      skinW,
-      regW,
-      nxHint,
-      nyW
+      warmRatio,
+      cyanRatio,
+      0,
+      0,
+      0.12,
+      bNx,
+      bNy
     );
   }
 
-  // --- LAYER C: Recessed Internal 3D Golden Brain & Segmented Cervical Spinal Column ---
-  for (let i = 0; i < coreCount; i++) {
+  // --- LAYER C: Internal Golden 3D Cerebral & Cervical Spinal Core (`r <= 0.34`, never touches silhouette) ---
+  for (let i = 0; i < internalCoreCount; i++) {
     const s1 = hash01(i * 3.11 + 1.41);
     const s2 = hash01(i * 5.23 + 2.71);
     const s3 = hash01(i * 7.09 + 0.33);
 
-    const nyRaw = 0.21 + s1 * (0.94 - 0.21);
-    const nyC = Math.round(nyRaw * 104) / 104 + (s3 - 0.5) * 0.0028;
-    const isBrain = nyC < 0.56;
-    const rad = isBrain ? 0.03 + s2 * 0.36 : 0.02 + s2 * 0.12;
+    const nyRaw = 0.22 + s1 * 0.70;
+    const nyC = Math.round(nyRaw * 108) / 108 + (s3 - 0.5) * 0.0025;
+    const isBrain = nyC < 0.55;
+    const rad = isBrain ? 0.02 + s2 * 0.32 : 0.015 + s2 * 0.105;
     const ang = s3 * Math.PI * 2;
 
     const wx = Math.cos(ang) * rad;
     const wy = (0.5 - nyC) * worldH;
     const wz = isBrain
-      ? 0.18 + Math.sin(ang) * rad * 0.85
-      : 0.06 + Math.sin(ang) * rad * 0.75;
+      ? 0.22 + Math.sin(ang) * rad * 0.85
+      : 0.12 + Math.sin(ang) * rad * 0.75;
 
-    const skinW = 1 - sstep(0.585, 0.765, nyC);
-    const glow = 0.48 + 0.50 * hash01(i * 1.97 + 4.2);
+    const tCerv = THREE.MathUtils.clamp((nyC - 0.575) / (0.76 - 0.575), 0, 1);
+    const skinW = 1 - tCerv * tCerv * (3 - 2 * tCerv);
+    const glow = 0.42 + 0.44 * hash01(i * 1.97 + 4.2);
     const cR = Math.pow(1.0 * glow, 2.2);
-    const cG = Math.pow(0.64 * glow, 2.2);
-    const cB = Math.pow(0.18 * glow, 2.2);
-    const voiceW = isBrain ? 0.45 : 0.55;
+    const cG = Math.pow(0.66 * glow, 2.2);
+    const cB = Math.pow(0.20 * glow, 2.2);
+    const voiceW = isBrain ? 0.48 : 0.62;
 
     pushParticle(
       wx,
@@ -796,7 +742,7 @@ function buildHumanoidParticles(
       1,
       0,
       0.92,
-      0.05,
+      0.06,
       voiceW,
       skinW,
       0.62,
@@ -805,69 +751,22 @@ function buildHumanoidParticles(
     );
   }
 
-  // --- LAYER D: Continuous Multi-Depth 3D Wave Ribbons Behind Head/Neck (`Z = -0.95 .. -2.35`) ---
-  for (let i = 0; i < bgWaveCount; i++) {
-    const s1 = hash01(i * 2.13 + 0.61);
-    const s2 = hash01(i * 4.67 + 1.83);
-    const s3 = hash01(i * 6.31 + 3.07);
-
-    const bNx = 0.18 + s1 * 0.64;
-    const strand = Math.floor(s2 * 24);
-    const strandT = strand / 23;
-    const bNy =
-      0.34 +
-      strandT * 0.29 +
-      0.022 * Math.sin(bNx * 14.0 + strand * 0.7) +
-      0.011 * Math.cos(bNx * 27.0 - strand * 1.1);
-    const wz = -0.95 - (strand % 4) * 0.38 + 0.24 * Math.sin(bNx * 10.0 + strand);
-    const perspB = (CAM_Z - wz) / CAM_Z;
-    const wx = (bNx - 0.5) * WORLD_W * perspB;
-    const wy = ((0.5 - bNy) * worldH - CAM_Y) * perspB + CAM_Y;
-
-    const isWarm = strand >= 9 && strand <= 16;
-    const fade = 0.38 + 0.38 * s3;
-    const cR = Math.pow((isWarm ? 0.96 : 0.12) * fade, 2.2);
-    const cG = Math.pow((isWarm ? 0.62 : 0.78) * fade, 2.2);
-    const cB = Math.pow((isWarm ? 0.20 : 0.96) * fade, 2.2);
-
-    pushParticle(
-      wx,
-      wy,
-      wz,
-      cR,
-      cG,
-      cB,
-      0,
-      0,
-      1,
-      0,
-      isWarm ? 0.78 : 0.05,
-      isWarm ? 0.08 : 0.82,
-      0,
-      0,
-      0.12,
-      bNx,
-      bNy
-    );
-  }
-
-  // --- LAYER E: Subtle Foreground & Volumetric Space Dust Motes (`Z = -1.6 .. +2.25`) ---
-  for (let i = 0; i < fgMoteCount; i++) {
+  // --- LAYER D: Subtle Deep-Space Atmospheric Light Embers (strictly outside face zone) ---
+  for (let i = 0; i < emberCount; i++) {
     const s1 = hash01(i * 5.81 + 0.29);
     const s2 = hash01(i * 8.17 + 1.19);
     const s3 = hash01(i * 3.49 + 2.63);
 
-    const wx = (s1 - 0.5) * 6.2;
+    const wx = (s1 - 0.5) * 6.8;
     const wy = (s2 - 0.5) * 4.0;
-    const wz = -1.6 + s3 * 3.85;
-    // Keep foreground directly in front of eyes subtly clear so face stays razor sharp
-    if (wz > 0.6 && Math.abs(wx) < 0.75 && wy > -0.4 && wy < 1.3) continue;
+    const wz = -1.5 + s3 * 2.9;
+    if (Math.abs(wx) < 1.38 && wy > -0.82 && wy < 1.88) continue;
 
-    const isGold = hash01(i * 9.31) < 0.28;
-    const fade = 0.26 + 0.42 * hash01(i * 2.47);
-    const cR = Math.pow((isGold ? 1.0 : 0.22) * fade, 2.2);
-    const cG = Math.pow((isGold ? 0.68 : 0.86) * fade, 2.2);
-    const cB = Math.pow((isGold ? 0.24 : 1.0) * fade, 2.2);
+    const isGold = hash01(i * 9.31) < 0.32;
+    const fade = 0.30 + 0.42 * hash01(i * 2.47);
+    const cR = Math.pow((isGold ? 1.0 : 0.20) * fade, 2.2);
+    const cG = Math.pow((isGold ? 0.70 : 0.86) * fade, 2.2);
+    const cB = Math.pow((isGold ? 0.25 : 1.0) * fade, 2.2);
 
     pushParticle(
       wx,
@@ -880,8 +779,8 @@ function buildHumanoidParticles(
       0,
       1,
       0,
-      isGold ? 0.7 : 0,
-      isGold ? 0.1 : 0.8,
+      isGold ? 0.72 : 0,
+      isGold ? 0.1 : 0.82,
       0,
       0,
       0.92,
@@ -1122,25 +1021,37 @@ void main() {
   float brainRhythm = 0.72 + 0.28 * sin(uTime * 6.6 + seed * 6.2831853);
   float brainPulse = uBrainActivity * (0.42 + (1.0 - radialZone) * 0.58) * brainRhythm * uEffects;
 
+  // Travelling bio-electric pulses racing outward along wave ribbons & ascending up the golden spine
+  float wavePulse = waveMask * pow(0.5 + 0.5 * sin(abs(p.x) * 2.35 - uTime * 2.25 + seed * 1.4), 5.0) * 0.42 * uEffects;
+  float spinalPulse =
+    warmTrait *
+    (1.0 - smoothstep(0.18, 0.48, abs(p.x))) *
+    pow(0.5 + 0.5 * sin(p.y * 4.4 - uTime * 2.55), 4.0) *
+    (0.32 + uVoice * 0.45) *
+    uEffects;
+
   float cyanEnergy =
     cyanTrait * stateCyan +
-    edgeTrait * (0.08 + stateCyan * 0.36) +
-    fresnelRim * 0.85 +
-    moodWave * (1.0 - stateTone) * 0.32 +
-    shockRing * (0.42 + travel * 0.28) +
-    assemblyGlow * 0.26;
+    edgeTrait * (0.10 + stateCyan * 0.38) +
+    fresnelRim * 0.96 +
+    wavePulse * 0.85 +
+    moodWave * (1.0 - stateTone) * 0.34 +
+    shockRing * (0.45 + travel * 0.30) +
+    assemblyGlow * 0.28;
 
   float warmEnergy =
     warmTrait * stateWarm +
-    moodWave * stateTone * 0.36 +
-    shockCore * 0.68 +
-    shockRing * (1.0 - travel) * 0.20;
+    spinalPulse * 0.92 +
+    wavePulse * warmTrait * 0.55 +
+    moodWave * stateTone * 0.38 +
+    shockCore * 0.72 +
+    shockRing * (1.0 - travel) * 0.22;
 
   float zoneEnergy = (1.0 - radialZone * 0.72) * stateZone;
-  float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.45) * uEffects;
+  float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.48) * uEffects;
 
-  vec3 electricCyan = vec3(0.24, 0.92, 1.0);
-  vec3 moltenAmber = vec3(1.0, 0.62, 0.16);
+  vec3 electricCyan = vec3(0.20, 0.94, 1.0);
+  vec3 moltenAmber = vec3(1.0, 0.66, 0.18);
   vec3 emeraldSignal = vec3(0.38, 1.0, 0.70);
   vec3 synapticViolet = vec3(0.68, 0.48, 1.0);
 
@@ -1151,12 +1062,12 @@ void main() {
 
   vec3 moodTint = mix(electricCyan, moltenAmber, clamp(stateTone, 0.0, 1.0));
 
-  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.88)) * depthShade * aerialDepth;
+  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.84)) * depthShade * aerialDepth;
   vec3 boosted =
-    lifted * 1.08 +
-    electricCyan * (cyanEnergy * 0.16 + fresnelRim * 0.42) +
-    moltenAmber * (warmEnergy + voiceEnergy * 1.15) * 0.21 +
-    brainColor * brainPulse * 0.15;
+    lifted * 1.15 +
+    electricCyan * (cyanEnergy * 0.18 + fresnelRim * 0.48) +
+    moltenAmber * (warmEnergy + voiceEnergy * 1.22) * 0.24 +
+    brainColor * brainPulse * 0.16;
 
   float peak = max(boosted.r, max(boosted.g, boosted.b));
   if (peak > 1.0) {
@@ -1166,14 +1077,14 @@ void main() {
   vCoreColor = clamp(boosted, 0.0, 1.0);
   vCoreAlpha = birthVisibility * backfaceVis;
 
-  float gE = clamp(totalEnergy, 0.0, 1.35);
-  vec3 glowBase = mix(moodTint, vCoreColor, 0.46);
+  float gE = clamp(totalEnergy, 0.0, 1.45);
+  vec3 glowBase = mix(moodTint, vCoreColor, 0.48);
   vHaloColor =
     mix(glowBase, brainColor, clamp(brainPulse * 0.36, 0.0, 0.45)) *
-    (0.58 + gE * 0.76) *
+    (0.64 + gE * 0.82) *
     aerialDepth;
   vHaloAlpha =
-    clamp(0.020 + gE * 0.105 + shockEnergy * 0.10 + brainPulse * 0.04, 0.0, 0.21) *
+    clamp(0.024 + gE * 0.115 + shockEnergy * 0.11 + brainPulse * 0.045, 0.0, 0.24) *
     birthVisibility *
     mix(0.35, 1.0, backfaceVis);
 
@@ -1453,36 +1364,36 @@ function HumanoidPointCloud({
 
     let yawTarget = THREE.MathUtils.clamp(
       baseYaw * gazeGain + stateYawOffset,
-      -0.52,
-      0.52
+      -0.42,
+      0.42
     );
     let pitchTarget = THREE.MathUtils.clamp(
       basePitch * gazeGain + statePitchOffset,
-      -0.36,
-      0.38
+      -0.30,
+      0.32
     );
     let rollTarget = -yawTarget * 0.085 + (state === "listening" ? 0.014 : 0);
 
     // True 3D Perspective Camera Orbit:
     // - Subtle autonomous 3D figure-8 orbit so scene feels tangibly 3D even with stationary mouse
-    // - Cursor-driven 3D perspective parallax (~+-13 deg azimuth, ~+-5 deg elevation)
-    // - Plus full click-drag 3D inspection orbit (up to +-52 deg!) or 3D SPIN showcase turntable
-    const breathAz = Math.sin(t * 0.38) * 0.075 + Math.cos(t * 0.71) * 0.025;
-    const breathEl = Math.cos(t * 0.44) * 0.038;
-    const cursorCamAz = ptr.inside ? -shapeGazeAxis(ptr.x) * 0.18 + breathAz * 0.45 : breathAz;
+    // - Cursor-driven opposing 3D perspective parallax (~+-10 deg azimuth, ~+-5 deg elevation)
+    // - Plus smooth click-drag 3D inspection orbit (up to +-30 deg) or 3D ORBIT showcase
+    const breathAz = Math.sin(t * 0.38) * 0.062 + Math.cos(t * 0.71) * 0.020;
+    const breathEl = Math.cos(t * 0.44) * 0.032;
+    const cursorCamAz = ptr.inside ? -shapeGazeAxis(ptr.x) * 0.16 + breathAz * 0.45 : breathAz;
     const cursorCamEl = ptr.inside ? shapeGazeAxis(ptr.y) * 0.09 + breathEl * 0.45 : breathEl;
-    const turntableAz = turntable ? Math.sin(t * 0.55) * 0.62 : 0;
-    const turntableEl = turntable ? Math.cos(t * 0.37) * 0.14 : 0;
+    const turntableAz = turntable ? Math.sin(t * 0.55) * 0.38 : 0;
+    const turntableEl = turntable ? Math.cos(t * 0.37) * 0.12 : 0;
 
     let camAzTarget = THREE.MathUtils.clamp(
       cursorCamAz + ptr.dragAzimuth + turntableAz,
-      -0.92,
-      0.92
+      -0.54,
+      0.54
     );
     let camElTarget = THREE.MathUtils.clamp(
       cursorCamEl + ptr.dragElevation + turntableEl,
-      -0.48,
-      0.48
+      -0.34,
+      0.34
     );
     const camDistTarget = reducedMotion ? CAM_Z : ptr.zoomDist;
 
@@ -1631,7 +1542,7 @@ function HumanoidPointCloud({
     }
 
     const chestBreath = reducedMotion ? 0 : Math.sin(t * 1.12) * 0.020;
-    const pointSize = data.tier === "high" ? 2.35 : data.tier === "medium" ? 3.55 : 4.65;
+    const pointSize = data.tier === "high" ? 2.52 : data.tier === "medium" ? 3.65 : 4.75;
 
     uniforms.uTime.value = t;
     uniforms.uDpr.value = dpr;
@@ -1768,14 +1679,14 @@ export default function ApexMaleHumanoid({
         dragLastX = clientX;
         dragLastY = clientY;
         pointerRef.current.dragAzimuth = THREE.MathUtils.clamp(
-          pointerRef.current.dragAzimuth - (dxPx / w) * 2.2,
-          -0.85,
-          0.85
+          pointerRef.current.dragAzimuth - (dxPx / w) * 1.6,
+          -0.48,
+          0.48
         );
         pointerRef.current.dragElevation = THREE.MathUtils.clamp(
-          pointerRef.current.dragElevation + (dyPx / h) * 1.4,
-          -0.44,
-          0.44
+          pointerRef.current.dragElevation + (dyPx / h) * 1.1,
+          -0.32,
+          0.32
         );
       }
     };
@@ -2041,7 +1952,7 @@ export default function ApexMaleHumanoid({
 
   const formattedPts = particleData
     ? `${Math.round(particleData.count / 1000)}K 3D`
-    : "340K 3D";
+    : "270K 3D";
 
   return (
     <div
@@ -2106,22 +2017,22 @@ export default function ApexMaleHumanoid({
             style={{
               position: "fixed",
               left: 16,
-              bottom: 18,
+              bottom: 14,
               zIndex: 34,
               display: "flex",
               alignItems: "center",
-              gap: 6,
-              padding: "5px 8px",
+              gap: 4,
+              padding: "4px 8px",
               borderRadius: 999,
-              background: "rgba(4, 10, 18, 0.72)",
-              border: "1px solid rgba(79, 210, 255, 0.20)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
+              background: "rgba(3, 8, 15, 0.50)",
+              border: "1px solid rgba(79, 210, 255, 0.12)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
               pointerEvents: "auto",
               fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
+              fontSize: 8.5,
               letterSpacing: "0.14em",
-              color: "rgba(191, 230, 255, 0.82)",
+              color: "rgba(180, 222, 248, 0.66)",
             }}
           >
             <span

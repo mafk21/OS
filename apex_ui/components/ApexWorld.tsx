@@ -554,7 +554,7 @@ export default function ApexWorld() {
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
   const [cam, setCam] = useState({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 });
-  const [maleWebVisible, setMaleWebVisible] = useState(true);
+  const [maleWebVisible, setMaleWebVisible] = useState(false);
   const [humanoidPulse, setHumanoidPulse] = useState(0);
 
   const isMale = activePersona === "male";
@@ -748,15 +748,15 @@ export default function ApexWorld() {
           </div>
         )}
 
-        {(!isMale || maleWebVisible) && (
+        {maleWebVisible && (
           <div
             aria-hidden="true"
             style={{
               position: "absolute",
               inset: 0,
-              zIndex: isMale ? 1 : undefined,
-              opacity: isMale ? 0.72 : undefined,
-              pointerEvents: "none",
+              zIndex: 1,
+              opacity: isMale ? 0.72 : 0.78,
+              pointerEvents: isMale ? "none" : undefined,
             }}
           >
             <ReasoningWeb
@@ -878,11 +878,56 @@ export default function ApexWorld() {
         </ul>
       </nav>
 
-      <OrbStatusBarComp
-        state={orbState}
-        rawState={rawState}
-        subtitle={lastSubtitle}
-      />
+      {!isMale && (
+        <OrbStatusBarComp
+          state={orbState}
+          rawState={rawState}
+          subtitle={lastSubtitle}
+        />
+      )}
+
+      {!isMale && (
+        <div
+          style={{
+            position: "fixed",
+            left: 16,
+            bottom: 14,
+            zIndex: 34,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 9px",
+            borderRadius: 999,
+            background: "rgba(14, 5, 16, 0.54)",
+            border: `1px solid ${theme.primary}26`,
+            backdropFilter: "blur(8px)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 8.5,
+            letterSpacing: "0.14em",
+            color: "rgba(255, 208, 232, 0.72)",
+          }}
+        >
+          <span style={{ color: theme.primary, fontWeight: 600 }}>CORE 3D</span>
+          <button
+            type="button"
+            onClick={() => setMaleWebVisible((v) => !v)}
+            title="Toggle 18-agent constellation network"
+            style={{
+              appearance: "none",
+              border: "none",
+              background: "transparent",
+              color: maleWebVisible ? theme.primary : "rgba(240, 210, 228, 0.62)",
+              padding: "2px 5px",
+              fontSize: 8.5,
+              letterSpacing: "0.12em",
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            {maleWebVisible ? "WEB ON" : "PURE"}
+          </button>
+        </div>
+      )}
 
       {selected && (
         <AgentOverview sel={selected} onClose={() => setSelected(null)} />

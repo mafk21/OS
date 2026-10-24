@@ -34,9 +34,9 @@ def test_male_humanoid_3d_sculpt_assets_and_volumetric_depth() -> None:
     # Channel A must stay 255 everywhere so browser Canvas 2D getImageData never premultiplies RGB
     assert int(dep[..., 3].min()) == 255
 
-    # Verify true full-volume 3D depth relief (Z in [-2.40 .. +1.60]) — never flat 2D bas-relief!
+    # Verify true smooth 3D sculptural depth relief (Z in [-1.60 .. +1.60]) with ZERO spiky wrap shells!
     h, w, _ = rgb.shape
-    wz = (dep[..., 0].astype(np.float32) / 255.0) * 4.00 - 2.40
+    wz = (dep[..., 0].astype(np.float32) / 255.0) * 3.20 - 1.60
     nose_z = float(wz[int(0.45 * h), int(0.50 * w)])
     socket_z = float(wz[int(0.376 * h), int(0.452 * w)])
     temple_z = float(wz[int(0.38 * h), int(0.354 * w)])
@@ -45,18 +45,18 @@ def test_male_humanoid_3d_sculpt_assets_and_volumetric_depth() -> None:
 
     assert nose_z > 1.40, f"Nose must project strongly in 3D (+Z > 1.40), got {nose_z}"
     assert nose_z - socket_z > 0.50, f"Orbital eye sockets must recess deeply behind nose/brow, got {nose_z - socket_z}"
-    assert nose_z - temple_z > 1.35, f"Head front-to-rim 3D depth must exceed 1.35 units, got {nose_z - temple_z}"
+    assert nose_z - temple_z > 1.15, f"Head front-to-rim 3D depth must exceed 1.15 units, got {nose_z - temple_z}"
     assert chin_z - submental_z > 0.55, f"Chin must overhang cylindrical neck in 3D, got {chin_z - submental_z}"
 
-    # Verify deep-space wave backdrop sits > 2.8 world units behind nose tip & carries 0 head skinning
+    # Verify deep-space wave backdrop sits > 2.3 world units behind nose tip & carries 0 head skinning
     yy, xx = np.mgrid[0:h, 0:w]
     nx = xx / (w - 1.0)
     ny = yy / (h - 1.0)
     bright = rgb.max(axis=2)
-    wave_zone = (ny >= 0.30) & (ny <= 0.65) & (np.abs(nx - 0.5) >= 0.24) & (bright > 0.10)
+    wave_zone = (ny >= 0.32) & (ny <= 0.65) & (np.abs(nx - 0.5) >= 0.25) & (bright > 0.10)
     assert int(dep[..., 1][wave_zone].max()) == 0
     wave_mean_z = float(wz[wave_zone].mean())
-    assert nose_z - wave_mean_z > 2.80, f"Expected >2.8 units 3D separation between face and waves, got {nose_z - wave_mean_z}"
+    assert nose_z - wave_mean_z > 2.30, f"Expected >2.3 units 3D separation between face and waves, got {nose_z - wave_mean_z}"
 
     # Verify both electric-cyan rim particles and warm golden-amber core particles exist richly
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
@@ -87,6 +87,9 @@ def test_male_humanoid_3d_camera_parallax_and_mouse_gaze_directions() -> None:
     assert "camera.lookAt(LOOK_TARGET)" in src
     assert "3D ORBIT" in src
     assert "lastMoveAt" not in src
+    # Never generate synthetic skull-wrap/hair shells around the bald Figure-of-Light cranium
+    assert "wrapCount" not in src
+    assert "rxMeasured" not in src
 
     # 2. Capture-phase window mouse/pointer/touch tracking
     assert 'window.addEventListener("pointermove", onPointerOrMouseMove' in src
@@ -123,7 +126,7 @@ def test_male_humanoid_3d_camera_parallax_and_mouse_gaze_directions() -> None:
         pitch = gy * max_pitch_down if gy >= 0 else gy * max_pitch_up
         roll = -yaw * 0.085
 
-        cam_az = -gx * 0.18
+        cam_az = -gx * 0.16
         cam_el = gy * 0.09
 
         rx = nose_world[0]
@@ -176,25 +179,53 @@ def test_male_humanoid_3d_camera_parallax_and_mouse_gaze_directions() -> None:
 
     # 1) Mouse DOWN -> nose screen Y increases strongly AND deep wave shifts upward (opposing 3D parallax!)
     _, down_ny, _, down_wy = project_nose_and_wave(eye_x * vw, vh * 0.92)
-    assert down_ny > cy0 + 80.0
+    assert down_ny > cy0 + 65.0
     assert down_wy < wy0 - 10.0
 
     # 2) Mouse UP -> nose screen Y decreases strongly AND deep wave shifts downward!
     _, up_ny, _, up_wy = project_nose_and_wave(eye_x * vw, vh * 0.05)
-    assert up_ny < cy0 - 80.0
+    assert up_ny < cy0 - 65.0
     assert up_wy > wy0 + 10.0
 
-    # 3) Mouse RIGHT -> nose turns RIGHT (+screenX) while deep wave glides LEFT (-screenX) (>150px 3D parallax!)
+    # 3) Mouse RIGHT -> nose turns RIGHT (+screenX) while deep wave glides LEFT (-screenX) (>135px 3D parallax!)
     right_nx, _, right_wx, _ = project_nose_and_wave(vw * 0.94, eye_y * vh)
-    assert right_nx > cx0 + 120.0
-    assert right_wx < wx0 - 20.0
-    assert (right_nx - right_wx) > 150.0
+    assert right_nx > cx0 + 100.0
+    assert right_wx < wx0 - 18.0
+    assert (right_nx - right_wx) > 135.0
 
-    # 4) Mouse LEFT -> nose turns LEFT (-screenX) while deep wave glides RIGHT (+screenX) (>150px 3D parallax!)
+    # 4) Mouse LEFT -> nose turns LEFT (-screenX) while deep wave glides RIGHT (+screenX) (>135px 3D parallax!)
     left_nx, _, left_wx, _ = project_nose_and_wave(vw * 0.06, eye_y * vh)
-    assert left_nx < cx0 - 120.0
-    assert left_wx > wx0 + 20.0
-    assert (left_wx - left_nx) > 150.0
+    assert left_nx < cx0 - 100.0
+    assert left_wx > wx0 + 18.0
+    assert (left_wx - left_nx) > 135.0
+
+
+def test_male_and_female_hud_decluttered_and_no_speech_box() -> None:
+    world_src = (REPO_ROOT / "apex_ui" / "components" / "ApexWorld.tsx").read_text(encoding="utf-8")
+    overlays_src = (REPO_ROOT / "apex_ui" / "components" / "JarvisHudOverlays.tsx").read_text(
+        encoding="utf-8"
+    )
+    orb_bar_src = (REPO_ROOT / "apex_ui" / "components" / "OrbStatusBar.jsx").read_text(
+        encoding="utf-8"
+    )
+    workers_src = (REPO_ROOT / "apex_ui" / "components" / "WorkerOrbsLayer.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    # 1. Constellation web & labels off by default in BOTH Male & Female so stage is clean
+    assert "const [maleWebVisible, setMaleWebVisible] = useState(false)" in world_src
+    assert "{maleWebVisible && (" in world_src
+    # 2. No OrbStatusBar over Male chest, and NO bordered subtitle box in Female OrbStatusBar either
+    assert "{!isMale && (\n        <OrbStatusBarComp" in world_src
+    assert "subtitle.text" not in orb_bar_src
+    # 3. Categorized HUD menu + on-demand OUTPUT pill for BOTH Male & Female
+    assert "content && maleContentExpanded" in overlays_src
+    assert "HUD ▾" in overlays_src
+    assert "INTELLIGENCE" in overlays_src
+    assert "WORKSPACE & OPS" in overlays_src
+    # 4. Activity pill never overlaps top-left clock and hides when idle
+    assert "top: 124" in workers_src
+    assert "runningCount > 0 || queuedCount > 0 || activityOpen" in workers_src
 
 
 def test_female_orb_components_strictly_untouched() -> None:
