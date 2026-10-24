@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Mic,
   MicOff,
+  Minimize2,
   Pause,
   Play,
   Send,
@@ -24,6 +25,7 @@ import {
   Zap,
 } from "lucide-react";
 import AutomationsModal from "./AutomationsModal";
+import BackgroundCornerDock from "./BackgroundCornerDock";
 import BrainModal from "./BrainModal";
 import DevWorkspaceModal from "./DevWorkspaceModal";
 import IntegrationsModal from "./IntegrationsModal";
@@ -79,6 +81,7 @@ export default function JarvisHudOverlays() {
     securityModalOpen,
     personaModalOpen,
     activityOpen,
+    backgroundMode,
     setConsoleOpen,
     setSettingsOpen,
     setSetupOpen,
@@ -106,6 +109,7 @@ export default function JarvisHudOverlays() {
     setGrace,
     resolveConfirm,
     saveApiKey,
+    enterBackgroundMode,
   } = useJarvis();
 
   const PRIMARY = theme.primary;
@@ -283,6 +287,10 @@ export default function JarvisHudOverlays() {
     ? rawState || "ONLINE"
     : "PREVIEW";
 
+  if (backgroundMode) {
+    return <BackgroundCornerDock />;
+  }
+
   return (
     <>
       <ActivityTimelineHud />
@@ -381,6 +389,24 @@ export default function JarvisHudOverlays() {
 
         <button
           type="button"
+          data-testid="enter-bg-mode-btn"
+          onClick={() => enterBackgroundMode()}
+          title="Background Mode — docks JARVIS to a floating button in the bottom-right corner while keeping live voice & mic active"
+          style={{
+            ...pillBase,
+            padding: "5px 10px",
+            fontSize: "0.58rem",
+            background: theme.barBg,
+            borderColor: `${PRIMARY}38`,
+            color: "rgba(240, 237, 232, 0.86)",
+          }}
+        >
+          <Minimize2 size={11} />
+          BG
+        </button>
+
+        <button
+          type="button"
           onClick={() => setMaleMenuOpen((o) => !o)}
           aria-label="Open JARVIS workspace menu"
           style={{
@@ -474,6 +500,12 @@ export default function JarvisHudOverlays() {
               {
                 section: "SYSTEM",
                 items: [
+                  {
+                    label: "Background Mode",
+                    icon: <Minimize2 size={12} />,
+                    active: backgroundMode,
+                    run: () => enterBackgroundMode(),
+                  },
                   {
                     label: "Security & Vault",
                     icon: <ShieldCheck size={12} />,

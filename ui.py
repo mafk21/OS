@@ -4298,6 +4298,21 @@ class MainWindow(QMainWindow):
         self._ctrl_btn.clicked.connect(self._toggle_controls)
         lay.addSpacing(4)
         lay.addWidget(self._ctrl_btn)
+
+        self._on_bg_mode_cb = None
+        self._bg_mode_btn = QPushButton("BG")
+        self._bg_mode_btn.setFixedSize(34, 26)
+        self._bg_mode_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        self._bg_mode_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._bg_mode_btn.setToolTip(
+            "Background Mode — docks a floating corner button on the bottom-right while keeping live voice & mic active"
+        )
+        self._bg_mode_btn.setStyleSheet(self._drawer_btn.styleSheet())
+        self._bg_mode_btn.clicked.connect(
+            lambda: self._on_bg_mode_cb() if callable(self._on_bg_mode_cb) else None
+        )
+        lay.addSpacing(4)
+        lay.addWidget(self._bg_mode_btn)
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
@@ -6257,8 +6272,12 @@ class JarvisUI:
         self._app = QApplication.instance() or QApplication(sys.argv)
         self._app.setStyle("Fusion")
         self._win = MainWindow(face_path)
+        self._win._on_bg_mode_cb = self.enter_background_mode
         self.root = _RootShim(self._app)
         self._apex_bridge = None
+        self._bg_dock = None
+        self._classic_mode = False
+        self._embedded_hud = False
         self._pending_text_commands: list[str] = []
         from memory.config_manager import is_integrations_onboarding_done
         self._integrations_ready = (
@@ -6278,6 +6297,7 @@ class JarvisUI:
         )
 
         if classic_mode:
+            self._classic_mode = True
             self._win.show()
 
             def _after_api_key():
@@ -6324,6 +6344,7 @@ class JarvisUI:
                     except Exception:
                         embedded = False
 
+                self._embedded_hud = embedded
                 if not embedded:
                     # Keep Qt event loop alive without showing the legacy window;
                     # RegionOverlay closing after a capture must not quit QApplication.
@@ -6341,13 +6362,167 @@ class JarvisUI:
             except Exception as exc:
                 print(f"[APEX-HUD] Falling back to classic UI: {exc}")
                 self._apex_bridge = None
+                self._classic_mode = True
                 self._win.show()
 
     def _quit_from_hud(self) -> None:
+        if self._apex_bridge is not None and getattr(
+            self._apex_bridge, "_background_mode", False
+        ):
+            return
         try:
             self._win._bridge_call_sig.emit(self._app.quit)
         except Exception:
             pass
+
+    def _ensure_bg_dock(self):
+        if self._bg_dock is None:
+            from core.background_dock import BackgroundDockWidget
+            from memory.config_manager import get_assistant_name, get_persona
+
+            self._bg_dock = BackgroundDockWidget(
+                on_send_text=self.send_text_from_dock,
+                on_toggle_mute=self._toggle_mute_from_dock,
+                on_restore_full=self.exit_background_mode,
+                on_interrupt=self._interrupt_from_dock,
+            )
+            raw_state = "LISTENING"
+            if self._apex_bridge is not None:
+                raw_state = getattr(self._apex_bridge, "_raw_state", "LISTENING")
+                for ln in list(getattr(self._apex_bridge, "_logs", []))[-10:]:
+                    self._bg_dock.append_log(ln)
+            self._bg_dock.sync_metadata(
+                persona=get_persona(),
+                assistant_name=get_assistant_name(),
+                muted=self.muted,
+                state=raw_state,
+            )
+        return self._bg_dock
+
+    @staticmethod
+    def _minimize_chromium_hud_windows() -> None:
+        """On Windows, minimize any standalone Chromium --app HUD window when entering background mode."""
+        if platform.system() != "Windows":
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+            def _cb(hwnd, _lparam):
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length <= 0:
+                    return True
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = (buf.value or "").strip()
+                low = title.lower()
+                if title != "JARVIS Mini Dock" and (
+                    low == "jarvis"
+                    or low.startswith("jarvis —")
+                    or low.startswith("jarvis -")
+                    or low.startswith("friday —")
+                    or "127.0.0.1:" in low
+                ):
+                    user32.ShowWindow(hwnd, 6)  # SW_MINIMIZE
+                return True
+
+            user32.EnumWindows(WNDENUMPROC(_cb), 0)
+        except Exception:
+            pass
+
+    def enter_background_mode(self) -> None:
+        """Thread-safe: hide/minimize main HUD window and dock floating corner button at bottom-right."""
+        def _do():
+            from memory.config_manager import get_assistant_name, get_persona
+
+            self._app.setQuitOnLastWindowClosed(False)
+            if self._apex_bridge is not None:
+                self._apex_bridge._background_mode = True
+                if self._apex_bridge._close_timer is not None:
+                    self._apex_bridge._close_timer.cancel()
+            if self._win.isVisible():
+                self._win.hide()
+            self._minimize_chromium_hud_windows()
+            dock = self._ensure_bg_dock()
+            dock.sync_metadata(
+                persona=get_persona(),
+                assistant_name=get_assistant_name(),
+                muted=self.muted,
+                state=getattr(self._apex_bridge, "_raw_state", None),
+            )
+            dock.show_collapsed_in_corner()
+
+        try:
+            self._win._bridge_call_sig.emit(_do)
+        except Exception:
+            pass
+
+    def exit_background_mode(self) -> None:
+        """Thread-safe: hide corner dock and restore the full HUD window."""
+        def _do():
+            if self._apex_bridge is not None:
+                self._apex_bridge._background_mode = False
+                self._apex_bridge.notify_background_mode(False)
+            if self._bg_dock is not None:
+                self._bg_dock.hide_dock()
+            if self._classic_mode or self._embedded_hud:
+                self._win.showNormal()
+                self._win.raise_()
+                self._win.activateWindow()
+            elif self._apex_bridge is not None:
+                no_launch = os.environ.get("JARVIS_HUD_NO_LAUNCH", "").strip().lower() in (
+                    "1", "true", "yes",
+                )
+                if not no_launch and len(self._apex_bridge._clients) == 0:
+                    from core.apex_bridge import launch_app_window
+
+                    launch_app_window(self._apex_bridge.url)
+
+        try:
+            self._win._bridge_call_sig.emit(_do)
+        except Exception:
+            pass
+
+    def send_text_from_dock(self, text: str) -> None:
+        """Submit typed text from the bottom-right background dock into JARVIS."""
+        msg = (text or "").strip()
+        if not msg:
+            return
+        self.write_log(f"You: {msg}")
+        self.set_state("THINKING")
+        cb = self.on_text_command
+        if callable(cb):
+            threading.Thread(target=cb, args=(msg,), daemon=True).start()
+        else:
+            self._pending_text_commands.append(msg)
+
+    def _toggle_mute_from_dock(self) -> None:
+        new_muted = not self.muted
+        self.muted = new_muted
+        self.set_state("MUTED" if new_muted else "LISTENING")
+        if self._bg_dock is not None:
+            from memory.config_manager import get_assistant_name, get_persona
+
+            self._bg_dock.sync_metadata(
+                persona=get_persona(),
+                assistant_name=get_assistant_name(),
+                muted=new_muted,
+            )
+
+    def _interrupt_from_dock(self) -> None:
+        cur = getattr(self._apex_bridge, "_raw_state", "LISTENING")
+        if cur == "SPEAKING" and callable(self.on_interrupt):
+            self.on_interrupt()
+            self.set_state("LISTENING")
+        elif self.muted:
+            self._toggle_mute_from_dock()
+        elif callable(self.on_wake_manual):
+            threading.Thread(target=self.on_wake_manual, daemon=True).start()
 
     @property
     def muted(self) -> bool:
@@ -6357,6 +6532,19 @@ class JarvisUI:
     def muted(self, v: bool):
         if v != self._win._muted:
             self._win._toggle_mute()
+            if self._bg_dock is not None:
+                try:
+                    from memory.config_manager import get_assistant_name, get_persona
+
+                    self._win._bridge_call_sig.emit(
+                        lambda: self._bg_dock.sync_metadata(
+                            persona=get_persona(),
+                            assistant_name=get_assistant_name(),
+                            muted=bool(v),
+                        )
+                    )
+                except Exception:
+                    pass
 
     @property
     def current_file(self) -> str | None:
@@ -6482,6 +6670,11 @@ class JarvisUI:
                 self._win.hud.set_audio_level(level)
             except Exception:
                 pass
+        if self._bg_dock is not None:
+            try:
+                self._bg_dock.set_audio_level(level)
+            except Exception:
+                pass
         if self._apex_bridge is not None:
             try:
                 self._apex_bridge.push_audio_level(level)
@@ -6525,6 +6718,8 @@ class JarvisUI:
             try:
                 peak = max(float(f[0]) for f in frames[:6])
                 self._apex_bridge.push_audio_level(peak)
+                if self._bg_dock is not None:
+                    self._bg_dock.set_audio_level(peak)
             except Exception:
                 pass
 
@@ -6571,6 +6766,13 @@ class JarvisUI:
 
     def set_state(self, state: str):
         self._win._state_sig.emit(state)
+        if self._bg_dock is not None:
+            try:
+                self._win._bridge_call_sig.emit(
+                    lambda s=str(state): self._bg_dock.set_state(s)
+                )
+            except Exception:
+                pass
         if self._apex_bridge is not None:
             try:
                 self._apex_bridge.push_state(state)
@@ -6579,6 +6781,13 @@ class JarvisUI:
 
     def write_log(self, text: str):
         self._win._log_sig.emit(text)
+        if self._bg_dock is not None:
+            try:
+                self._win._bridge_call_sig.emit(
+                    lambda t=str(text): self._bg_dock.append_log(t)
+                )
+            except Exception:
+                pass
         if self._apex_bridge is not None:
             try:
                 self._apex_bridge.push_log(text)
@@ -6592,6 +6801,19 @@ class JarvisUI:
         if ov is not None:
             ov.hide()
             self._win._persona_overlay = None
+        if self._bg_dock is not None:
+            try:
+                from memory.config_manager import get_assistant_name
+
+                self._win._bridge_call_sig.emit(
+                    lambda p=str(persona): self._bg_dock.sync_metadata(
+                        persona=p,
+                        assistant_name=get_assistant_name(),
+                        muted=self.muted,
+                    )
+                )
+            except Exception:
+                pass
         if ui_color:
             self._win._preview_ui_color(ui_color)
 

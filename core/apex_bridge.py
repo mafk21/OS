@@ -167,6 +167,7 @@ class ApexHudBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set[Any] = set()
         self._had_ws_client = False
+        self._background_mode = False
         self._close_timer: threading.Timer | None = None
         self._started = threading.Event()
         self._server: Any = None
@@ -307,9 +308,20 @@ class ApexHudBridge:
             "logs": logs_list,
             "confirm": confirm_obj,
             "content": content_obj,
+            "background_mode": bool(self._background_mode),
         }
 
     # ── Push methods called from JarvisUI / audio threads ─────────────────────
+
+    def notify_background_mode(self, active: bool, native_dock: bool = False) -> None:
+        self._background_mode = bool(active)
+        self._broadcast_threadsafe(
+            {
+                "type": "background_mode",
+                "active": bool(active),
+                "native_dock": bool(native_dock),
+            }
+        )
 
     def _broadcast_threadsafe(self, payload: dict[str, Any]) -> None:
         loop = self._loop
@@ -757,6 +769,32 @@ class ApexHudBridge:
                 self._invoke_qt(win._do_stop_all)
             self.push_state("LISTENING")
             return {"ok": True}
+
+        if action == "enter_background_mode":
+            self._background_mode = True
+            if self._close_timer is not None:
+                self._close_timer.cancel()
+            offscreen = os.environ.get("QT_QPA_PLATFORM", "").strip().lower() in (
+                "offscreen",
+                "minimal",
+            )
+            native_dock = False
+            if ui is not None and callable(getattr(ui, "enter_background_mode", None)):
+                ui.enter_background_mode()
+                native_dock = not offscreen
+            self.notify_background_mode(True, native_dock=native_dock)
+            return {
+                "ok": True,
+                "background_mode": True,
+                "native_dock": native_dock,
+            }
+
+        if action == "exit_background_mode":
+            self._background_mode = False
+            if ui is not None and callable(getattr(ui, "exit_background_mode", None)):
+                ui.exit_background_mode()
+            self.notify_background_mode(False, native_dock=False)
+            return {"ok": True, "background_mode": False}
 
         if action == "region_capture" and win is not None:
             if ui is not None and getattr(ui, "_on_region_capture", None) and not getattr(win, "_on_region_capture", None):
@@ -1558,10 +1596,14 @@ class ApexHudBridge:
         return app
 
     def _schedule_auto_close(self) -> None:
+        if self._background_mode:
+            return
         if self._close_timer is not None:
             self._close_timer.cancel()
 
         def _check():
+            if self._background_mode:
+                return
             if len(self._clients) == 0 and self._on_all_windows_closed is not None:
                 try:
                     self._on_all_windows_closed()
