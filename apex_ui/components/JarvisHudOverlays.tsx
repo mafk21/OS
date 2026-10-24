@@ -19,7 +19,9 @@ import {
   Sparkles,
   Volume2,
   X,
+  Zap,
 } from "lucide-react";
+import AutomationsModal from "./AutomationsModal";
 import BrainModal from "./BrainModal";
 import IntegrationsModal from "./IntegrationsModal";
 import StudioModal from "./StudioModal";
@@ -67,6 +69,7 @@ export default function JarvisHudOverlays() {
     integrationsModalOpen,
     brainModalOpen,
     studioModalOpen,
+    automationsModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
@@ -74,6 +77,7 @@ export default function JarvisHudOverlays() {
     setIntegrationsModalOpen,
     setBrainModalOpen,
     setStudioModalOpen,
+    setAutomationsModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
@@ -231,6 +235,7 @@ export default function JarvisHudOverlays() {
     <>
       <ActivityTimelineHud />
       <StudioModal />
+      <AutomationsModal />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -292,6 +297,22 @@ export default function JarvisHudOverlays() {
         >
           <Sparkles size={12} />
           STUDIO
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAutomationsModalOpen(true)}
+          title="Open Automations, Custom REST/Webhook Builder & MCP Servers"
+          style={{
+            ...pillBase,
+            borderColor: automationsModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: automationsModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <Zap size={12} />
+          AUTOMATE
         </button>
 
         <button

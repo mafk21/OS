@@ -31,7 +31,7 @@ try:
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
     FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
-from core import audio_devices, companions
+from core import audio_devices, automations, companions, mcp_adapter
 from core import confirm as confirm_gate
 from memory import accounts
 from memory import config_manager as cfg
@@ -72,6 +72,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "morning_briefing": ["chief_of_staff", "strategist"],
     "focus_guardian": ["chief_of_staff", "strategist"],
     "cloud_integrations": ["email", "drive", "calendar"],
+    "custom_connector": ["developer", "ops"],
     "manage_accounts": ["chief_of_staff", "email"],
     "gws_pack": ["email", "drive", "calendar"],
     "github_automation": ["developer", "engineering"],
@@ -161,6 +162,7 @@ class ApexHudBridge:
 
         self._wx_cache: dict[str, Any] | None = None
         self._wx_cached_at = 0.0
+        self._auto_scheduler = automations.AutomationScheduler(on_log=self.push_log)
 
     # ── State inspection helpers ──────────────────────────────────────────────
 
@@ -1027,6 +1029,97 @@ class ApexHudBridge:
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "theme": th}
 
+        # ── Automations Center, Custom REST/Webhooks & MCP Builder ────────────
+
+        def _auto_state() -> dict[str, Any]:
+            return {
+                "automations": automations.list_automations(),
+                "rest_connectors": mcp_adapter.list_rest_connectors(),
+                "mcp_servers": mcp_adapter.list_mcp_servers(),
+                "available_tools": sorted(set(TOOL_NODE_MAP.keys())),
+            }
+
+        if action == "auto_get":
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_save":
+            try:
+                rec = automations.save_automation(data.get("automation") if isinstance(data.get("automation"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "automation": rec, **_auto_state()}
+
+        if action == "auto_toggle":
+            aid = str(data.get("id") or "").strip()
+            enabled = data.get("enabled") if isinstance(data.get("enabled"), bool) else None
+            automations.toggle_automation(aid, enabled=enabled)
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_delete":
+            aid = str(data.get("id") or "").strip()
+            automations.delete_automation(aid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "auto_run_now":
+            aid = str(data.get("id") or "").strip()
+            try:
+                run_rec = automations.run_automation_now(aid, on_log=self.push_log)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "run": run_rec, **_auto_state()}
+
+        if action == "rest_save":
+            try:
+                rec = mcp_adapter.save_rest_connector(data.get("connector") if isinstance(data.get("connector"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "connector": rec, **_auto_state()}
+
+        if action == "rest_delete":
+            cid = str(data.get("id") or data.get("name") or "").strip()
+            mcp_adapter.delete_rest_connector(cid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "rest_test":
+            cid = str(data.get("id") or data.get("name") or "").strip()
+            params = data.get("params") if isinstance(data.get("params"), dict) else {}
+            try:
+                out = mcp_adapter.invoke_rest_connector(cid, params)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "output": out, **_auto_state()}
+
+        if action == "mcp_save":
+            try:
+                srv = mcp_adapter.save_mcp_server(data.get("server") if isinstance(data.get("server"), dict) else data)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "server": srv, **_auto_state()}
+
+        if action == "mcp_delete":
+            sid = str(data.get("id") or data.get("name") or "").strip()
+            mcp_adapter.delete_mcp_server(sid)
+            return {"ok": True, **_auto_state()}
+
+        if action == "mcp_discover":
+            sid = str(data.get("id") or data.get("name") or "").strip()
+            try:
+                tools = mcp_adapter.discover_mcp_tools(sid)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "tools": tools, **_auto_state()}
+
+        if action == "mcp_call":
+            sid = str(data.get("server") or "").strip()
+            tname = str(data.get("tool_name") or "").strip()
+            args = data.get("arguments") if isinstance(data.get("arguments"), dict) else {}
+            try:
+                out = mcp_adapter.call_mcp_tool(sid, tname, args)
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "output": out}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -1104,6 +1197,18 @@ class ApexHudBridge:
                 companions.get_studio_snapshot, list(TOOL_NODE_MAP.keys())
             )
             return JSONResponse({"ok": True, "studio": st})
+
+        @app.get("/api/hud/automations")
+        async def _automations_get():
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "automations": automations.list_automations(),
+                    "rest_connectors": mcp_adapter.list_rest_connectors(),
+                    "mcp_servers": mcp_adapter.list_mcp_servers(),
+                    "available_tools": sorted(set(TOOL_NODE_MAP.keys())),
+                }
+            )
 
         @app.post("/api/hud/action")
         async def _action(req: Request):
@@ -1267,10 +1372,12 @@ class ApexHudBridge:
             target=_runner, daemon=True, name="jarvis-apex-hud"
         )
         self._thread.start()
+        self._auto_scheduler.start()
         self._started.wait(timeout=timeout)
         return self.url
 
     def stop(self) -> None:
+        self._auto_scheduler.stop()
         if self._close_timer is not None:
             self._close_timer.cancel()
         if self._server is not None:

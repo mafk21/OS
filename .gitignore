@@ -19,6 +19,8 @@ config/whatsapp_web/          # a LINKED WhatsApp session — committing it hand
 memory/long_term.json
 memory/accounts.json
 memory/companions.json
+memory/custom_tools.json
+memory/automations.json
 memory/knowledge_files/
 memory/custom_skills/
 memory/*.db

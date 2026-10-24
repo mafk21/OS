@@ -159,6 +159,7 @@ export type JarvisContextValue = {
   integrationsModalOpen: boolean;
   brainModalOpen: boolean;
   studioModalOpen: boolean;
+  automationsModalOpen: boolean;
   activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -167,6 +168,7 @@ export type JarvisContextValue = {
   setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setStudioModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setAutomationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
@@ -300,6 +302,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [brainModalOpen, setBrainModalOpen] = useState(false);
   const [studioModalOpen, setStudioModalOpen] = useState(false);
+  const [automationsModalOpen, setAutomationsModalOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
   const [workers, setWorkers] = useState<WorkerItem[]>([]);
@@ -1067,6 +1070,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrationsModalOpen,
       brainModalOpen,
       studioModalOpen,
+      automationsModalOpen,
       activityOpen,
       personaModalOpen,
       setConsoleOpen,
@@ -1075,6 +1079,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setIntegrationsModalOpen,
       setBrainModalOpen,
       setStudioModalOpen,
+      setAutomationsModalOpen,
       setActivityOpen,
       setPersonaModalOpen,
       setPreviewPersona,
@@ -1149,6 +1154,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrationsModalOpen,
       brainModalOpen,
       studioModalOpen,
+      automationsModalOpen,
       activityOpen,
       personaModalOpen,
       choosePersona,

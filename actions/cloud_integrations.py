@@ -301,6 +301,196 @@ def _trello_action(action: str, params: dict) -> str:
     return f"Unknown Trello action: {action}"
 
 
+def _linear_action(action: str, params: dict) -> str:
+    rec = ac.get_account("linear")
+    tok = (rec or {}).get("token") or (rec or {}).get("api_key") or ""
+    if not rec or rec.get("ignored") or not tok:
+        return "Linear is not connected (skipped/ignored). Connect Linear in HUD -> Integrations."
+    headers = {"Authorization": tok, "Content-Type": "application/json"}
+    if action == "linear_issues":
+        q = (
+            '{"query":"{ issues(first: 12) { nodes { identifier title state { name } url } } }"}'
+        )
+        res = ac._http_json(
+            "https://api.linear.app/graphql",
+            method="POST",
+            headers=headers,
+            raw_body=q.encode("utf-8"),
+        )
+        nodes = (((res.get("data") or {}).get("issues") or {}).get("nodes")) or []
+        if not nodes:
+            return "No Linear issues found."
+        return "Linear issues:\n" + "\n".join(
+            f"  • [{n.get('identifier')}] {n.get('title')} ({(n.get('state') or {}).get('name', '')}) {n.get('url', '')}"
+            for n in nodes
+        )
+    if action == "linear_create_issue":
+        title = str(params.get("title") or "").strip()
+        desc = str(params.get("body") or params.get("content") or "").strip()
+        team_id = str(params.get("team_id") or rec.get("team_id") or "").strip()
+        if not title or not team_id:
+            return "Provide Linear issue 'title' and 'team_id'."
+        gql = {
+            "query": (
+                "mutation($input: IssueCreateInput!) { "
+                "issueCreate(input: $input) { success issue { identifier title url } } }"
+            ),
+            "variables": {"input": {"teamId": team_id, "title": title, "description": desc}},
+        }
+        res = ac._http_json(
+            "https://api.linear.app/graphql", method="POST", headers=headers, payload=gql
+        )
+        iss = (((res.get("data") or {}).get("issueCreate") or {}).get("issue")) or {}
+        return f"Created Linear issue [{iss.get('identifier', 'NEW')}] {title}: {iss.get('url', '')}"
+    return f"Unknown Linear action: {action}"
+
+
+def _outlook_action(action: str, params: dict) -> str:
+    rec = ac.get_account("outlook")
+    tok = (rec or {}).get("token") or ""
+    if not rec or rec.get("ignored") or not tok:
+        return "Microsoft Outlook / Graph is not connected. Add a Graph Bearer token in HUD -> Integrations."
+    headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    if action == "outlook_unread":
+        res = ac._http_json(
+            "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$filter=isRead%20eq%20false&$top=10",
+            headers=headers,
+        )
+        msgs = res.get("value") or []
+        if not msgs:
+            return "No unread Outlook messages."
+        return "Unread Outlook messages:\n" + "\n".join(
+            f"  • {m.get('subject', '(No subject)')} — from {(((m.get('from') or {}).get('emailAddress')) or {}).get('address', '')}"
+            for m in msgs
+        )
+    if action == "outlook_calendar":
+        res = ac._http_json(
+            "https://graph.microsoft.com/v1.0/me/events?$top=10",
+            headers=headers,
+        )
+        evs = res.get("value") or []
+        if not evs:
+            return "No upcoming Outlook Calendar events."
+        return "Outlook Calendar events:\n" + "\n".join(
+            f"  • {e.get('subject', '(Untitled)')} @ {(e.get('start') or {}).get('dateTime', '')}"
+            for e in evs
+        )
+    if action == "outlook_send":
+        to_addr = str(params.get("to") or "").strip()
+        subj = str(params.get("subject") or "").strip()
+        body = str(params.get("body") or params.get("content") or "").strip()
+        if not to_addr or not subj:
+            return "Provide 'to' and 'subject' for outlook_send."
+        payload = {
+            "message": {
+                "subject": subj,
+                "body": {"contentType": "Text", "content": body},
+                "toRecipients": [{"emailAddress": {"address": to_addr}}],
+            }
+        }
+        ac._http_json(
+            "https://graph.microsoft.com/v1.0/me/sendMail",
+            method="POST",
+            headers=headers,
+            payload=payload,
+        )
+        return f"Sent Outlook email to {to_addr}: '{subj}'."
+    return f"Unknown Outlook action: {action}"
+
+
+def _dropbox_action(action: str, params: dict) -> str:
+    rec = ac.get_account("dropbox")
+    tok = (rec or {}).get("token") or ""
+    if not rec or rec.get("ignored") or not tok:
+        return "Dropbox is not connected. Add a Dropbox access token in HUD -> Integrations."
+    headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+    if action == "dropbox_list":
+        res = ac._http_json(
+            "https://api.dropboxapi.com/2/files/list_folder",
+            method="POST",
+            headers=headers,
+            payload={"path": str(params.get("query") or ""), "limit": 20},
+        )
+        entries = res.get("entries") or []
+        if not entries:
+            return "Dropbox folder is empty."
+        return "Dropbox files:\n" + "\n".join(
+            f"  • [{e.get('.tag', 'file')}] {e.get('name')} ({e.get('path_display', '')})"
+            for e in entries
+        )
+    if action == "dropbox_search":
+        q = str(params.get("query") or "").strip()
+        if not q:
+            return "Provide 'query' for dropbox_search."
+        res = ac._http_json(
+            "https://api.dropboxapi.com/2/files/search_v2",
+            method="POST",
+            headers=headers,
+            payload={"query": q},
+        )
+        matches = res.get("matches") or []
+        if not matches:
+            return f"No Dropbox files matched '{q}'."
+        return "Dropbox search results:\n" + "\n".join(
+            f"  • {(((m.get('metadata') or {}).get('metadata')) or {}).get('path_display', '')}"
+            for m in matches[:15]
+        )
+    return f"Unknown Dropbox action: {action}"
+
+
+def _hubspot_action(action: str, _params: dict) -> str:
+    rec = ac.get_account("hubspot")
+    tok = (rec or {}).get("token") or (rec or {}).get("api_key") or ""
+    if not rec or rec.get("ignored") or not tok:
+        return "HubSpot is not connected. Add a HubSpot Private App token in HUD -> Integrations."
+    headers = {"Authorization": f"Bearer {tok}"}
+    if action == "hubspot_contacts":
+        res = ac._http_json(
+            "https://api.hubapi.com/crm/v3/objects/contacts?limit=12&properties=firstname,lastname,email",
+            headers=headers,
+        )
+        rows = res.get("results") or []
+        if not rows:
+            return "No HubSpot contacts found."
+        return "HubSpot contacts:\n" + "\n".join(
+            f"  • {(r.get('properties') or {}).get('firstname', '')} {(r.get('properties') or {}).get('lastname', '')} <{(r.get('properties') or {}).get('email', '')}>"
+            for r in rows
+        )
+    if action == "hubspot_deals":
+        res = ac._http_json(
+            "https://api.hubapi.com/crm/v3/objects/deals?limit=12&properties=dealname,amount,dealstage",
+            headers=headers,
+        )
+        rows = res.get("results") or []
+        if not rows:
+            return "No HubSpot deals found."
+        return "HubSpot deals:\n" + "\n".join(
+            f"  • {(r.get('properties') or {}).get('dealname', '(Deal)')} — amount={(r.get('properties') or {}).get('amount', '0')} stage={(r.get('properties') or {}).get('dealstage', '')}"
+            for r in rows
+        )
+    return f"Unknown HubSpot action: {action}"
+
+
+def _calendly_action(action: str, _params: dict) -> str:
+    rec = ac.get_account("calendly")
+    tok = (rec or {}).get("token") or ""
+    if not rec or rec.get("ignored") or not tok:
+        return "Calendly is not connected. Add a Calendly Personal Access Token in HUD -> Integrations."
+    headers = {"Authorization": f"Bearer {tok}"}
+    if action == "calendly_events":
+        me = ac._http_json("https://api.calendly.com/users/me", headers=headers)
+        user_uri = ((me.get("resource") or {}).get("uri")) or ""
+        q = urllib.parse.urlencode({"user": user_uri, "status": "active", "count": 10})
+        evs = ac._http_json(f"https://api.calendly.com/scheduled_events?{q}", headers=headers)
+        items = evs.get("collection") or []
+        if not items:
+            return "No active Calendly scheduled events."
+        return "Calendly scheduled events:\n" + "\n".join(
+            f"  • {e.get('name', 'Meeting')} @ {e.get('start_time', '')}" for e in items
+        )
+    return f"Unknown Calendly action: {action}"
+
+
 def cloud_integrations(parameters: dict, player=None, **_kwargs) -> str:
     params = parameters or {}
     action = str(params.get("action") or "status").strip().lower()
@@ -422,12 +612,29 @@ def cloud_integrations(parameters: dict, player=None, **_kwargs) -> str:
         if action.startswith("trello_"):
             return _trello_action(action, params)
 
+        if action.startswith("linear_"):
+            return _linear_action(action, params)
+
+        if action.startswith("outlook_"):
+            return _outlook_action(action, params)
+
+        if action.startswith("dropbox_"):
+            return _dropbox_action(action, params)
+
+        if action.startswith("hubspot_"):
+            return _hubspot_action(action, params)
+
+        if action.startswith("calendly_"):
+            return _calendly_action(action, params)
+
         return (
             f"Unknown action '{action}'. Available: status, email_unread, email_search, "
             "email_send, drive_list, drive_search, drive_upload, drive_download, "
             "calendar_list, calendar_add, notion_search, notion_read, notion_create_page, "
             "notion_append, slack_send, slack_channels, slack_history, discord_send, "
-            "discord_read, trello_boards, trello_create_card."
+            "discord_read, trello_boards, trello_create_card, linear_issues, linear_create_issue, "
+            "outlook_unread, outlook_calendar, outlook_send, dropbox_list, dropbox_search, "
+            "hubspot_contacts, hubspot_deals, calendly_events."
         )
     except Exception as exc:
         return f"Integration error ({action}): {exc}"

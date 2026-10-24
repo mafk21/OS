@@ -50,6 +50,11 @@ SUPPORTED = [
     "discord",
     "telegram",
     "spotify",
+    "linear",
+    "outlook",
+    "dropbox",
+    "hubspot",
+    "calendly",
 ]
 
 PERMISSIONS = ("ask", "full", "readonly", "paused")
@@ -287,6 +292,11 @@ def get_integrations_status_summary() -> dict[str, Any]:
             "telegram",
             "spotify",
             "trello",
+            "linear",
+            "outlook",
+            "dropbox",
+            "hubspot",
+            "calendly",
         )
     }
     connected_names = [k for k, v in items.items() if v["connected"]]
@@ -466,6 +476,25 @@ def save_onboarding_integrations(payload: dict[str, Any]) -> dict[str, Any]:
                 permission="full",
             )
             saved.append("trello")
+
+    # 10. Linear, Microsoft Outlook/Graph, Dropbox, HubSpot, Calendly
+    for extra_svc in ("linear", "outlook", "dropbox", "hubspot", "calendly"):
+        block = payload.get(extra_svc)
+        if isinstance(block, dict):
+            if block.get("ignore"):
+                ignore_account(extra_svc)
+                ignored.append(extra_svc)
+            else:
+                tok = str(block.get("token") or block.get("api_key") or "").strip()
+                if tok:
+                    connect_account(
+                        extra_svc,
+                        token=tok,
+                        email=str(block.get("email") or "").strip(),
+                        team_id=str(block.get("team_id") or "").strip(),
+                        permission="full",
+                    )
+                    saved.append(extra_svc)
 
     try:
         from memory import config_manager as cm
