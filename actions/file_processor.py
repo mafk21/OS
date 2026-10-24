@@ -737,7 +737,11 @@ def _process_archive(path: Path, action: str, params: dict, speak=None) -> str:
             return f"List failed: {e}"
 
     if action == "extract":
-        dest = Path(params.get("destination", str(path.parent / path.stem)))
+        from actions.file_controller import _resolve_destination, _is_safe_path
+        raw_dest = str(params.get("destination") or "").strip()
+        dest = _resolve_destination(path, raw_dest) if raw_dest else (path.parent / path.stem)
+        if not _is_safe_path(dest):
+            return f"Access denied (destination): {dest}"
         dest.mkdir(parents=True, exist_ok=True)
         try:
             shutil.unpack_archive(path, dest)
@@ -782,11 +786,16 @@ def _process_pptx(path: Path, action: str, params: dict, speak=None) -> str:
     return f"Unknown PPTX action: '{action}'. Try: summarize, extract_text, analyze"
 
 def file_processor(parameters: dict, player=None, speak=None) -> str:
-    file_path_str = parameters.get("file_path", "").strip()
+    from actions.file_controller import _resolve_path
+    file_path_str = (
+        parameters.get("file_path")
+        or parameters.get("path")
+        or ""
+    ).strip()
     if not file_path_str:
         return "No file path provided."
 
-    path = Path(file_path_str)
+    path = _resolve_path(file_path_str)
     if not path.exists():
         return f"File not found: {file_path_str}"
     if not path.is_file():

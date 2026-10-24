@@ -11,8 +11,8 @@ def manage_checkpoints(parameters: dict, player=None, **_):
                 try: paths=json.loads(paths)
                 except: paths=[p.strip() for p in paths.split(",")]
             if not name or not paths: return "Need name and paths. Example: create checkpoint 'Exam' paths=['~/Notes','~/Project']"
-            # Expand ~ and absolutify for validation only; store as given
-            abs_paths=[str(Path(p).expanduser()) for p in paths]
+            from actions.file_controller import _resolve_path
+            abs_paths=[str(_resolve_path(str(p))) for p in paths]
             res=prod.create_checkpoint(name, abs_paths, str(parameters.get("note","")))
             if player: player.write_log(f"[Checkpoint] + #{res['id']} {name}")
             return f"Checkpoint #{res['id']} '{name}' saved ({len(abs_paths)} paths)."
