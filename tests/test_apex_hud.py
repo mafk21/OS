@@ -215,3 +215,92 @@ def test_ui_and_main_source_wired_to_apex_bridge():
     assert "JARVIS_CLASSIC_UI" in ui_src
     assert "def notify_tool_call" in ui_src
     assert "notify_tool_call" in main_src
+    assert "wait_for_persona" in ui_src
+    assert "wait_for_persona" in main_src
+
+
+def test_male_and_female_persona_startup_and_switching(monkeypatch, tmp_path):
+    from memory import config_manager as cfg
+
+    fake_cfg = tmp_path / "api_keys.json"
+    monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cfg, "CONFIG_FILE", fake_cfg)
+
+    ui = _DummyUI()
+    ui._win._ready = False
+    ui._persona_selected = False
+    voice_rebuilds: list[str] = []
+    ui.on_voice_change = lambda v="": voice_rebuilds.append(v)
+
+    bridge = ApexHudBridge(ui, port=0)
+    app = bridge._build_app()
+
+    with TestClient(app) as client:
+        # 1. Fresh install: setup not done yet -> ready=False, persona_chosen=False
+        boot0 = client.get("/api/hud/bootstrap").json()
+        assert boot0["ready"] is False
+        assert boot0["persona_chosen"] is False
+        assert boot0["persona"] == "male"
+
+        # 2. Complete API key setup -> ready=True, persona_chosen STILL False so
+        #    the Male/Female version chooser opens immediately after setup!
+        r_key = client.post(
+            "/api/hud/action",
+            json={"action": "save_api_key", "key": "AIzaSyTestKey_1234567890"},
+        )
+        assert r_key.status_code == 200 and r_key.json()["ok"] is True
+
+        boot1 = client.get("/api/hud/bootstrap").json()
+        assert boot1["ready"] is True
+        assert boot1["persona_chosen"] is False
+
+        # 3. User picks Female version on launch -> Aoede voice + rose color,
+        #    unblocks startup (_persona_selected=True) without premature reconnect
+        r_fem = client.post(
+            "/api/hud/action",
+            json={"action": "set_persona", "persona": "female"},
+        )
+        assert r_fem.status_code == 200
+        fem_data = r_fem.json()
+        assert fem_data["ok"] is True
+        assert fem_data["persona"] == "female"
+        assert fem_data["voice"] == "Aoede"
+        assert fem_data["ui_color"] == "#ff4db8"
+        assert ui._persona_selected is True
+        assert voice_rebuilds == []
+
+        boot2 = client.get("/api/hud/bootstrap").json()
+        assert boot2["persona"] == "female"
+        assert boot2["persona_chosen"] is True
+        assert boot2["voice"] == "Aoede"
+
+        # 4. Mid-session switch back to Male version -> Charon voice + cyan color
+        #    AND triggers on_voice_change to rebuild the active Live session!
+        r_male = client.post(
+            "/api/hud/action",
+            json={"action": "set_persona", "persona": "male"},
+        )
+        assert r_male.status_code == 200
+        male_data = r_male.json()
+        assert male_data["persona"] == "male"
+        assert male_data["voice"] == "Charon"
+        assert male_data["ui_color"] == "#00d4ff"
+        for _ in range(30):
+            if voice_rebuilds:
+                break
+            threading.Event().wait(0.02)
+        assert voice_rebuilds == ["Charon"]
+
+        # 5. Preserves secondary female voice ('Kore') when re-selecting female
+        cfg.save_voice("Kore")
+        res_kore = cfg.save_persona("female")
+        assert res_kore["voice"] == "Kore"
+
+
+def test_static_hud_bundle_contains_male_and_female_editions():
+    js_files = list((STATIC_HUD_DIR / "_next").rglob("*.js"))
+    combined = "\n".join(p.read_text(encoding="utf-8", errors="ignore") for p in js_files)
+    assert "FEMALE EDITION" in combined
+    assert "MALE EDITION" in combined
+    assert "CHOOSE INTERFACE VERSION" in combined
+

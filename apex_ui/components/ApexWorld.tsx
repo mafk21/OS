@@ -14,6 +14,7 @@ const ReasoningWeb = ReasoningWebJs as unknown as React.ComponentType<{
   trace?: unknown;
   mode?: string;
   coreless?: boolean;
+  persona?: "male" | "female";
   onSelect?: (n: NodeSel) => void;
   light?: boolean;
 }>;
@@ -21,6 +22,7 @@ const ShaderBackground = ShaderBackgroundJs as unknown as React.ComponentType<{
   opacity?: number;
   voiceActive?: boolean;
   gold?: boolean;
+  female?: boolean;
 }>;
 const OrbStatusBarComp = OrbStatusBar as unknown as React.ComponentType<{
   state?: string;
@@ -534,6 +536,8 @@ export function AgentOverview({
 
 export default function ApexWorld() {
   const {
+    activePersona,
+    theme,
     orbState,
     rawState,
     lastSubtitle,
@@ -580,8 +584,8 @@ export default function ApexWorld() {
         style={{
           position: "absolute",
           inset: 0,
-          background:
-            "radial-gradient(ellipse 95% 88% at 50% 42%, #122c43 0%, #0c1d30 38%, #07111f 72%, #050b14 100%)",
+          background: theme.worldBg,
+          transition: "background 0.65s ease",
         }}
       />
 
@@ -591,9 +595,10 @@ export default function ApexWorld() {
           style={{ position: "absolute", inset: 0, zIndex: 0 }}
         >
           <ShaderBackground
-            opacity={0.12}
+            opacity={0.14}
             voiceActive={orbState === "speaking"}
             gold={false}
+            female={activePersona === "female"}
           />
         </div>
       )}
@@ -606,9 +611,11 @@ export default function ApexWorld() {
           zIndex: 1,
           pointerEvents: "none",
           mixBlendMode: "screen",
-          background: `radial-gradient(circle at 50% 42%, rgba(13,210,255,${
+          background: `radial-gradient(circle at 50% 42%, rgba(${
+            theme.orbGlowRgb
+          },${
             orbState === "speaking" ? 0.3 : orbState === "listening" ? 0.22 : 0.16
-          }) 0%, rgba(13,170,228,0.08) 30%, rgba(8,17,31,0) 62%)`,
+          }) 0%, rgba(${theme.orbGlow2Rgb},0.09) 30%, rgba(8,17,31,0) 62%)`,
           transition: "background 0.6s ease",
         }}
       />
@@ -623,6 +630,8 @@ export default function ApexWorld() {
         }}
       >
         <ReasoningWeb
+          key={activePersona}
+          persona={activePersona}
           state={webState}
           trace={trace}
           mode="full"
@@ -640,7 +649,16 @@ export default function ApexWorld() {
               <button
                 type="button"
                 onClick={() =>
-                  openAgent({ key: a.key, name: a.name, color: a.color })
+                  openAgent({
+                    key: a.key,
+                    name: a.name,
+                    color:
+                      a.color === "#00e5ff"
+                        ? theme.primary
+                        : a.color === "#f5a623"
+                        ? theme.secondary
+                        : theme.toolNode,
+                  })
                 }
               >
                 {a.name} - {INFO[a.key]?.role ?? "Specialist"}
@@ -662,7 +680,14 @@ export default function ApexWorld() {
           pointerEvents: "none",
         }}
       >
-        <ApexHeroOrb state={orbState} interactive={false} />
+        <ApexHeroOrb
+          state={orbState}
+          interactive={false}
+          primaryColor={theme.primary}
+          primaryBright={theme.primaryBright}
+          secondaryColor={theme.secondary}
+          secondaryBright={theme.secondaryBright}
+        />
       </div>
 
       <div

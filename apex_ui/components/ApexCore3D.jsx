@@ -116,9 +116,10 @@ function Equalizer() {
   )
 }
 
-function Core({ state, variant, corner = false, bigDock = false }) {
+function Core({ state, variant, corner = false, bigDock = false, primaryColor = CYAN, secondaryColor = GOLD, brightColor = BALL }) {
   const group = useRef()
   const points = useRef()
+  const targetPrimary = useMemo(() => new THREE.Color(primaryColor), [primaryColor])
   const spreadRef = useRef(0)
   const rtRef = useRef(0.85)   // smoothed ball outer radius (state-driven)
   const armRef = useRef(0)     // smoothed arm engagement (0 asleep â†’ 1 awake)
@@ -332,6 +333,7 @@ function Core({ state, variant, corner = false, bigDock = false }) {
         points.current.geometry.attributes.position.needsUpdate = true
         points.current.material.size = sleeping ? 0.026 : 0.018  // finer motes (vibrant when asleep) — exact app values
         points.current.material.opacity = sleeping ? 1.0 : 0.92
+        points.current.material.color.lerp(targetPrimary, 0.12)
       }
       return
     }
@@ -381,7 +383,7 @@ function Core({ state, variant, corner = false, bigDock = false }) {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" count={N} array={positions} itemSize={3} />
         </bufferGeometry>
-        <pointsMaterial size={0.026} map={sprite} color={CYAN} transparent opacity={0.95}
+        <pointsMaterial size={0.026} map={sprite} color={primaryColor} transparent opacity={0.95}
           sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} alphaTest={0.01} />
       </points>
 
@@ -410,11 +412,11 @@ function Core({ state, variant, corner = false, bigDock = false }) {
         <group key={i} ref={(el) => (ringsRef.current[i] = el)} rotation={rd.tilt}>
           <mesh>
             <torusGeometry args={[rd.r, rd.tube, 16, 110]} />
-            <meshBasicMaterial color={GOLD} transparent opacity={0.9} />
+            <meshBasicMaterial color={secondaryColor} transparent opacity={0.9} />
           </mesh>
           <mesh ref={(el) => (ballsRef.current[i] = el)}>
             <sphereGeometry args={[0.05, 16, 16]} />
-            <meshBasicMaterial color={BALL} />
+            <meshBasicMaterial color={brightColor} />
           </mesh>
         </group>
       ))}
@@ -422,7 +424,7 @@ function Core({ state, variant, corner = false, bigDock = false }) {
   )
 }
 
-export default function ApexCore3D({ state = 'idle', variant = 'geodesic', onClick, corner = false, bigDock = false, contained = false }) {
+export default function ApexCore3D({ state = 'idle', variant = 'geodesic', onClick, corner = false, bigDock = false, contained = false, primaryColor = CYAN, secondaryColor = GOLD, brightColor = BALL }) {
   const st = normalizeState(state)
   const label = st === 'processing' ? 'Processing' : st === 'listening' ? 'Listening' : st === 'speaking' ? 'Speaking' : 'Standby'
   const [bgIdx, setBgIdx] = useState(2) // Grid default
@@ -469,7 +471,15 @@ export default function ApexCore3D({ state = 'idle', variant = 'geodesic', onCli
         }}
       >{/* canvas must NOT capture pointers â€” it sat over the reasoning web and ate every agent click.
             The orb's stop-on-click is handled by the wrapper div (onClick), not the 3D scene. */}
-        <Core state={state} variant={variant} corner={corner} bigDock={bigDock} />
+        <Core
+          state={state}
+          variant={variant}
+          corner={corner}
+          bigDock={bigDock}
+          primaryColor={primaryColor}
+          secondaryColor={secondaryColor}
+          brightColor={brightColor}
+        />
         <EffectComposer>
           {/* Site copy — FINAL: everything else in this scene is byte-matched to the app
               (particle sizes, layers, blend modes). The one non-copyable difference is the

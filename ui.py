@@ -1624,6 +1624,101 @@ class SetupOverlay(QWidget):
         self.done.emit(key, self._sel_os)
 
 
+class PersonaOverlay(QWidget):
+    """Startup edition chooser for Classic UI: Male (Cyan / Charon) vs Female (Rose / Aoede)."""
+    chosen = pyqtSignal(str)
+    preview = pyqtSignal(str)
+
+    def __init__(self, current_persona: str = "male", parent=None):
+        super().__init__(parent)
+        self._sel_persona = "female" if str(current_persona).lower() == "female" else "male"
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedSize(480, 290)
+        self.setStyleSheet(f"""
+            PersonaOverlay {{
+                background: rgba(3, 8, 15, 246);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 8px;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 22, 28, 22)
+        layout.setSpacing(10)
+
+        title = QLabel("◈  SELECT INTERFACE EDITION")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setFont(QFont("Courier New", 13, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+        layout.addWidget(title)
+
+        sub = QLabel("Choose your assistant's visual palette and voice before connecting.")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub.setFont(QFont("Courier New", 8))
+        sub.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        layout.addWidget(sub)
+        layout.addSpacing(8)
+
+        cards = QHBoxLayout()
+        cards.setSpacing(12)
+
+        self._male_btn = QPushButton("♂  MALE EDITION\nCyan & Gold · Voice: Charon")
+        self._female_btn = QPushButton("♀  FEMALE EDITION\nRose & Orchid · Voice: Aoede")
+        for key, btn in (("male", self._male_btn), ("female", self._female_btn)):
+            btn.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+            btn.setFixedHeight(92)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.clicked.connect(lambda _, k=key: self._pick(k))
+            cards.addWidget(btn)
+        layout.addLayout(cards)
+        layout.addSpacing(8)
+
+        go_btn = QPushButton("▸  LAUNCH EDITION")
+        go_btn.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
+        go_btn.setFixedHeight(38)
+        go_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        go_btn.clicked.connect(lambda: self.chosen.emit(self._sel_persona))
+        self._go_btn = go_btn
+        layout.addWidget(go_btn)
+
+        self._style_cards()
+
+    def _pick(self, persona: str):
+        self._sel_persona = persona
+        self._style_cards()
+        self.preview.emit("#ff4db8" if persona == "female" else "#00d4ff")
+
+    def _style_cards(self):
+        m_on = self._sel_persona == "male"
+        f_on = self._sel_persona == "female"
+        self._male_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {'rgba(0, 212, 255, 42)' if m_on else 'rgba(4, 14, 24, 220)'};
+                color: {'#dffbff' if m_on else '#6ea4b8'};
+                border: {'2px solid #00e5ff' if m_on else '1px solid #163b4d'};
+                border-radius: 6px; padding: 10px;
+            }}
+            QPushButton:hover {{ border: 2px solid #00e5ff; color: #dffbff; }}
+        """)
+        self._female_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {'rgba(255, 77, 184, 46)' if f_on else 'rgba(20, 8, 28, 220)'};
+                color: {'#ffe4f6' if f_on else '#b884ad'};
+                border: {'2px solid #ff4db8' if f_on else '1px solid #4d1e47'};
+                border-radius: 6px; padding: 10px;
+            }}
+            QPushButton:hover {{ border: 2px solid #ff4db8; color: #ffe4f6; }}
+        """)
+        accent = "#ff4db8" if f_on else "#00e5ff"
+        self._go_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(255,255,255,14); color: {accent};
+                border: 1px solid {accent}; border-radius: 5px;
+            }}
+            QPushButton:hover {{ background: {accent}; color: #050810; }}
+        """)
+
+
 class HueWheel(QWidget):
     """
     Circular colour picker. The user drags the handle (small white circle)
@@ -5959,8 +6054,11 @@ class MainWindow(QMainWindow):
 
     def _on_setup_done(self, key: str, os_name: str):
         os.makedirs(CONFIG_DIR, exist_ok=True)
+        existing = _read_full_config()
+        existing["gemini_api_key"] = key
+        existing["os_system"] = os_name
         API_FILE.write_text(
-            json.dumps({"gemini_api_key": key, "os_system": os_name}, indent=4),
+            json.dumps(existing, indent=4),
             encoding="utf-8",
         )
         self._ready = True
@@ -5970,6 +6068,19 @@ class MainWindow(QMainWindow):
         self._apply_state("LISTENING")
         self._assistant_name = _read_full_config().get("assistant_name", "JARVIS") or "JARVIS"
         self._log.append_log(f"SYS: Initialised. OS={os_name.upper()}. {self._assistant_name} online.")
+        cb = getattr(self, "_on_after_setup_cb", None)
+        if callable(cb):
+            cb()
+
+    def _show_persona_chooser(self, current_persona: str, on_chosen):
+        old_ov = getattr(self, "_persona_overlay", None)
+        if old_ov is not None:
+            old_ov.hide()
+        ov = PersonaOverlay(current_persona=current_persona, parent=self.centralWidget())
+        ov.preview.connect(self._preview_ui_color)
+        ov.chosen.connect(on_chosen)
+        self._centre_overlay(ov)
+        self._persona_overlay = ov
 
 
 class _RootShim:
@@ -5988,6 +6099,9 @@ class JarvisUI:
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
         self._apex_bridge = None
+        self._persona_selected = os.environ.get(
+            "JARVIS_SKIP_PERSONA_PROMPT", ""
+        ).strip().lower() in ("1", "true", "yes")
 
         classic_mode = os.environ.get("JARVIS_CLASSIC_UI", "").strip().lower() in (
             "1", "true", "yes",
@@ -5998,6 +6112,19 @@ class JarvisUI:
 
         if classic_mode:
             self._win.show()
+            if not self._persona_selected:
+                from memory.config_manager import get_persona
+                if self._win._ready:
+                    QTimer.singleShot(
+                        50,
+                        lambda: self._win._show_persona_chooser(
+                            get_persona(), self.select_persona
+                        ),
+                    )
+                else:
+                    self._win._on_after_setup_cb = lambda: self._win._show_persona_chooser(
+                        get_persona(), self.select_persona
+                    )
         else:
             try:
                 from core.apex_bridge import ApexHudBridge, launch_app_window
@@ -6252,9 +6379,42 @@ class JarvisUI:
             except Exception:
                 pass
 
+    def apply_persona_visuals(self, persona: str, ui_color: str) -> None:
+        """Apply Male/Female palette on the Qt side and mark startup selection done."""
+        self._persona_selected = True
+        ov = getattr(self._win, "_persona_overlay", None)
+        if ov is not None:
+            ov.hide()
+            self._win._persona_overlay = None
+        if ui_color:
+            self._win._preview_ui_color(ui_color)
+
+    def select_persona(self, persona: str, voice: str = "") -> dict:
+        """Persist Male/Female persona + voice, retheme UI, and notify bridge/session."""
+        from memory.config_manager import get_voice, save_persona
+
+        was_selected = self._persona_selected
+        prev_voice = get_voice()
+        res = save_persona(persona, voice or None)
+        self.apply_persona_visuals(res["persona"], res["ui_color"])
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge._broadcast_threadsafe(self._apex_bridge.snapshot())
+            except Exception:
+                pass
+        if was_selected and res["voice"] != prev_voice and self.on_voice_change:
+            threading.Thread(
+                target=self.on_voice_change, args=(res["voice"],), daemon=True
+            ).start()
+        return res
+
     def wait_for_api_key(self):
         while not self._win._ready:
             time.sleep(0.1)
+
+    def wait_for_persona(self):
+        while not self._persona_selected:
+            time.sleep(0.08)
 
     def show_content(self, title: str, text: str):
         """Thread-safe: display content in the panel below the HUD."""

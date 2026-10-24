@@ -88,7 +88,7 @@ from core.session_recycle      import (
 )
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
-    get_brief_enabled, get_media_resolution, get_proactive_audio_enabled,
+    get_brief_enabled, get_media_resolution, get_persona, get_proactive_audio_enabled,
     get_push_to_talk_enabled, get_thinking_enabled, get_turn_tuning, get_voice,
     get_wake_word_enabled, save_wake_word_enabled,    get_input_device, get_output_device,
     get_barge_in_enabled, get_grace_period, save_barge_in_enabled, save_grace_period,
@@ -1402,7 +1402,7 @@ class JarvisLive:
         elif ev is not None:
             ev.set()
 
-    def _on_voice_change(self):
+    def _on_voice_change(self, *_args):
         """Voice picker applied.
 
         The voice is baked into the session at connect time, so a rebuild is
@@ -1413,7 +1413,7 @@ class JarvisLive:
         voice is a deliberate, rare act; losing it on a dropped packet was not."""
         self.request_reconnect(keep_context=False, reason="new voice")
 
-    def _on_audio_device_change(self):
+    def _on_audio_device_change(self, *_args):
         """Microphone or speaker changed. Both streams are opened inside the
         session TaskGroup, so they can only be re-opened by rebuilding it —
         but the conversation is kept, which is the whole reason resumption
@@ -1684,10 +1684,17 @@ class JarvisLive:
                       'language. Never an archaic or aristocratic form, and never '
                       'the form from a different language than the one you are '
                       'speaking in this sentence.')
+        _persona = get_persona()
+        _persona_line = (
+            "EDITION: Female interface & vocal persona — composed, articulate, steady female operator presence."
+            if _persona == "female"
+            else "EDITION: Male interface & vocal persona — calm, authoritative, steady male operator presence."
+        )
         identity_ctx = (
             f"[IDENTITY]\n"
             f"Your name is {self._asst_name}. "
             f"Always refer to yourself as {self._asst_name}.\n"
+            f"{_persona_line}\n"
             f"{_addr}\n\n"
         )
 
@@ -3624,11 +3631,33 @@ class JarvisLive:
             print(f"[JARVIS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 
+def _parse_cli_persona(argv: list[str]) -> str | None:
+    for idx, arg in enumerate(argv):
+        low = arg.strip().lower()
+        if low in ("--female", "-f"):
+            return "female"
+        if low in ("--male", "-m"):
+            return "male"
+        if low == "--persona" and idx + 1 < len(argv):
+            val = argv[idx + 1].strip().lower()
+            if val in ("male", "female"):
+                return val
+        if low.startswith("--persona="):
+            val = low.split("=", 1)[1].strip()
+            if val in ("male", "female"):
+                return val
+    return None
+
+
 def main():
+    cli_persona = _parse_cli_persona(sys.argv[1:])
     ui = JarvisUI("face.png")
+    if cli_persona:
+        ui.select_persona(cli_persona)
 
     def runner():
         ui.wait_for_api_key()
+        ui.wait_for_persona()
         jarvis = JarvisLive(ui)
         try:
             asyncio.run(jarvis.run())

@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import type { OrbState } from "./ApexHeroOrb";
+import { PERSONA_THEMES, type PersonaMode, type PersonaTheme } from "./theme";
 
 export type LogEntry = {
   id: number;
@@ -37,6 +38,10 @@ export type ContentCard = {
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
+  persona: PersonaMode;
+  activePersona: PersonaMode;
+  theme: PersonaTheme;
+  personaChosen: boolean;
   assistantName: string;
   orbState: OrbState;
   rawState: string;
@@ -46,6 +51,8 @@ export type JarvisContextValue = {
   offlineReason: string;
   voice: string;
   voices: string[];
+  maleVoices: string[];
+  femaleVoices: string[];
   bargeEnabled: boolean;
   gracePeriod: number;
   inputs: string[];
@@ -60,9 +67,13 @@ export type JarvisContextValue = {
   consoleOpen: boolean;
   settingsOpen: boolean;
   setupOpen: boolean;
+  personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
+  choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
   clearContent: () => void;
   sendText: (text: string, traceNode?: string) => void;
   tapOrb: () => void;
@@ -119,6 +130,9 @@ function classifyLog(line: string): { role: LogEntry["role"]; clean: string } {
 export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(true);
+  const [persona, setPersona] = useState<PersonaMode>("male");
+  const [previewPersona, setPreviewPersona] = useState<PersonaMode | null>(null);
+  const [personaChosen, setPersonaChosen] = useState(true);
   const [assistantName, setAssistantName] = useState("JARVIS");
   const [rawState, setRawState] = useState("STANDBY");
   const [demoState, setDemoState] = useState<OrbState>("idle");
@@ -135,6 +149,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     "Fenrir",
     "Aoede",
   ]);
+  const [maleVoices, setMaleVoices] = useState<string[]>([
+    "Charon",
+    "Fenrir",
+    "Puck",
+  ]);
+  const [femaleVoices, setFemaleVoices] = useState<string[]>(["Aoede", "Kore"]);
   const [bargeEnabled, setBargeEnabled] = useState(true);
   const [gracePeriod, setGracePeriod] = useState(8);
   const [inputs, setInputs] = useState<string[]>(["System default"]);
@@ -149,6 +169,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [personaModalOpen, setPersonaModalOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(1);
@@ -156,6 +177,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const demoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subtitleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const targetLevelRef = useRef(0);
+
+  const activePersona: PersonaMode = previewPersona ?? persona;
+  const theme = PERSONA_THEMES[activePersona];
 
   const pushLogLine = useCallback((line: string, ts?: string) => {
     if (!line || !line.trim()) return;
@@ -224,8 +248,22 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     (d: Record<string, unknown>) => {
       if (!d || typeof d !== "object") return;
       const isReady = d.ready !== false;
+      const isPersonaChosen = d.persona_chosen !== false;
       setReady(isReady);
-      if (!isReady) setSetupOpen(true);
+      setPersonaChosen(isPersonaChosen);
+
+      if (d.persona === "female" || d.persona === "male") {
+        setPersona(d.persona);
+      }
+
+      if (!isReady) {
+        setSetupOpen(true);
+        setPersonaModalOpen(false);
+      } else if (!isPersonaChosen) {
+        setSetupOpen(false);
+        setPersonaModalOpen(true);
+      }
+
       if (typeof d.assistant_name === "string" && d.assistant_name) {
         setAssistantName(d.assistant_name);
       }
@@ -237,6 +275,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       if (typeof d.voice === "string") setVoiceState(d.voice);
       if (Array.isArray(d.voices) && d.voices.length > 0) {
         setVoices(d.voices as string[]);
+      }
+      if (Array.isArray(d.male_voices) && d.male_voices.length > 0) {
+        setMaleVoices(d.male_voices as string[]);
+      }
+      if (Array.isArray(d.female_voices) && d.female_voices.length > 0) {
+        setFemaleVoices(d.female_voices as string[]);
       }
       if (typeof d.barge_enabled === "boolean") setBargeEnabled(d.barge_enabled);
       if (typeof d.grace_period === "number") setGracePeriod(d.grace_period);
@@ -395,6 +439,46 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     ? mapRawToOrb(rawState, muted, paused)
     : demoState;
 
+  const choosePersona = useCallback(
+    async (p: PersonaMode, voiceName?: string) => {
+      const normalized: PersonaMode = p === "female" ? "female" : "male";
+      setPersona(normalized);
+      setPreviewPersona(null);
+      setPersonaChosen(true);
+      setPersonaModalOpen(false);
+      if (voiceName) {
+        setVoiceState(voiceName);
+      } else if (normalized === "female" && !femaleVoices.includes(voice)) {
+        setVoiceState(PERSONA_THEMES.female.defaultVoice);
+      } else if (normalized === "male" && !maleVoices.includes(voice)) {
+        setVoiceState(PERSONA_THEMES.male.defaultVoice);
+      }
+      fireLocalTrace(["chief_of_staff", "design"]);
+      try {
+        const res = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set_persona",
+            persona: normalized,
+            ...(voiceName ? { voice: voiceName } : {}),
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.voice === "string") setVoiceState(data.voice);
+        }
+      } catch {
+        sendAction({
+          action: "set_persona",
+          persona: normalized,
+          ...(voiceName ? { voice: voiceName } : {}),
+        });
+      }
+    },
+    [femaleVoices, fireLocalTrace, maleVoices, sendAction, voice]
+  );
+
   const tapOrb = useCallback(() => {
     if (!connected) {
       const next: OrbState =
@@ -523,23 +607,29 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [sendAction]
   );
 
-  const saveApiKey = useCallback(async (key: string): Promise<boolean> => {
-    const trimmed = key.trim();
-    if (!trimmed) return false;
-    try {
-      const r = await fetch("/api/hud/action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save_api_key", key: trimmed }),
-      });
-      if (r.ok) {
-        setReady(true);
-        setSetupOpen(false);
-        return true;
-      }
-    } catch {}
-    return false;
-  }, []);
+  const saveApiKey = useCallback(
+    async (key: string): Promise<boolean> => {
+      const trimmed = key.trim();
+      if (!trimmed) return false;
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save_api_key", key: trimmed }),
+        });
+        if (r.ok) {
+          setReady(true);
+          setSetupOpen(false);
+          if (!personaChosen) {
+            setPersonaModalOpen(true);
+          }
+          return true;
+        }
+      } catch {}
+      return false;
+    },
+    [personaChosen]
+  );
 
   const clearContent = useCallback(() => setContent(null), []);
 
@@ -547,6 +637,10 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     () => ({
       connected,
       ready,
+      persona,
+      activePersona,
+      theme,
+      personaChosen,
       assistantName,
       orbState,
       rawState: connected ? rawState : demoState.toUpperCase(),
@@ -556,6 +650,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       offlineReason,
       voice,
       voices,
+      maleVoices,
+      femaleVoices,
       bargeEnabled,
       gracePeriod,
       inputs,
@@ -570,9 +666,13 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       consoleOpen,
       settingsOpen,
       setupOpen,
+      personaModalOpen,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
+      setPersonaModalOpen,
+      setPreviewPersona,
+      choosePersona,
       clearContent,
       sendText,
       tapOrb,
@@ -593,6 +693,10 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [
       connected,
       ready,
+      persona,
+      activePersona,
+      theme,
+      personaChosen,
       assistantName,
       orbState,
       rawState,
@@ -603,6 +707,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       offlineReason,
       voice,
       voices,
+      maleVoices,
+      femaleVoices,
       bargeEnabled,
       gracePeriod,
       inputs,
@@ -617,6 +723,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       consoleOpen,
       settingsOpen,
       setupOpen,
+      personaModalOpen,
+      choosePersona,
       clearContent,
       sendText,
       tapOrb,

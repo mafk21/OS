@@ -63,7 +63,7 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 
 | Capability | Engineering |
 | :--- | :--- |
-| 🌐 **APEX-UI 3D Desktop HUD** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**: 3D Three.js cyan particle orb + golden SVG telemetry ring + 18-node `ReasoningWeb` constellation that streams live circuit particles along specialist spokes whenever JARVIS invokes tools, plus real-time WebSocket voice state, waveform drive, command dock, transcript drawer, audio/voice settings, and unforgeable confirmation modal. Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
+| 🌐 **APEX-UI 3D Desktop HUD (Male & Female Editions)** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**. On launch (`python main.py`), choose between the **Male Edition** (Electric Cyan & Stark Gold 3D core · `Charon` deep baritone voice) and **Female Edition** (Luminous Rose-Magenta & Orchid-Amethyst 3D core · `Aoede` natural female voice), with live hover-preview and 1-click hot-swapping anytime from the HUD. Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
 | 🧑‍🎤 **Classic Software 3D Avatar** | Optional classic PyQt6 HUD (`JARVIS_CLASSIC_UI=1`) rendering the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, dynamic lighting, and live hue/hex theming purely in `QPainter`. |
 | 👄 **50 Hz Formant + Transcript Lip-Sync** | `core/viseme.py` fuses real-time audio formants with incoming transcript phonemes for accurate bilabial closures, spreads, and rounded vowels across Latin, Cyrillic, and Greek scripts via Unicode reduction. |
 | 🙂 **State-Driven Facial Acting** | Phrase-tracking eyebrows, saccadic eye fixations, stressed-syllable nods, thinking gaze-away, eye contact while listening, closed lids while sleeping, and downward glances when HUD content updates. |
@@ -158,7 +158,8 @@ Talk to and control the same live JARVIS instance from your desk, phone, or chat
 git clone https://github.com/mafk21/OS.git
 cd OS
 python setup.py        # OS-aware installer: installs deps for YOUR OS + Playwright browser engine
-python main.py         # launches the PyQt6 HUD + Gemini Live session + local gateway
+python main.py         # launches APEX-UI HUD -> pick Male or Female edition -> starts Gemini Live
+# Optional direct CLI preset: python main.py --female   or   python main.py --male
 ```
 
 `setup.py` validates your Python version up front and automatically skips packages meant for other operating systems (Windows-only COM/UIA libraries are skipped on macOS/Linux and vice versa). Manual install works too:
