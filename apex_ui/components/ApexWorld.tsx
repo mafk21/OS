@@ -681,13 +681,13 @@ export default function ApexWorld() {
         }}
       />
 
-      {!reduced && (
+      {!reduced && !isMale && (
         <div
           aria-hidden="true"
           style={{ position: "absolute", inset: 0, zIndex: 0 }}
         >
           <ShaderBackground
-            opacity={isMale ? 0.04 : 0.14}
+            opacity={0.14}
             voiceActive={orbState === "speaking"}
             gold={false}
             female={activePersona === "female"}
@@ -754,16 +754,9 @@ export default function ApexWorld() {
             style={{
               position: "absolute",
               inset: 0,
-              zIndex: isMale ? 3 : undefined,
+              zIndex: isMale ? 1 : undefined,
+              opacity: isMale ? 0.72 : undefined,
               pointerEvents: "none",
-              ...(isMale
-                ? {
-                    WebkitMaskImage:
-                      "radial-gradient(ellipse 25% 38% at 50% 47%, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.16) 56%, rgba(0,0,0,0.88) 92%)",
-                    maskImage:
-                      "radial-gradient(ellipse 25% 38% at 50% 47%, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.16) 56%, rgba(0,0,0,0.88) 92%)",
-                  }
-                : {}),
             }}
           >
             <ReasoningWeb

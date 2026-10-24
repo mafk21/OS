@@ -15,9 +15,19 @@ const CAM_Y = 0.02;
 const CAM_Z = 6.85;
 const Y_PIVOT = -0.74;
 const Z_PIVOT = 0.0;
-const ASSEMBLY_DURATION_SECONDS = 2.65;
-const SHOCKWAVE_DURATION_SECONDS = 2.35;
+const TORSO_Y_PIVOT = -1.85;
+
+const ASSEMBLY_DURATION_SECONDS = 2.85;
+const SHOCKWAVE_DURATION_SECONDS = 2.4;
 const MOOD_BLOOM_SECONDS = 0.68;
+
+// Screen-space eye/head reference center (50% X, 38% Y from top of viewport)
+const EYE_SCREEN_X = 0.5;
+const EYE_SCREEN_Y = 0.38;
+
+const MAX_HEAD_YAW = 0.40; // ~23 deg left/right
+const MAX_HEAD_PITCH_UP = 0.26; // ~15 deg up
+const MAX_HEAD_PITCH_DOWN = 0.28; // ~16 deg down
 
 export type HumanoidQualityMode = "auto" | "high" | "balanced";
 type RenderTier = "high" | "medium" | "low";
@@ -51,11 +61,21 @@ type MoodProfile = {
 };
 
 const MOOD_PROFILES: Record<OrbState, MoodProfile> = {
-  idle: { cyan: 0.12, warm: 0.14, zone: 0.06, tone: 0.34, shimmer: 0.18 },
-  listening: { cyan: 0.56, warm: 0.10, zone: 0.36, tone: 0.05, shimmer: 0.48 },
-  thinking: { cyan: 0.22, warm: 0.58, zone: 0.42, tone: 0.78, shimmer: 0.62 },
-  speaking: { cyan: 0.24, warm: 0.48, zone: 0.32, tone: 0.86, shimmer: 0.52 },
+  idle: { cyan: 0.13, warm: 0.15, zone: 0.06, tone: 0.34, shimmer: 0.18 },
+  listening: { cyan: 0.58, warm: 0.11, zone: 0.36, tone: 0.05, shimmer: 0.48 },
+  thinking: { cyan: 0.22, warm: 0.60, zone: 0.42, tone: 0.78, shimmer: 0.62 },
+  speaking: { cyan: 0.24, warm: 0.50, zone: 0.32, tone: 0.86, shimmer: 0.52 },
 };
+
+// Precomputed 256-entry sRGB -> linear LUT (eliminates 900,000 Math.pow calls on startup)
+const SRGB_TO_LINEAR = (() => {
+  const lut = new Float32Array(256);
+  for (let i = 0; i < 256; i++) {
+    const c = i / 255;
+    lut[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  }
+  return lut;
+})();
 
 let cachedAssetsPromise: Promise<DecodedAssets> | null = null;
 const cachedParticleTiers = new Map<RenderTier, HumanoidParticleData>();
@@ -63,6 +83,32 @@ const cachedParticleTiers = new Map<RenderTier, HumanoidParticleData>();
 function hash01(v: number): number {
   const raw = Math.sin(v * 12.9898 + 0.1234) * 43758.5453;
   return raw - Math.floor(raw);
+}
+
+/**
+ * Analytical 2nd-order critically-damped spring (zeta = 1.0).
+ * Zero jerk on sudden mouse flicks, zero overshoot, frame-rate independent.
+ */
+function criticallyDampedSpring(
+  current: number,
+  velocity: number,
+  target: number,
+  omega: number,
+  dt: number
+): [number, number] {
+  const x = current - target;
+  const exp = Math.exp(-omega * dt);
+  const temp = (velocity + omega * x) * dt;
+  const nextPos = target + (x + temp) * exp;
+  const nextVel = (velocity - omega * temp) * exp;
+  return [nextPos, nextVel];
+}
+
+function shapeGazeAxis(v: number): number {
+  const clamped = THREE.MathUtils.clamp(v, -1, 1);
+  const mag = Math.abs(clamped);
+  // Responsive around center with smooth soft-knee saturation near viewport edges
+  return Math.sign(clamped) * Math.pow(mag, 0.86);
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
@@ -155,7 +201,6 @@ function buildProceduralFallback(tier: RenderTier): HumanoidParticleData {
         cyan = 0.1;
       }
     } else if (s1 < 0.54) {
-      // Sculpted contour head
       const band = Math.floor(s2 * 64) / 64;
       const theta = (s3 - 0.5) * Math.PI;
       const ny = 0.09 + band * 0.56;
@@ -173,7 +218,6 @@ function buildProceduralFallback(tier: RenderTier): HumanoidParticleData {
       cyan = 1 - center * 0.8;
       voiceW = center > 0.35 ? 0.85 : 0;
     } else {
-      // Neck & broad contour shoulders
       const band = Math.floor(s2 * 46) / 46;
       const ny = 0.62 + band * 0.35;
       const span = 0.42 + Math.pow((ny - 0.62) / 0.35, 0.72) * 2.35;
@@ -235,6 +279,11 @@ function buildProceduralFallback(tier: RenderTier): HumanoidParticleData {
   };
 }
 
+function quintic01(v: number): number {
+  const t = v < 0 ? 0 : v > 1 ? 1 : v;
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
 function buildHumanoidParticles(
   assets: DecodedAssets,
   tier: RenderTier
@@ -244,33 +293,54 @@ function buildHumanoidParticles(
 
   const { width: W, height: H, portrait, depth } = assets;
   const step = tier === "high" ? 1 : tier === "medium" ? 2 : 3;
-  // Calibrated threshold so HIGH tier lands right around ~300,000 dots (~300k)
   const brightnessThreshold = tier === "high" ? 0.044 : 0.04;
   const worldH = WORLD_W * (H / W);
 
-  // Reconstruct continuous 32-bit float depth via fast 3x3 smoothing to eliminate 8-bit contour quantization
+  // Separable 7-tap binomial Gaussian filter ([1,6,15,20,15,6,1]/64) on depth so z has zero contour cliff
   const rawDepth = new Float32Array(W * H);
   for (let i = 0, n = W * H; i < n; i++) {
     rawDepth[i] = (depth[i * 4] / 255) * 1.75 - 0.8;
   }
+  const tmpDepth = new Float32Array(W * H);
   const smoothDepth = new Float32Array(W * H);
   for (let y = 0; y < H; y++) {
-    const y0 = y > 0 ? y - 1 : 0;
-    const y2 = y < H - 1 ? y + 1 : H - 1;
+    const row = y * W;
     for (let x = 0; x < W; x++) {
-      const x0 = x > 0 ? x - 1 : 0;
-      const x2 = x < W - 1 ? x + 1 : W - 1;
-      smoothDepth[y * W + x] =
-        (rawDepth[y0 * W + x0] +
-          rawDepth[y0 * W + x] * 2 +
-          rawDepth[y0 * W + x2] +
-          rawDepth[y * W + x0] * 2 +
-          rawDepth[y * W + x] * 4 +
-          rawDepth[y * W + x2] * 2 +
-          rawDepth[y2 * W + x0] +
-          rawDepth[y2 * W + x] * 2 +
-          rawDepth[y2 * W + x2]) /
-        16;
+      const xm3 = x > 2 ? x - 3 : 0;
+      const xm2 = x > 1 ? x - 2 : 0;
+      const xm1 = x > 0 ? x - 1 : 0;
+      const xp1 = x < W - 1 ? x + 1 : W - 1;
+      const xp2 = x < W - 2 ? x + 2 : W - 1;
+      const xp3 = x < W - 3 ? x + 3 : W - 1;
+      tmpDepth[row + x] =
+        (rawDepth[row + xm3] +
+          rawDepth[row + xm2] * 6 +
+          rawDepth[row + xm1] * 15 +
+          rawDepth[row + x] * 20 +
+          rawDepth[row + xp1] * 15 +
+          rawDepth[row + xp2] * 6 +
+          rawDepth[row + xp3]) *
+        0.015625;
+    }
+  }
+  for (let y = 0; y < H; y++) {
+    const ym3 = (y > 2 ? y - 3 : 0) * W;
+    const ym2 = (y > 1 ? y - 2 : 0) * W;
+    const ym1 = (y > 0 ? y - 1 : 0) * W;
+    const y0 = y * W;
+    const yp1 = (y < H - 1 ? y + 1 : H - 1) * W;
+    const yp2 = (y < H - 2 ? y + 2 : H - 1) * W;
+    const yp3 = (y < H - 3 ? y + 3 : H - 1) * W;
+    for (let x = 0; x < W; x++) {
+      smoothDepth[y0 + x] =
+        (tmpDepth[ym3 + x] +
+          tmpDepth[ym2 + x] * 6 +
+          tmpDepth[ym1 + x] * 15 +
+          tmpDepth[y0 + x] * 20 +
+          tmpDepth[yp1 + x] * 15 +
+          tmpDepth[yp2 + x] * 6 +
+          tmpDepth[yp3 + x]) *
+        0.015625;
     }
   }
 
@@ -285,8 +355,6 @@ function buildHumanoidParticles(
   const assemblySource = new Float32Array(maxCount * 3);
   const meta = new Float32Array(maxCount * 3);
   const rig = new Float32Array(maxCount * 2);
-
-  const srgb = new THREE.Color();
 
   const sampleBright = (sx: number, sy: number): number => {
     if (sx < 0 || sy < 0 || sx >= W || sy >= H) return 0;
@@ -303,8 +371,8 @@ function buildHumanoidParticles(
     return smoothDepth[cy * W + cx];
   };
 
-  const dxStepWorld = (step / Math.max(1, W - 1)) * WORLD_W;
-  const dyStepWorld = (step / Math.max(1, H - 1)) * worldH;
+  const inv2Dx = 1 / (2 * ((step / Math.max(1, W - 1)) * WORLD_W));
+  const inv2Dy = 1 / (2 * ((step / Math.max(1, H - 1)) * worldH));
 
   let count = 0;
 
@@ -320,22 +388,28 @@ function buildHumanoidParticles(
       const max8 = r8 > g8 ? (r8 > b8 ? r8 : b8) : g8 > b8 ? g8 : b8;
       const brightness = max8 / 255;
 
-      const skinWeight = depth[pIdx + 1] / 255;
+      const nx = x / (W - 1);
+      const wxScreen = (nx - 0.5) * WORLD_W;
+      const faceAbsX = Math.abs(nx - 0.5);
+
+      // Pure C2 quintic anatomical skinning field across (nx, ny):
+      // Rigid inside head core (|nx - 0.5| <= 0.145, ny <= 0.565), smoothly feathering across
+      // ear aura and cervical neck so adjacent particles NEVER tear or separate at any angle.
+      const latW = quintic01(1 - (faceAbsX - 0.145) / (0.275 - 0.145));
+      const cervW = quintic01(1 - (ny - 0.565) / (0.775 - 0.565));
+      const skinWeight = latW * cervW;
+
       const regionClass = depth[pIdx + 2] / 255;
 
       const minBright = regionClass > 0.85 ? 0.095 : brightnessThreshold;
       if (brightness < minBright) continue;
 
-      const nx = x / (W - 1);
-      const wxScreen = (nx - 0.5) * WORLD_W;
-      const faceAbsX = Math.abs(nx - 0.5);
-
       const seed = hash01(count * 1.37 + x * 0.17 + y * 0.31);
       const wzBase = smoothDepth[y * W + x];
-      const microThickness = (seed - 0.5) * 0.018 * (0.35 + skinWeight * 0.65);
+      const microThickness = (seed - 0.5) * 0.016 * (0.35 + skinWeight * 0.65);
       const wz = wzBase + microThickness;
 
-      // Exact camera-ray perspective unprojection so yaw=0 projects 1:1 without contour gaps
+      // Exact camera-ray perspective unprojection so yaw=0, pitch=0 projects 1:1 without contour gaps
       const perspScale = (CAM_Z - wz) / CAM_Z;
       const wx = wxScreen * perspScale;
       const wy = (wyScreen - CAM_Y) * perspScale + CAM_Y;
@@ -345,17 +419,16 @@ function buildHumanoidParticles(
       const zR = sampleDepthWorld(x + step, y);
       const zU = sampleDepthWorld(x, y - step);
       const zD = sampleDepthWorld(x, y + step);
-      const dzdx = (zR - zL) / (2 * dxStepWorld);
-      const dzdy = (zU - zD) / (2 * dyStepWorld);
+      const dzdx = (zR - zL) * inv2Dx;
+      const dzdy = (zU - zD) * inv2Dy;
       let snx = -dzdx * 0.65;
       let sny = -dzdy * 0.65;
       let snz = 1.0;
-      const nLen = Math.hypot(snx, sny, snz) || 1;
-      snx /= nLen;
-      sny /= nLen;
-      snz /= nLen;
+      const invLen = 1 / (Math.hypot(snx, sny, snz) || 1);
+      snx *= invLen;
+      sny *= invLen;
+      snz *= invLen;
 
-      // Semantic traits for the 4 moods, silhouette energy, and live voice resonance
       const isEdge =
         brightness > 0.11 &&
         (sampleBright(x - step, y) < 0.042 ||
@@ -372,9 +445,6 @@ function buildHumanoidParticles(
           ? Math.min(1, ((Math.max(g8, b8) - r8 * 0.65) / 200) * (0.5 + brightness * 0.6))
           : 0;
 
-      // Voice reactivity:
-      // > 0.55 = facial visage resonance (faster harmonic cadence)
-      // 0.12..0.54 = cervical & sternum neural core (deeper chest harmonic)
       let voiceWeight = 0;
       if (
         skinWeight > 0.45 &&
@@ -395,49 +465,38 @@ function buildHumanoidParticles(
         voiceWeight = 0.16 + 0.36 * spineFalloff * Math.min(1, brightness * 1.2);
       }
 
-      // Birth assembly sequence ("drawn from dark to figure on birth"):
-      // Cranium & Golden Visage -> Ears/Jaw/Neck -> Broad Shoulders & Core -> Sparks & Living Backdrop
       let assemblyPhase = 0.02 + seed * 0.12;
       if (regionClass > 0.85) {
-        // Crown sparks crystallize near completion
         assemblyPhase = 0.48 + seed * 0.20;
       } else if (skinWeight > 0.55) {
-        // Head & visage assemble first from center outward
         const headDist = Math.min(1, Math.hypot((nx - 0.5) / 0.16, (ny - 0.38) / 0.30));
         assemblyPhase = 0.01 + headDist * 0.16 + seed * 0.08;
       } else if (regionClass > 0.55) {
-        // Neck column weaves downward
         assemblyPhase = 0.20 + ((ny - 0.55) / 0.28) * 0.14 + seed * 0.08;
       } else if (regionClass > 0.25) {
-        // Broad shoulders & sternum lock in
         const shDist = Math.min(1, faceAbsX / 0.38);
         assemblyPhase = 0.32 + shDist * 0.20 + seed * 0.09;
       } else {
-        // Living horizon wave unfurls outward from behind the shoulders
         const waveDist = Math.min(1, Math.max(0, (faceAbsX - 0.12) / 0.38));
         assemblyPhase = 0.44 + waveDist * 0.22 + seed * 0.08;
       }
 
-      // Sweeping 3D dark-void birth stream origins
       const streamSide = nx < 0.5 ? -1 : 1;
-      const swirlAngle = seed * Math.PI * 2 + ny * 3.6 * streamSide;
-      const radialSpread = 1.85 + hash01(count * 2.71 + 3.1) * 2.85;
+      const swirlAngle = seed * Math.PI * 2 + ny * 3.4 * streamSide;
+      const radialSpread = 1.75 + hash01(count * 2.71 + 3.1) * 2.65;
       const srcX =
-        wx * 0.35 +
+        wx * 0.38 +
         Math.cos(swirlAngle) * radialSpread +
-        streamSide * (0.85 + hash01(count * 0.91 + 7.4) * 1.35);
+        streamSide * (0.78 + hash01(count * 0.91 + 7.4) * 1.25);
       const srcY =
-        wy * 0.55 +
-        Math.sin(swirlAngle) * (0.95 + hash01(count * 1.83 + 5.2) * 1.45) -
-        0.35;
-      const srcZ = -1.95 + (hash01(count * 3.19 + 1.7) - 0.35) * 2.4;
+        wy * 0.58 +
+        Math.sin(swirlAngle) * (0.88 + hash01(count * 1.83 + 5.2) * 1.35) -
+        0.30;
+      const srcZ = -1.85 + (hash01(count * 3.19 + 1.7) - 0.35) * 2.2;
 
-      // Radial distance from center of visage (nx=0.50, ny=0.40) for 680ms face-out mood bloom
       const rxBloom = (nx - 0.5) / 0.46;
       const ryBloom = (ny - 0.40) / 0.62;
       const radialZone = Math.min(1, Math.hypot(rxBloom, ryBloom));
-
-      srgb.setRGB(r8 / 255, g8 / 255, b8 / 255, THREE.SRGBColorSpace);
 
       const o3 = count * 3;
       const o4 = count * 4;
@@ -447,9 +506,9 @@ function buildHumanoidParticles(
       positions[o3 + 1] = wy;
       positions[o3 + 2] = wz;
 
-      colors[o3] = srgb.r;
-      colors[o3 + 1] = srgb.g;
-      colors[o3 + 2] = srgb.b;
+      colors[o3] = SRGB_TO_LINEAR[r8];
+      colors[o3 + 1] = SRGB_TO_LINEAR[g8];
+      colors[o3 + 2] = SRGB_TO_LINEAR[b8];
 
       normals[o3] = snx;
       normals[o3 + 1] = sny;
@@ -492,6 +551,11 @@ function buildHumanoidParticles(
   return built;
 }
 
+/**
+ * Single-pass Premultiplied Dual-Kernel Shader (Src: ONE, Dst: ONE_MINUS_SRC_ALPHA)
+ * Renders BOTH crisp pinpoint color core AND volumetric additive halo in ONE draw call
+ * (cutting vertex GPU load by 50% while eliminating sub-pixel snapping).
+ */
 const VERTEX_SHADER = /* glsl */ `
 attribute vec3 color;
 attribute vec3 aNormal;
@@ -503,10 +567,13 @@ attribute vec2 aRig;            // x: skinWeight, y: regionClass
 uniform float uTime;
 uniform float uDpr;
 uniform float uPointSize;
-uniform float uGlowPass;
 uniform float uYaw;
 uniform float uPitch;
 uniform float uRoll;
+uniform float uTorsoYaw;
+uniform float uTorsoPitch;
+uniform float uWaveParallaxX;
+uniform float uWaveParallaxY;
 uniform float uChest;
 uniform float uAssemblyProgress;
 uniform float uAssemblyEnabled;
@@ -521,9 +588,10 @@ uniform float uBrainActivity;
 uniform float uBrainTone;
 uniform float uEffects;
 
-varying vec3 vColor;
-varying float vAlpha;
-varying float vGlowPass;
+varying vec3 vCoreColor;
+varying vec3 vHaloColor;
+varying float vCoreAlpha;
+varying float vHaloAlpha;
 
 float smoother(float x) {
   return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
@@ -545,34 +613,55 @@ void main() {
   float skinW = aRig.x;
   float region = aRig.y;
 
-  // 1. Living backdrop wave motion (region ~ 0.12)
-  if (region < 0.24 && uEffects > 0.5) {
-    float w1 = sin(p.x * 1.55 - uTime * 0.88 + p.z * 2.2) * 0.052;
-    float w2 = cos(p.x * 2.95 + uTime * 0.62 - p.y * 1.7) * 0.026;
-    p.y += w1 + w2;
-    p.z += sin(p.x * 1.2 + uTime * 0.74 + seed * 1.6) * 0.075;
+  // 1. Living backdrop wave motion + subtle 3D depth parallax (smoothly masked away from head core)
+  float waveMask = (1.0 - smoothstep(0.18, 0.30, region)) * (1.0 - skinW);
+  if (waveMask > 0.001 && uEffects > 0.5) {
+    float w1 = sin(p.x * 1.48 - uTime * 0.82 + p.z * 2.1) * 0.050;
+    float w2 = cos(p.x * 2.85 + uTime * 0.58 - p.y * 1.65) * 0.025;
+    p.y += (w1 + w2 + uWaveParallaxY * 0.55) * waveMask;
+    p.x += (uWaveParallaxX * 0.55) * waveMask;
+    p.z += sin(p.x * 1.18 + uTime * 0.70 + seed * 1.5) * 0.072 * waveMask;
   }
 
   // 2. Crown floating light-sparks drift (region ~ 0.95)
   if (region > 0.85 && uEffects > 0.5) {
-    p.y += sin(uTime * 1.42 + seed * 6.2831853) * 0.034 + 0.012;
-    p.x += cos(uTime * 1.08 + seed * 9.42477) * 0.018;
-    p.z += sin(uTime * 0.96 + seed * 4.71238) * 0.022;
+    p.y += sin(uTime * 1.35 + seed * 6.2831853) * 0.032 + 0.010;
+    p.x += cos(uTime * 1.02 + seed * 9.42477) * 0.016;
+    p.z += sin(uTime * 0.90 + seed * 4.71238) * 0.020;
   }
 
   // 3. Subtle vocal contour resonance on visage when speaking
   if (voiceTrait > 0.55 && uVoice > 0.01 && uEffects > 0.5) {
-    float vocalWave = sin(p.y * 26.0 - uTime * 15.0 + seed * 3.14) * 0.0085 * uVoice;
-    p.z += vocalWave * 1.6;
-    p.y += vocalWave * 0.45;
+    float vocalWave = sin(p.y * 25.0 - uTime * 14.5 + seed * 3.14) * 0.0082 * uVoice;
+    p.z += vocalWave * 1.55;
+    p.y += vocalWave * 0.42;
   }
 
-  // 4. Organic breathing on shoulders & chest
+  // 4. Organic breathing + C2 secondary upper-torso follow-through (zero hard boundary)
   float bodyWeight = (1.0 - skinW) * smoothstep(0.24, 0.48, region) * (1.0 - smoothstep(0.80, 0.92, region));
   p.y += uChest * bodyWeight;
   p.z += uChest * 0.62 * bodyWeight;
 
+  float torsoVert = smoothstep(${TORSO_Y_PIVOT.toFixed(4)} - 0.35, -0.55, p.y);
+  float torsoLat = 1.0 - smoothstep(1.95, 3.05, abs(p.x));
+  float torsoFactor = torsoVert * torsoLat * (1.0 - skinW);
+  float ty = uTorsoYaw * torsoFactor;
+  float tp = uTorsoPitch * torsoFactor;
+  if (abs(ty) + abs(tp) > 0.0002) {
+    float cty = cos(ty), sty = sin(ty);
+    float ctp = cos(tp), stp = sin(tp);
+    vec3 trel = vec3(p.x, p.y - (${TORSO_Y_PIVOT.toFixed(4)}), p.z);
+    vec3 tr1 = vec3(trel.x * cty + trel.z * sty, trel.y, -trel.x * sty + trel.z * cty);
+    vec3 tr2 = vec3(tr1.x, tr1.y * ctp - tr1.z * stp, tr1.y * stp + tr1.z * ctp);
+    p = vec3(tr2.x, tr2.y + (${TORSO_Y_PIVOT.toFixed(4)}), tr2.z);
+  }
+
   // 5. True 3D depth-shaded head + cervical neck rotation around anatomical spine pivot
+  // Sign convention verified across all 4 quadrants:
+  //   uYaw > 0   -> nose moves RIGHT (+X)
+  //   uYaw < 0   -> nose moves LEFT (-X)
+  //   uPitch > 0 -> nose nods DOWN (-Y), crown tilts forward (+Z)
+  //   uPitch < 0 -> nose tilts UP (+Y), chin lifts up
   float depthShade = 1.0;
   if (skinW > 0.001) {
     float yaw = uYaw * skinW;
@@ -589,7 +678,7 @@ void main() {
     vec3 r1 = vec3(rel.x * cy + rel.z * sy, rel.y, -rel.x * sy + rel.z * cy);
     // Pitch around X
     vec3 r2 = vec3(r1.x, r1.y * cp - r1.z * sp, r1.y * sp + r1.z * cp);
-    // Subtle roll around Z
+    // Subtle natural roll around Z
     vec3 r3 = vec3(r2.x * cr - r2.y * sr, r2.x * sr + r2.y * cr, r2.z);
 
     p = vec3(r3.x, r3.y + (${Y_PIVOT.toFixed(4)}), r3.z + (${Z_PIVOT.toFixed(4)}));
@@ -598,29 +687,29 @@ void main() {
     vec3 n2 = vec3(n1.x, n1.y * cp - n1.z * sp, n1.y * sp + n1.z * cp);
     nrm = normalize(n2);
 
-    vec3 keyLight = normalize(vec3(sin(uYaw) * 0.42, 0.26, 0.87));
+    vec3 keyLight = normalize(vec3(sin(uYaw) * 0.40, -sin(uPitch) * 0.30 + 0.24, 0.88));
     float lambert = clamp(dot(nrm, keyLight), 0.0, 1.0);
     float fresnelRim = pow(1.0 - clamp(abs(nrm.z), 0.0, 1.0), 1.75);
-    depthShade = mix(1.0, 0.78 + 0.34 * lambert + 0.24 * fresnelRim, skinW);
+    depthShade = mix(1.0, 0.80 + 0.32 * lambert + 0.22 * fresnelRim, skinW);
   }
 
-  // 6. Birth assembly from pure darkness ("a figure of light that assembles itself")
+  // 6. Fluid birth assembly from pure darkness ("a figure of light that assembles itself")
   float birthVisibility = 1.0;
   float assemblyGlow = 0.0;
   if (uAssemblyEnabled > 0.5 && uAssemblyProgress < 1.0) {
-    float raw = clamp((uAssemblyProgress - assemblyPhase) / 0.32, 0.0, 1.0);
+    float raw = clamp((uAssemblyProgress - assemblyPhase) / 0.34, 0.0, 1.0);
     float local = smoother(raw);
-    birthVisibility = smoothstep(0.0, 0.16, raw);
-    assemblyGlow = sin(local * 3.14159265) * 0.55;
+    birthVisibility = smoothstep(0.0, 0.18, raw);
+    assemblyGlow = sin(local * 3.14159265) * 0.52;
 
     float arc = sin(local * 3.14159265);
     float curvePhase = seed * 6.2831853;
-    float swirl = sin(local * 4.7123889 + curvePhase) * pow(1.0 - local, 1.8) * 0.085;
+    float swirl = sin(local * 4.7123889 + curvePhase) * pow(1.0 - local, 1.85) * 0.075;
 
     p = mix(aAssemblySource, p, local);
     p.x += swirl;
-    p.y += arc * (0.16 + seed * 0.10);
-    p.z += arc * (0.14 + fract(seed * 7.13) * 0.10);
+    p.y += arc * (0.14 + seed * 0.09);
+    p.z += arc * (0.12 + fract(seed * 7.13) * 0.09);
   }
 
   // 7. Radial shockwave bursting outward from sternum/heart nexus
@@ -630,8 +719,8 @@ void main() {
   float shockRadius = length(shockVec);
   float travel = clamp((shockProgress - 0.05) / 0.82, 0.0, 1.0);
   float waveRadius = mix(0.08, 4.95, travel);
-  float ring = 1.0 - smoothstep(0.0, 0.26, abs(shockRadius - waveRadius));
-  float waveFade = smoothstep(0.02, 0.11, shockProgress) * (1.0 - smoothstep(0.82, 1.0, shockProgress));
+  float ring = 1.0 - smoothstep(0.0, 0.28, abs(shockRadius - waveRadius));
+  float waveFade = smoothstep(0.02, 0.12, shockProgress) * (1.0 - smoothstep(0.80, 1.0, shockProgress));
   float coreFlash = (1.0 - smoothstep(0.08, 0.82, shockRadius)) * (1.0 - smoothstep(0.02, 0.24, shockProgress));
   float shockRing = ring * waveFade * uShockwaveActive;
   float shockCore = coreFlash * uShockwaveActive;
@@ -639,8 +728,8 @@ void main() {
 
   if (shockRing > 0.001) {
     vec2 dir = shockVec / max(shockRadius, 0.0001);
-    p.xy += dir * shockRing * (1.0 - travel) * 0.048;
-    p.z += shockRing * (1.0 - travel) * 0.085;
+    p.xy += dir * shockRing * (1.0 - travel) * 0.046;
+    p.z += shockRing * (1.0 - travel) * 0.080;
   }
 
   // 8. Four moods blooming radially outward from the face over 680ms
@@ -655,13 +744,11 @@ void main() {
   float stateZone = mood.z;
   float stateTone = mood.w;
 
-  // Upward neural-stream pulse during thinking & perceptual ripple during listening
-  float neuralFlow = 0.5 + 0.5 * sin(p.y * 4.2 - uTime * 3.8 + seed * 3.14159);
+  float neuralFlow = 0.5 + 0.5 * sin(p.y * 4.2 - uTime * 3.6 + seed * 3.14159);
   float moodWave = uMoodShimmer * (0.45 + 0.55 * neuralFlow) * (1.0 - radialZone * 0.55);
 
-  // Layered voice resonance: faster facial harmonic + deeper chest/core harmonic
-  float faceCadence = 0.72 + 0.28 * sin(uTime * 11.5 + p.y * 8.0 + seed * 2.0);
-  float coreCadence = 0.76 + 0.24 * sin(uTime * 6.2 - p.y * 4.5);
+  float faceCadence = 0.72 + 0.28 * sin(uTime * 11.2 + p.y * 8.0 + seed * 2.0);
+  float coreCadence = 0.76 + 0.24 * sin(uTime * 6.0 - p.y * 4.5);
   float isVisageVoice = step(0.55, voiceTrait);
   float voiceEnergy =
     voiceTrait *
@@ -669,8 +756,7 @@ void main() {
     uVoice *
     1.35;
 
-  // Synchronized ReasoningWeb brain event pulse
-  float brainRhythm = 0.72 + 0.28 * sin(uTime * 6.8 + seed * 6.2831853);
+  float brainRhythm = 0.72 + 0.28 * sin(uTime * 6.6 + seed * 6.2831853);
   float brainPulse = uBrainActivity * (0.42 + (1.0 - radialZone) * 0.58) * brainRhythm * uEffects;
 
   float cyanEnergy =
@@ -678,7 +764,7 @@ void main() {
     edgeTrait * (0.09 + stateCyan * 0.38) +
     moodWave * (1.0 - stateTone) * 0.32 +
     shockRing * (0.42 + travel * 0.28) +
-    assemblyGlow * 0.28;
+    assemblyGlow * 0.26;
 
   float warmEnergy =
     warmTrait * stateWarm +
@@ -701,67 +787,71 @@ void main() {
 
   vec3 moodTint = mix(electricCyan, moltenAmber, clamp(stateTone, 0.0, 1.0));
 
-  if (uGlowPass > 0.5) {
-    float gE = clamp(totalEnergy, 0.0, 1.35);
-    vec3 glowBase = mix(moodTint, color, 0.42);
-    vColor = mix(glowBase, brainColor, clamp(brainPulse * 0.36, 0.0, 0.45)) * (0.58 + gE * 0.80) * depthShade;
-    vAlpha = clamp(0.016 + gE * 0.105 + shockEnergy * 0.09 + brainPulse * 0.035, 0.0, 0.19) * birthVisibility;
-    gl_PointSize = uPointSize * uDpr * (1.0 + gE * 0.10 + shockEnergy * 0.18 + voiceEnergy * 0.08);
-  } else {
-    vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.88)) * depthShade;
-    vec3 boosted =
-      lifted * 1.08 +
-      electricCyan * cyanEnergy * 0.16 +
-      moltenAmber * (warmEnergy + voiceEnergy * 1.15) * 0.20 +
-      brainColor * brainPulse * 0.15;
+  // Crisp core color (HDR tone-guarded so 300k dots never clip to flat white)
+  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.88)) * depthShade;
+  vec3 boosted =
+    lifted * 1.10 +
+    electricCyan * cyanEnergy * 0.16 +
+    moltenAmber * (warmEnergy + voiceEnergy * 1.15) * 0.21 +
+    brainColor * brainPulse * 0.15;
 
-    // Peak-preserving HDR tone guard so 300k dots retain rich cyan & amber without clipping to flat white
-    float peak = max(boosted.r, max(boosted.g, boosted.b));
-    if (peak > 1.0) {
-      boosted /= peak;
-    }
-
-    vColor = clamp(boosted, 0.0, 1.0);
-    vAlpha = birthVisibility;
-    gl_PointSize = uPointSize * uDpr * (1.0 + shockEnergy * 0.12 + voiceEnergy * 0.06);
+  float peak = max(boosted.r, max(boosted.g, boosted.b));
+  if (peak > 1.0) {
+    boosted /= peak;
   }
 
-  vGlowPass = uGlowPass;
+  vCoreColor = clamp(boosted, 0.0, 1.0);
+  vCoreAlpha = birthVisibility;
+
+  // Volumetric halo color & energy
+  float gE = clamp(totalEnergy, 0.0, 1.35);
+  vec3 glowBase = mix(moodTint, vCoreColor, 0.46);
+  vHaloColor = mix(glowBase, brainColor, clamp(brainPulse * 0.36, 0.0, 0.45)) * (0.62 + gE * 0.78) * depthShade;
+  vHaloAlpha = clamp(0.022 + gE * 0.115 + shockEnergy * 0.10 + brainPulse * 0.04, 0.0, 0.22) * birthVisibility;
+
+  gl_PointSize = uPointSize * uDpr * (1.0 + gE * 0.08 + shockEnergy * 0.16 + voiceEnergy * 0.07);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
 `;
 
 const FRAGMENT_SHADER = /* glsl */ `
-varying vec3 vColor;
-varying float vAlpha;
-varying float vGlowPass;
+varying vec3 vCoreColor;
+varying vec3 vHaloColor;
+varying float vCoreAlpha;
+varying float vHaloAlpha;
 
 void main() {
   vec2 centered = gl_PointCoord - vec2(0.5);
-  float d = length(centered);
-  float alpha;
+  float d2 = dot(centered, centered);
+  if (d2 > 0.25) discard;
 
-  if (vGlowPass > 0.5) {
-    alpha = 1.0 - smoothstep(0.08, 0.49, d);
-  } else {
-    float crispCore = 1.0 - smoothstep(0.12, 0.30, d);
-    float feather = 1.0 - smoothstep(0.28, 0.49, d);
-    alpha = max(crispCore, feather * 0.54);
-  }
+  // Sub-pixel anti-aliased Gaussian pinpoint core + airy additive outer bloom in ONE pass
+  float coreMask = exp(-d2 * 22.0) * vCoreAlpha;
+  float haloMask = (exp(-d2 * 5.2) - exp(-5.2 * 0.25)) * vHaloAlpha;
 
-  alpha *= vAlpha;
-  if (alpha < 0.018) discard;
+  // Premultiplied output with blend (ONE, ONE_MINUS_SRC_ALPHA):
+  // - Where coreMask is high, attenuates overlap so colors never saturate to flat white
+  // - Where coreMask -> 0 in outer ring, haloMask adds pure additive light!
+  vec3 premulRgb = vCoreColor * coreMask + vHaloColor * haloMask * (1.0 - coreMask * 0.55);
+  float outAlpha = clamp(coreMask * 0.92, 0.0, 1.0);
 
-  gl_FragColor = vec4(vColor, alpha);
+  if (outAlpha < 0.008 && haloMask < 0.004) discard;
+  gl_FragColor = vec4(premulRgb, outAlpha);
 }
 `;
+
+type PointerState = {
+  x: number; // [-1..+1], +1 = right of head
+  y: number; // [-1..+1], +1 = below eyes (mouse down), -1 = above eyes (mouse up)
+  inside: boolean;
+};
 
 type PointsCloudProps = {
   data: HumanoidParticleData;
   state: OrbState;
   reducedMotion: boolean;
   audioLevelRef: React.MutableRefObject<number>;
-  pointerRef: React.MutableRefObject<{ x: number; y: number; active: boolean; lastMoveAt: number }>;
+  pointerRef: React.MutableRefObject<PointerState>;
   assemblyRun: number;
   pulseSeq: number;
   brainEvent: { id: number; tone: number } | null;
@@ -783,7 +873,24 @@ function HumanoidPointCloud({
   onShockwaveTrigger,
   onLowFpsDetected,
 }: PointsCloudProps) {
-  const gazeCurrent = useRef({ yaw: 0, pitch: 0, roll: 0 });
+  // Critically-damped spring states (pos + vel) for liquid-smooth motion
+  const springs = useRef({
+    yaw: 0,
+    yawVel: 0,
+    pitch: 0,
+    pitchVel: 0,
+    roll: 0,
+    rollVel: 0,
+    torsoYaw: 0,
+    torsoYawVel: 0,
+    torsoPitch: 0,
+    torsoPitchVel: 0,
+    waveX: 0,
+    waveXVel: 0,
+    waveY: 0,
+    waveYVel: 0,
+  });
+
   const voiceEnvelope = useRef(0);
   const brainEnvelope = useRef({ activity: 0, tone: 0.1, seenId: -1 });
   const moodTransition = useRef<{
@@ -852,69 +959,54 @@ function HumanoidPointCloud({
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  const makeUniforms = (glow: boolean) => ({
-    uTime: { value: 0 },
-    uDpr: { value: 1 },
-    uPointSize: { value: glow ? 2.65 : 1.38 },
-    uGlowPass: { value: glow ? 1 : 0 },
-    uYaw: { value: 0 },
-    uPitch: { value: 0 },
-    uRoll: { value: 0 },
-    uChest: { value: 0 },
-    uAssemblyProgress: { value: reducedMotion ? 1 : 0 },
-    uAssemblyEnabled: { value: reducedMotion ? 0 : 1 },
-    uShockwaveActive: { value: 0 },
-    uShockwaveProgress: { value: 1 },
-    uTransitionProgress: { value: 1 },
-    uPrevMood: { value: new THREE.Vector4(0.12, 0.14, 0.06, 0.34) },
-    uNextMood: { value: new THREE.Vector4(0.12, 0.14, 0.06, 0.34) },
-    uMoodShimmer: { value: 0.18 },
-    uVoice: { value: 0 },
-    uBrainActivity: { value: 0 },
-    uBrainTone: { value: 0.1 },
-    uEffects: { value: reducedMotion ? 0.35 : 1 },
-  });
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uDpr: { value: 1 },
+      uPointSize: { value: 2.35 },
+      uYaw: { value: 0 },
+      uPitch: { value: 0 },
+      uRoll: { value: 0 },
+      uTorsoYaw: { value: 0 },
+      uTorsoPitch: { value: 0 },
+      uWaveParallaxX: { value: 0 },
+      uWaveParallaxY: { value: 0 },
+      uChest: { value: 0 },
+      uAssemblyProgress: { value: reducedMotion ? 1 : 0 },
+      uAssemblyEnabled: { value: reducedMotion ? 0 : 1 },
+      uShockwaveActive: { value: 0 },
+      uShockwaveProgress: { value: 1 },
+      uTransitionProgress: { value: 1 },
+      uPrevMood: { value: new THREE.Vector4(0.13, 0.15, 0.06, 0.34) },
+      uNextMood: { value: new THREE.Vector4(0.13, 0.15, 0.06, 0.34) },
+      uMoodShimmer: { value: 0.18 },
+      uVoice: { value: 0 },
+      uBrainActivity: { value: 0 },
+      uBrainTone: { value: 0.1 },
+      uEffects: { value: reducedMotion ? 0.35 : 1 },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const baseUniforms = useMemo(() => makeUniforms(false), []);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const glowUniforms = useMemo(() => makeUniforms(true), []);
-
-  const baseMaterial = useMemo(
+  const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
-        uniforms: baseUniforms,
+        uniforms,
         vertexShader: VERTEX_SHADER,
         fragmentShader: FRAGMENT_SHADER,
         transparent: true,
         depthWrite: false,
         depthTest: false,
-        blending: THREE.NormalBlending,
+        blending: THREE.CustomBlending,
+        blendEquation: THREE.AddEquation,
+        blendSrc: THREE.OneFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
       }),
-    [baseUniforms]
+    [uniforms]
   );
 
-  const glowMaterial = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        uniforms: glowUniforms,
-        vertexShader: VERTEX_SHADER,
-        fragmentShader: FRAGMENT_SHADER,
-        transparent: true,
-        depthWrite: false,
-        depthTest: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    [glowUniforms]
-  );
-
-  useEffect(
-    () => () => {
-      baseMaterial.dispose();
-      glowMaterial.dispose();
-    },
-    [baseMaterial, glowMaterial]
-  );
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame(({ clock, gl }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
@@ -922,7 +1014,7 @@ function HumanoidPointCloud({
     const dpr = gl.getPixelRatio();
 
     // Runtime FPS safeguard for AUTO quality after birth stabilizes
-    if (!fpsMonitor.current.reported && t > 3.5) {
+    if (!fpsMonitor.current.reported && t > 3.6) {
       if (fpsMonitor.current.startedAt === 0) {
         fpsMonitor.current.startedAt = t;
         fpsMonitor.current.frames = 0;
@@ -942,49 +1034,97 @@ function HumanoidPointCloud({
       }
     }
 
-    // Gaze controller: tracks pointer across window + lifelike autonomous micro-gaze
-    const nowMs = performance.now();
+    // Precision 4-quadrant cursor gaze + subtle organic life
     const ptr = pointerRef.current;
-    const pointerFresh = ptr.active && nowMs - ptr.lastMoveAt < 6500;
-    const idleDriftYaw = Math.sin(t * 0.46) * 0.065 + Math.sin(t * 1.13 + 1.2) * 0.024;
-    const idleDriftPitch = Math.sin(t * 0.62 + 0.5) * 0.028;
+    const microLifeYaw = Math.sin(t * 0.52) * 0.016 + Math.sin(t * 1.18 + 1.1) * 0.008;
+    const microLifePitch = Math.sin(t * 0.68 + 0.4) * 0.012;
+    const idleAutonomousYaw = Math.sin(t * 0.44) * 0.068 + Math.sin(t * 1.07 + 1.2) * 0.024;
+    const idleAutonomousPitch = Math.sin(t * 0.58 + 0.6) * 0.028;
 
-    let yawTarget = pointerFresh ? ptr.x * 0.28 + idleDriftYaw * 0.25 : idleDriftYaw;
-    let pitchTarget = pointerFresh ? -ptr.y * 0.16 + idleDriftPitch * 0.25 : idleDriftPitch;
-    let rollTarget = yawTarget * -0.14;
-
-    if (state === "listening") {
-      yawTarget = pointerFresh ? ptr.x * 0.34 : idleDriftYaw * 0.6;
-      pitchTarget = (pointerFresh ? -ptr.y * 0.18 : 0) - 0.035 + Math.sin(t * 1.5) * 0.012;
-      rollTarget = yawTarget * -0.18 + 0.018;
-    } else if (state === "thinking") {
-      yawTarget = (pointerFresh ? ptr.x * 0.14 : 0) + 0.11 * Math.sin(t * 0.68) + 0.05;
-      pitchTarget = -0.048 + Math.sin(t * 0.92) * 0.026;
-      rollTarget = -0.025 * Math.cos(t * 0.68);
-    } else if (state === "speaking") {
-      yawTarget = (pointerFresh ? ptr.x * 0.20 : idleDriftYaw * 0.7) + Math.sin(t * 0.85) * 0.038;
-      pitchTarget = (pointerFresh ? -ptr.y * 0.10 : 0) + Math.sin(t * 1.65) * 0.022;
-      rollTarget = Math.sin(t * 0.95) * 0.02;
+    let baseYaw = 0;
+    let basePitch = 0;
+    if (ptr.inside) {
+      const gx = shapeGazeAxis(ptr.x);
+      const gy = shapeGazeAxis(ptr.y);
+      baseYaw = gx * MAX_HEAD_YAW + microLifeYaw;
+      // gy > 0 when mouse is BELOW eyes -> positive pitch nods head DOWN toward cursor
+      // gy < 0 when mouse is ABOVE eyes -> negative pitch tilts head UP toward cursor
+      basePitch =
+        (gy >= 0 ? gy * MAX_HEAD_PITCH_DOWN : gy * MAX_HEAD_PITCH_UP) + microLifePitch;
+    } else {
+      baseYaw = idleAutonomousYaw;
+      basePitch = idleAutonomousPitch;
     }
 
+    // Subtle state nuances layered cleanly ON TOP of full 2D cursor tracking
+    let stateYawOffset = 0;
+    let statePitchOffset = 0;
+    let gazeGain = 1.0;
+
+    if (state === "listening") {
+      gazeGain = 1.08;
+      statePitchOffset = 0.018 + Math.sin(t * 1.45) * 0.008;
+    } else if (state === "thinking") {
+      gazeGain = 0.88;
+      stateYawOffset = Math.sin(t * 0.72) * 0.045;
+      statePitchOffset = -0.022 + Math.sin(t * 0.95) * 0.016;
+    } else if (state === "speaking") {
+      gazeGain = 0.96;
+      stateYawOffset = Math.sin(t * 0.88) * 0.022;
+      statePitchOffset = Math.sin(t * 1.85) * 0.016;
+    }
+
+    let yawTarget = THREE.MathUtils.clamp(
+      baseYaw * gazeGain + stateYawOffset,
+      -0.46,
+      0.46
+    );
+    let pitchTarget = THREE.MathUtils.clamp(
+      basePitch * gazeGain + statePitchOffset,
+      -0.32,
+      0.34
+    );
+    let rollTarget = -yawTarget * 0.085 + (state === "listening" ? 0.014 : 0);
+
     if (reducedMotion) {
-      yawTarget *= 0.25;
-      pitchTarget *= 0.25;
+      yawTarget *= 0.3;
+      pitchTarget *= 0.3;
       rollTarget = 0;
     }
 
-    const smoothRate = 1 - Math.exp(-dt * 5.6);
-    gazeCurrent.current.yaw = THREE.MathUtils.lerp(gazeCurrent.current.yaw, yawTarget, smoothRate);
-    gazeCurrent.current.pitch = THREE.MathUtils.lerp(
-      gazeCurrent.current.pitch,
+    const sp = springs.current;
+    // Head spring: responsive, silky critically-damped tracking (omega = 10.5)
+    [sp.yaw, sp.yawVel] = criticallyDampedSpring(sp.yaw, sp.yawVel, yawTarget, 10.5, dt);
+    [sp.pitch, sp.pitchVel] = criticallyDampedSpring(
+      sp.pitch,
+      sp.pitchVel,
       pitchTarget,
-      smoothRate
+      10.5,
+      dt
     );
-    gazeCurrent.current.roll = THREE.MathUtils.lerp(
-      gazeCurrent.current.roll,
-      rollTarget,
-      smoothRate
+    [sp.roll, sp.rollVel] = criticallyDampedSpring(sp.roll, sp.rollVel, rollTarget, 8.5, dt);
+
+    // Secondary follow-through on shoulders/torso (omega = 5.4)
+    [sp.torsoYaw, sp.torsoYawVel] = criticallyDampedSpring(
+      sp.torsoYaw,
+      sp.torsoYawVel,
+      yawTarget * 0.15,
+      5.4,
+      dt
     );
+    [sp.torsoPitch, sp.torsoPitchVel] = criticallyDampedSpring(
+      sp.torsoPitch,
+      sp.torsoPitchVel,
+      pitchTarget * 0.10,
+      5.4,
+      dt
+    );
+
+    // Subtle 3D background wave counter-parallax (omega = 4.2)
+    const targetWaveX = ptr.inside ? -ptr.x * 0.065 : 0;
+    const targetWaveY = ptr.inside ? ptr.y * 0.042 : 0;
+    [sp.waveX, sp.waveXVel] = criticallyDampedSpring(sp.waveX, sp.waveXVel, targetWaveX, 4.2, dt);
+    [sp.waveY, sp.waveYVel] = criticallyDampedSpring(sp.waveY, sp.waveYVel, targetWaveY, 4.2, dt);
 
     // 680ms radial face-out mood bloom
     const tr = moodTransition.current;
@@ -1072,41 +1212,35 @@ function HumanoidPointCloud({
     }
 
     const chestBreath = reducedMotion ? 0 : Math.sin(t * 1.12) * 0.016;
-    const baseSize = data.tier === "high" ? 1.38 : data.tier === "medium" ? 2.25 : 3.05;
-    const glowSize = data.tier === "high" ? 2.65 : data.tier === "medium" ? 3.85 : 4.85;
+    // Calibrated sprite diameter (includes soft Gaussian outer halo + ~1.1px crisp core)
+    const pointSize = data.tier === "high" ? 2.35 : data.tier === "medium" ? 3.55 : 4.65;
 
-    const syncUniforms = (u: ReturnType<typeof makeUniforms>, glow: boolean) => {
-      u.uTime.value = t;
-      u.uDpr.value = dpr;
-      u.uPointSize.value = glow ? glowSize : baseSize;
-      u.uYaw.value = gazeCurrent.current.yaw;
-      u.uPitch.value = gazeCurrent.current.pitch;
-      u.uRoll.value = gazeCurrent.current.roll;
-      u.uChest.value = chestBreath;
-      u.uAssemblyProgress.value = assemblyProgress;
-      u.uAssemblyEnabled.value = assemblyEnabled;
-      u.uShockwaveActive.value = shockwaveActive;
-      u.uShockwaveProgress.value = shockwaveProgress;
-      u.uTransitionProgress.value = tr.progress;
-      u.uPrevMood.value.set(tr.prev.cyan, tr.prev.warm, tr.prev.zone, tr.prev.tone);
-      u.uNextMood.value.set(tr.next.cyan, tr.next.warm, tr.next.zone, tr.next.tone);
-      u.uMoodShimmer.value = shimmer;
-      u.uVoice.value = voiceSignal;
-      u.uBrainActivity.value = brainEnvelope.current.activity;
-      u.uBrainTone.value = brainEnvelope.current.tone;
-      u.uEffects.value = reducedMotion ? 0.35 : 1.0;
-    };
-
-    syncUniforms(baseUniforms, false);
-    syncUniforms(glowUniforms, true);
+    uniforms.uTime.value = t;
+    uniforms.uDpr.value = dpr;
+    uniforms.uPointSize.value = pointSize;
+    uniforms.uYaw.value = sp.yaw;
+    uniforms.uPitch.value = sp.pitch;
+    uniforms.uRoll.value = sp.roll;
+    uniforms.uTorsoYaw.value = sp.torsoYaw;
+    uniforms.uTorsoPitch.value = sp.torsoPitch;
+    uniforms.uWaveParallaxX.value = sp.waveX;
+    uniforms.uWaveParallaxY.value = sp.waveY;
+    uniforms.uChest.value = chestBreath;
+    uniforms.uAssemblyProgress.value = assemblyProgress;
+    uniforms.uAssemblyEnabled.value = assemblyEnabled;
+    uniforms.uShockwaveActive.value = shockwaveActive;
+    uniforms.uShockwaveProgress.value = shockwaveProgress;
+    uniforms.uTransitionProgress.value = tr.progress;
+    uniforms.uPrevMood.value.set(tr.prev.cyan, tr.prev.warm, tr.prev.zone, tr.prev.tone);
+    uniforms.uNextMood.value.set(tr.next.cyan, tr.next.warm, tr.next.zone, tr.next.tone);
+    uniforms.uMoodShimmer.value = shimmer;
+    uniforms.uVoice.value = voiceSignal;
+    uniforms.uBrainActivity.value = brainEnvelope.current.activity;
+    uniforms.uBrainTone.value = brainEnvelope.current.tone;
+    uniforms.uEffects.value = reducedMotion ? 0.35 : 1.0;
   });
 
-  return (
-    <group>
-      <points geometry={geometry} material={glowMaterial} frustumCulled={false} />
-      <points geometry={geometry} material={baseMaterial} frustumCulled={false} />
-    </group>
-  );
+  return <points geometry={geometry} material={material} frustumCulled={false} />;
 }
 
 function AudioLevelProbe({
@@ -1149,11 +1283,10 @@ export default function ApexMaleHumanoid({
 
   const sfxEnabledRef = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const pointerRef = useRef({
+  const pointerRef = useRef<PointerState>({
     x: 0,
     y: 0,
-    active: false,
-    lastMoveAt: 0,
+    inside: false,
   });
 
   useEffect(() => {
@@ -1183,24 +1316,70 @@ export default function ApexMaleHumanoid({
     };
   }, [effectiveTier]);
 
-  // Global pointer tracking so head turns smoothly anywhere on the HUD
+  // Capture-phase window mouse/pointer/touch tracking anchored to the humanoid's eye center
   useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      const nx = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
-      const ny = (e.clientY / Math.max(1, window.innerHeight)) * 2 - 1;
+    const updateFromClientXY = (clientX: number, clientY: number) => {
+      const w = Math.max(1, window.innerWidth);
+      const h = Math.max(1, window.innerHeight);
+      const nx = (clientX - EYE_SCREEN_X * w) / (0.5 * w);
+      const dy = clientY - EYE_SCREEN_Y * h;
+      const ny = dy / (dy < 0 ? 0.35 * h : 0.56 * h);
       pointerRef.current.x = THREE.MathUtils.clamp(nx, -1, 1);
       pointerRef.current.y = THREE.MathUtils.clamp(ny, -1, 1);
-      pointerRef.current.active = true;
-      pointerRef.current.lastMoveAt = performance.now();
+      pointerRef.current.inside = true;
     };
-    const onLeave = () => {
-      pointerRef.current.active = false;
+
+    const onPointerOrMouseMove = (e: MouseEvent | PointerEvent) => {
+      updateFromClientXY(e.clientX, e.clientY);
     };
-    window.addEventListener("pointermove", onMove, { passive: true });
-    window.addEventListener("pointerleave", onLeave);
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches && e.touches.length > 0) {
+        updateFromClientXY(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const onLeaveViewport = (e: MouseEvent) => {
+      if (!e.relatedTarget) {
+        pointerRef.current.inside = false;
+      }
+    };
+
+    const onWindowBlur = () => {
+      pointerRef.current.inside = false;
+    };
+
+    window.addEventListener("pointermove", onPointerOrMouseMove, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("mousemove", onPointerOrMouseMove, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("mouseover", onPointerOrMouseMove, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("touchmove", onTouchMove, {
+      passive: true,
+      capture: true,
+    });
+    window.addEventListener("touchstart", onTouchMove, {
+      passive: true,
+      capture: true,
+    });
+    document.addEventListener("mouseout", onLeaveViewport, { passive: true });
+    window.addEventListener("blur", onWindowBlur);
+
     return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerleave", onLeave);
+      window.removeEventListener("pointermove", onPointerOrMouseMove, true);
+      window.removeEventListener("mousemove", onPointerOrMouseMove, true);
+      window.removeEventListener("mouseover", onPointerOrMouseMove, true);
+      window.removeEventListener("touchmove", onTouchMove, true);
+      window.removeEventListener("touchstart", onTouchMove, true);
+      document.removeEventListener("mouseout", onLeaveViewport);
+      window.removeEventListener("blur", onWindowBlur);
     };
   }, []);
 
@@ -1242,7 +1421,6 @@ export default function ApexMaleHumanoid({
     master.gain.exponentialRampToValueAtTime(0.0001, now + 2.05);
     master.connect(compressor).connect(ctx.destination);
 
-    // Sub-harmonic birth lock drop
     const sub = ctx.createOscillator();
     const subGain = ctx.createGain();
     sub.type = "sine";
@@ -1255,7 +1433,6 @@ export default function ApexMaleHumanoid({
     sub.start(now);
     sub.stop(now + 1.0);
 
-    // Crystalline harmonic shimmer rise
     const shimmer = ctx.createOscillator();
     const shimmerGain = ctx.createGain();
     shimmer.type = "triangle";
@@ -1269,7 +1446,6 @@ export default function ApexMaleHumanoid({
     shimmer.start(now + 0.05);
     shimmer.stop(now + 1.56);
 
-    // Filtered atmospheric shockwave breath
     const dur = 1.45;
     const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
     const ch = buf.getChannelData(0);
@@ -1327,7 +1503,6 @@ export default function ApexMaleHumanoid({
   const triggerRebirth = useCallback(async () => {
     const ctx = await ensureAudioContext();
     if (ctx && ctx.state === "running" && sfxEnabledRef.current) {
-      // Soft ignition chime on birth start; main shockwave fires at completion
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -1371,7 +1546,7 @@ export default function ApexMaleHumanoid({
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(115% 88% at 50% 44%, rgba(0,0,0,0) 42%, rgba(2,6,12,0.52) 78%, rgba(1,4,9,0.88) 100%), repeating-linear-gradient(to bottom, rgba(79,210,255,0.016) 0 1px, transparent 1px 3px)",
+            "radial-gradient(115% 88% at 50% 44%, rgba(0,0,0,0) 42%, rgba(2,6,12,0.52) 78%, rgba(1,4,9,0.88) 100%), repeating-linear-gradient(to bottom, rgba(79,210,255,0.014) 0 1px, transparent 1px 3px)",
           zIndex: 1,
         }}
       />
@@ -1380,7 +1555,7 @@ export default function ApexMaleHumanoid({
         <div style={{ position: "absolute", inset: 0, zIndex: 2 }}>
           <Canvas
             style={{ width: "100%", height: "100%", display: "block" }}
-            camera={{ position: [0, 0.02, 6.85], fov: 38 }}
+            camera={{ position: [0, CAM_Y, CAM_Z], fov: 38 }}
             dpr={effectiveTier === "high" ? [1, 1.5] : 1}
             gl={{
               antialias: false,
