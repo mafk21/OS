@@ -934,6 +934,7 @@ class JarvisLive:
         self.ui.on_interrupt      = self.interrupt
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
+        self.ui.on_integrations_change = self._on_integrations_change
         self._reconnect_event: asyncio.Event | None = None
         self._reconnect_keep = True   # False → next rebuild drops the resumption handle
 
@@ -1420,6 +1421,10 @@ class JarvisLive:
         landed before this feature did."""
         self.request_reconnect(keep_context=True, reason="audio device")
 
+    def _on_integrations_change(self, *_args):
+        """Connected accounts updated mid-session — refresh system prompt silently."""
+        self.request_reconnect(keep_context=True, reason="integrations", silent=True)
+
     async def _watch_reconnect(self):
         """Session-scoped task: when a voluntary reconnect is requested, raise a
         signal that unwinds the TaskGroup so the run loop rebuilds the session."""
@@ -1722,6 +1727,11 @@ class JarvisLive:
         })
 
         parts = [time_ctx, identity_ctx]
+        try:
+            from memory.accounts import format_connected_for_prompt
+            parts.append(format_connected_for_prompt())
+        except Exception:
+            pass
         if mem_str:
             parts.append(mem_str)
         parts.append(sys_prompt)
@@ -3651,12 +3661,16 @@ def _parse_cli_persona(argv: list[str]) -> str | None:
 
 def main():
     cli_persona = _parse_cli_persona(sys.argv[1:])
+    skip_int = any(a.strip().lower() == "--skip-integrations" for a in sys.argv[1:])
+    if skip_int:
+        os.environ["JARVIS_SKIP_INTEGRATIONS_PROMPT"] = "1"
     ui = JarvisUI("face.png")
     if cli_persona:
         ui.select_persona(cli_persona)
 
     def runner():
         ui.wait_for_api_key()
+        ui.wait_for_integrations()
         ui.wait_for_persona()
         jarvis = JarvisLive(ui)
         try:

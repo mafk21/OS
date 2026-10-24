@@ -26,13 +26,14 @@ from typing import Any, Callable
 
 try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
     from fastapi.staticfiles import StaticFiles
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
-    FileResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
+    FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
 from core import audio_devices
 from core import confirm as confirm_gate
+from memory import accounts
 from memory import config_manager as cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -66,6 +67,12 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "excel_writer": ["finance", "analytics"],
     "morning_briefing": ["chief_of_staff", "strategist"],
     "focus_guardian": ["chief_of_staff", "strategist"],
+    "cloud_integrations": ["email", "drive", "calendar"],
+    "manage_accounts": ["chief_of_staff", "email"],
+    "gws_pack": ["email", "drive", "calendar"],
+    "github_automation": ["developer", "engineering"],
+    "remote_relay": ["sales", "ops"],
+    "music_selection": ["design", "social_media"],
     "gmail_control": ["email"],
     "calendar_control": ["calendar"],
     "whatsapp": ["sales"],
@@ -157,6 +164,19 @@ class ApexHudBridge:
             return bool(self._ui._persona_selected)
         return True
 
+    def _is_integrations_ready(self) -> bool:
+        if os.environ.get("JARVIS_HUD_PREVIEW_READY") == "1":
+            return True
+        if os.environ.get("JARVIS_SKIP_INTEGRATIONS_PROMPT", "").strip().lower() in (
+            "1", "true", "yes",
+        ):
+            return True
+        if self._ui is not None and hasattr(self._ui, "_integrations_ready"):
+            return bool(self._ui._integrations_ready)
+        if self._ui is not None:
+            return True
+        return cfg.is_integrations_onboarding_done()
+
     def _is_muted(self) -> bool:
         if self._ui is not None and hasattr(self._ui, "muted"):
             try:
@@ -205,6 +225,8 @@ class ApexHudBridge:
         return {
             "type": "bootstrap",
             "ready": self._is_ready(),
+            "integrations_ready": self._is_integrations_ready(),
+            "integrations": accounts.get_integrations_status_summary(),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -370,6 +392,73 @@ class ApexHudBridge:
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True}
 
+        if action == "save_integrations":
+            was_live = self._is_persona_chosen()
+            payload = data.get("integrations")
+            res = accounts.save_onboarding_integrations(
+                payload if isinstance(payload, dict) else {}
+            )
+            if ui is not None:
+                setattr(ui, "_integrations_ready", True)
+            if win is not None and hasattr(win, "mark_integrations_done"):
+                self._invoke_qt(win.mark_integrations_done)
+            saved_list = res.get("saved") or []
+            if saved_list:
+                self.push_log(f"SYS: Connected integrations: {', '.join(saved_list)}.")
+            else:
+                self.push_log(
+                    "SYS: Optional integrations saved (unfilled services ignored)."
+                )
+            if was_live and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            self._broadcast_threadsafe(self.snapshot())
+            return res
+
+        if action == "skip_integrations":
+            cfg.save_integrations_onboarding_done(True)
+            if ui is not None:
+                setattr(ui, "_integrations_ready", True)
+            if win is not None and hasattr(win, "mark_integrations_done"):
+                self._invoke_qt(win.mark_integrations_done)
+            self.push_log(
+                "SYS: Optional integrations skipped — connect any anytime in HUD -> Integrations."
+            )
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "disconnect_integration":
+            svc = str(data.get("service") or "").strip().lower()
+            if svc == "google":
+                for g_svc in ("gmail", "google_drive", "google_calendar"):
+                    accounts.disconnect_account(g_svc)
+            elif svc:
+                accounts.disconnect_account(svc)
+            self.push_log(f"SYS: Disconnected {svc or 'integration'}.")
+            if self._is_persona_chosen() and ui is not None:
+                cb = getattr(ui, "on_integrations_change", None)
+                if callable(cb):
+                    threading.Thread(target=cb, daemon=True).start()
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "start_google_oauth":
+            cid = str(data.get("client_id") or "").strip()
+            csec = str(data.get("client_secret") or "").strip()
+            if not cid or not csec:
+                return {
+                    "ok": False,
+                    "error": "Enter Google OAuth Client ID and Client Secret first.",
+                }
+            for g_svc in ("gmail", "google_drive", "google_calendar"):
+                accounts.connect_account(
+                    g_svc, client_id=cid, client_secret=csec, permission="full"
+                )
+            redirect_uri = f"http://127.0.0.1:{self.port}/api/oauth/google/callback"
+            auth_url = accounts.build_google_oauth_url(cid, redirect_uri)
+            return {"ok": True, "auth_url": auth_url, "redirect_uri": redirect_uri}
+
         if action == "text_command":
             txt = str(data.get("text") or "").strip()
             if txt:
@@ -456,12 +545,11 @@ class ApexHudBridge:
             prev_voice = cfg.get_voice()
             res = cfg.save_persona(raw_p, req_voice or None)
             if ui is not None:
+                setattr(ui, "_persona_selected", True)
                 if hasattr(ui, "apply_persona_visuals"):
                     self._invoke_qt(
                         lambda p=res["persona"], c=res["ui_color"]: ui.apply_persona_visuals(p, c)
                     )
-                else:
-                    setattr(ui, "_persona_selected", True)
             if was_chosen and res["voice"] != prev_voice:
                 cb = getattr(ui, "on_voice_change", None) if ui else None
                 if callable(cb):
@@ -604,6 +692,41 @@ class ApexHudBridge:
         async def _weather():
             wx = await asyncio.to_thread(self._fetch_weather)
             return JSONResponse(wx)
+
+        @app.get("/api/oauth/google/callback")
+        async def _google_oauth_cb(req: Request):
+            code = req.query_params.get("code", "")
+            err = req.query_params.get("error", "")
+            if err or not code:
+                return HTMLResponse(
+                    f"<html><body style='background:#050b14;color:#ff8090;font-family:sans-serif;padding:40px;text-align:center'>"
+                    f"<h2>Google Authorization Cancelled</h2><p>{err or 'No authorization code received.'}</p></body></html>",
+                    status_code=400,
+                )
+            rec = accounts.get_account("gmail") or accounts.get_account("google_drive") or {}
+            cid = str(rec.get("client_id") or "")
+            csec = str(rec.get("client_secret") or "")
+            redirect_uri = f"http://127.0.0.1:{self.port}/api/oauth/google/callback"
+            try:
+                res = await asyncio.to_thread(
+                    accounts.exchange_google_oauth_code, code, cid, csec, redirect_uri
+                )
+                self.push_log(
+                    f"SYS: Google Workspace connected ({res.get('email') or 'Gmail, Drive & Calendar'}) ✓"
+                )
+                self._broadcast_threadsafe(self.snapshot())
+                return HTMLResponse(
+                    "<html><body style='background:#050b14;color:#6ef4ff;font-family:sans-serif;padding:48px;text-align:center'>"
+                    "<h2>✓ Google Workspace Connected</h2>"
+                    "<p style='color:#9ec5d6'>Gmail, Google Drive, and Google Calendar are now linked to JARVIS.<br/>You can close this tab and return to the HUD.</p>"
+                    "<script>setTimeout(()=>window.close(),1800)</script></body></html>"
+                )
+            except Exception as exc:
+                return HTMLResponse(
+                    f"<html><body style='background:#050b14;color:#ff8090;font-family:sans-serif;padding:40px;text-align:center'>"
+                    f"<h2>Google OAuth Error</h2><p>{exc}</p></body></html>",
+                    status_code=500,
+                )
 
         @app.websocket("/ws/hud")
         async def _ws_hud(ws: WebSocket):

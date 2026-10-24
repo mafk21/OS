@@ -51,6 +51,15 @@ def is_configured() -> bool:
     return bool(key and len(key) > 15)
 
 
+def is_integrations_onboarding_done() -> bool:
+    """Whether the first-run optional integrations setup step has been completed or skipped."""
+    return bool(load_api_keys().get("integrations_onboarding_done", False))
+
+
+def save_integrations_onboarding_done(done: bool = True) -> None:
+    _save_flag("integrations_onboarding_done", bool(done))
+
+
 def get_assistant_name() -> str:
     """Return the configured assistant name, or 'JARVIS' if not set."""
     return load_api_keys().get("assistant_name", "JARVIS") or "JARVIS"

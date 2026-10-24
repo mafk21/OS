@@ -13,10 +13,12 @@ import {
   Scan,
   ShieldAlert,
   KeyRound,
+  Link2,
   Sparkles,
   Volume2,
   X,
 } from "lucide-react";
+import IntegrationsModal from "./IntegrationsModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
 
@@ -27,6 +29,8 @@ const WARN_AMBER = "#f5a623";
 export default function JarvisHudOverlays() {
   const {
     connected,
+    integrationsReady,
+    integrations,
     persona,
     activePersona,
     theme,
@@ -53,10 +57,12 @@ export default function JarvisHudOverlays() {
     consoleOpen,
     settingsOpen,
     setupOpen,
+    integrationsModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
     setSetupOpen,
+    setIntegrationsModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
@@ -86,14 +92,17 @@ export default function JarvisHudOverlays() {
   const [activatingPersona, setActivatingPersona] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
+  const activePersonaRef = useRef<PersonaMode>(activePersona);
+  activePersonaRef.current = activePersona;
+
   useEffect(() => {
     if (personaModalOpen) {
-      setDraftPersona(persona);
-      setPreviewPersona(persona);
-    } else {
+      setDraftPersona(activePersonaRef.current);
+      setPreviewPersona(activePersonaRef.current);
+    } else if (!setupOpen && !integrationsModalOpen) {
       setPreviewPersona(null);
     }
-  }, [personaModalOpen, persona, setPreviewPersona]);
+  }, [personaModalOpen, setupOpen, integrationsModalOpen, setPreviewPersona]);
 
   useEffect(() => {
     if (consoleOpen) {
@@ -205,6 +214,29 @@ export default function JarvisHudOverlays() {
         >
           <Sparkles size={12} />
           {activePersona === "female" ? "♀ FEMALE" : "♂ MALE"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIntegrationsModalOpen(true)}
+          title="Connect or manage optional integrations (Email, Drive, Notion, Slack, GitHub, Discord...)"
+          style={{
+            ...pillBase,
+            borderColor:
+              integrations.connected_count > 0
+                ? `${GREEN}55`
+                : "rgba(240,237,232,0.18)",
+            color:
+              integrations.connected_count > 0
+                ? GREEN
+                : "rgba(240,237,232,0.82)",
+          }}
+        >
+          <Link2 size={12} />
+          LINKS
+          {integrations.connected_count > 0
+            ? ` (${integrations.connected_count})`
+            : ""}
         </button>
 
         <button
@@ -964,19 +996,41 @@ export default function JarvisHudOverlays() {
                 gap: 8,
                 paddingTop: 6,
                 borderTop: "1px solid rgba(255,255,255,0.08)",
+                flexWrap: "wrap",
               }}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  setSetupOpen(true);
-                }}
-                style={pillBase}
-              >
-                <KeyRound size={12} />
-                API KEY
-              </button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setSetupOpen(true);
+                  }}
+                  style={pillBase}
+                >
+                  <KeyRound size={12} />
+                  API KEY
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setIntegrationsModalOpen(true);
+                  }}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${PRIMARY}55`,
+                    color: PRIMARY,
+                  }}
+                >
+                  <Link2 size={12} />
+                  INTEGRATIONS
+                  {integrations.connected_count > 0
+                    ? ` (${integrations.connected_count})`
+                    : ""}
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -998,8 +1052,11 @@ export default function JarvisHudOverlays() {
         </div>
       )}
 
+      {/* ── Optional Integrations Onboarding / Manager Modal ── */}
+      <IntegrationsModal />
+
       {/* ── Startup / Edition Selector Modal (Male vs Female Version) ── */}
-      {personaModalOpen && !setupOpen && (
+      {personaModalOpen && !setupOpen && !integrationsModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
@@ -1272,19 +1329,51 @@ export default function JarvisHudOverlays() {
               gap: 14,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <KeyRound size={18} style={{ color: PRIMARY }} />
               <span
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 11.5,
-                  letterSpacing: "0.22em",
+                  fontSize: 11,
+                  letterSpacing: "0.2em",
                   color: PRIMARY,
                   flex: 1,
                 }}
               >
-                INITIALIZE {assistantName.toUpperCase()}
+                {!integrationsReady
+                  ? `STEP 1 OF 3 · INITIALIZE ${assistantName.toUpperCase()}`
+                  : `INITIALIZE ${assistantName.toUpperCase()}`}
               </span>
+              {(["male", "female"] as PersonaMode[]).map((pKey) => {
+                const pTheme = PERSONA_THEMES[pKey];
+                const isAct = activePersona === pKey;
+                return (
+                  <button
+                    key={pKey}
+                    type="button"
+                    onClick={() =>
+                      personaChosen
+                        ? choosePersona(pKey)
+                        : setPreviewPersona(pKey)
+                    }
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 9,
+                      letterSpacing: "0.12em",
+                      padding: "3px 8px",
+                      borderRadius: 999,
+                      border: `1px solid ${
+                        isAct ? pTheme.primary : "rgba(255,255,255,0.14)"
+                      }`,
+                      background: isAct ? `${pTheme.primary}22` : "transparent",
+                      color: isAct ? pTheme.primary : "rgba(240,237,232,0.58)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {pKey === "female" ? "♀" : "♂"}
+                  </button>
+                );
+              })}
               {personaChosen && (
                 <button
                   type="button"
@@ -1309,8 +1398,10 @@ export default function JarvisHudOverlays() {
               }}
             >
               Enter your Google Gemini API key to activate real-time voice,
-              vision, and autonomous tools. Next, you&apos;ll choose between the{" "}
-              <strong>Male</strong> and <strong>Female</strong> editions.
+              vision, and autonomous tools. Next, you can optionally connect
+              your accounts (Email, Google Drive, GitHub, Notion, Slack,
+              Discord — or skip what you don&apos;t need) and pick the{" "}
+              <strong>Male</strong> or <strong>Female</strong> edition.
             </div>
 
             <input
@@ -1348,7 +1439,11 @@ export default function JarvisHudOverlays() {
                 fontWeight: 600,
               }}
             >
-              {savingKey ? "SAVING..." : "SAVE & CHOOSE EDITION"}
+              {savingKey
+                ? "SAVING..."
+                : !integrationsReady
+                ? "NEXT · OPTIONAL INTEGRATIONS →"
+                : "SAVE API KEY"}
             </button>
           </form>
         </div>

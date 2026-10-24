@@ -35,9 +35,28 @@ export type ContentCard = {
   text: string;
 };
 
+export type IntegrationServiceInfo = {
+  service: string;
+  connected: boolean;
+  ignored: boolean;
+  email: string;
+  permission: string;
+  has_oauth_client?: boolean;
+  channel_id?: string;
+};
+
+export type IntegrationsSummary = {
+  services: Record<string, IntegrationServiceInfo>;
+  connected_count: number;
+  connected_services: string[];
+  onboarding_done: boolean;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
+  integrationsReady: boolean;
+  integrations: IntegrationsSummary;
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -67,13 +86,22 @@ export type JarvisContextValue = {
   consoleOpen: boolean;
   settingsOpen: boolean;
   setupOpen: boolean;
+  integrationsModalOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
   choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
+  saveIntegrations: (payload: Record<string, unknown>) => Promise<boolean>;
+  skipIntegrations: () => Promise<void>;
+  disconnectIntegration: (service: string) => Promise<void>;
+  startGoogleOAuth: (
+    clientId: string,
+    clientSecret: string
+  ) => Promise<{ ok: boolean; auth_url?: string; error?: string }>;
   clearContent: () => void;
   sendText: (text: string, traceNode?: string) => void;
   tapOrb: () => void;
@@ -130,6 +158,13 @@ function classifyLog(line: string): { role: LogEntry["role"]; clean: string } {
 export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [ready, setReady] = useState(true);
+  const [integrationsReady, setIntegrationsReady] = useState(true);
+  const [integrations, setIntegrations] = useState<IntegrationsSummary>({
+    services: {},
+    connected_count: 0,
+    connected_services: [],
+    onboarding_done: true,
+  });
   const [persona, setPersona] = useState<PersonaMode>("male");
   const [previewPersona, setPreviewPersona] = useState<PersonaMode | null>(null);
   const [personaChosen, setPersonaChosen] = useState(true);
@@ -169,6 +204,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
+  const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -248,9 +284,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     (d: Record<string, unknown>) => {
       if (!d || typeof d !== "object") return;
       const isReady = d.ready !== false;
+      const isIntegrationsReady = d.integrations_ready !== false;
       const isPersonaChosen = d.persona_chosen !== false;
       setReady(isReady);
+      setIntegrationsReady(isIntegrationsReady);
       setPersonaChosen(isPersonaChosen);
+
+      if (d.integrations && typeof d.integrations === "object") {
+        setIntegrations(d.integrations as IntegrationsSummary);
+      }
 
       if (d.persona === "female" || d.persona === "male") {
         setPersona(d.persona);
@@ -258,9 +300,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
 
       if (!isReady) {
         setSetupOpen(true);
+        setIntegrationsModalOpen(false);
+        setPersonaModalOpen(false);
+      } else if (!isIntegrationsReady) {
+        setSetupOpen(false);
+        setIntegrationsModalOpen(true);
         setPersonaModalOpen(false);
       } else if (!isPersonaChosen) {
         setSetupOpen(false);
+        setIntegrationsModalOpen(false);
         setPersonaModalOpen(true);
       }
 
@@ -620,6 +668,38 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
         if (r.ok) {
           setReady(true);
           setSetupOpen(false);
+          if (!integrationsReady) {
+            setIntegrationsModalOpen(true);
+          } else if (!personaChosen) {
+            setPersonaModalOpen(true);
+          }
+          return true;
+        }
+      } catch {}
+      return false;
+    },
+    [integrationsReady, personaChosen]
+  );
+
+  const saveIntegrations = useCallback(
+    async (payload: Record<string, unknown>): Promise<boolean> => {
+      fireLocalTrace(["email", "drive", "calendar"]);
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_integrations",
+            integrations: payload,
+          }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.summary && typeof data.summary === "object") {
+            setIntegrations(data.summary as IntegrationsSummary);
+          }
+          setIntegrationsReady(true);
+          setIntegrationsModalOpen(false);
           if (!personaChosen) {
             setPersonaModalOpen(true);
           }
@@ -628,7 +708,78 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       } catch {}
       return false;
     },
-    [personaChosen]
+    [fireLocalTrace, personaChosen]
+  );
+
+  const skipIntegrations = useCallback(async () => {
+    setIntegrationsReady(true);
+    setIntegrationsModalOpen(false);
+    if (!personaChosen) {
+      setPersonaModalOpen(true);
+    }
+    try {
+      const r = await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "skip_integrations" }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data.summary && typeof data.summary === "object") {
+          setIntegrations(data.summary as IntegrationsSummary);
+        }
+      }
+    } catch {
+      sendAction({ action: "skip_integrations" });
+    }
+  }, [personaChosen, sendAction]);
+
+  const disconnectIntegration = useCallback(
+    async (service: string) => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "disconnect_integration", service }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.summary && typeof data.summary === "object") {
+            setIntegrations(data.summary as IntegrationsSummary);
+          }
+        }
+      } catch {
+        sendAction({ action: "disconnect_integration", service });
+      }
+    },
+    [sendAction]
+  );
+
+  const startGoogleOAuth = useCallback(
+    async (
+      clientId: string,
+      clientSecret: string
+    ): Promise<{ ok: boolean; auth_url?: string; error?: string }> => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start_google_oauth",
+            client_id: clientId,
+            client_secret: clientSecret,
+          }),
+        });
+        const data = await r.json();
+        if (data.ok && typeof data.auth_url === "string") {
+          window.open(data.auth_url, "_blank", "noopener,noreferrer");
+        }
+        return data;
+      } catch {
+        return { ok: false, error: "Could not start Google OAuth flow." };
+      }
+    },
+    []
   );
 
   const clearContent = useCallback(() => setContent(null), []);
@@ -637,6 +788,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     () => ({
       connected,
       ready,
+      integrationsReady,
+      integrations,
       persona,
       activePersona,
       theme,
@@ -666,13 +819,19 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       consoleOpen,
       settingsOpen,
       setupOpen,
+      integrationsModalOpen,
       personaModalOpen,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
+      setIntegrationsModalOpen,
       setPersonaModalOpen,
       setPreviewPersona,
       choosePersona,
+      saveIntegrations,
+      skipIntegrations,
+      disconnectIntegration,
+      startGoogleOAuth,
       clearContent,
       sendText,
       tapOrb,
@@ -693,6 +852,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [
       connected,
       ready,
+      integrationsReady,
+      integrations,
       persona,
       activePersona,
       theme,
@@ -723,8 +884,13 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       consoleOpen,
       settingsOpen,
       setupOpen,
+      integrationsModalOpen,
       personaModalOpen,
       choosePersona,
+      saveIntegrations,
+      skipIntegrations,
+      disconnectIntegration,
+      startGoogleOAuth,
       clearContent,
       sendText,
       tapOrb,

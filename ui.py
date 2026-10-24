@@ -1719,6 +1719,122 @@ class PersonaOverlay(QWidget):
         """)
 
 
+class IntegrationsOverlay(QWidget):
+    """First-run optional integrations setup for Classic UI (skip/ignore any unused)."""
+    finished = pyqtSignal(dict)
+    skipped = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedSize(540, 440)
+        self.setStyleSheet(f"""
+            IntegrationsOverlay {{
+                background: rgba(3, 8, 15, 248);
+                border: 1px solid {C.BORDER_B};
+                border-radius: 8px;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 18, 24, 18)
+        layout.setSpacing(6)
+
+        title = QLabel("◈  OPTIONAL INTEGRATIONS SETUP")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setFont(QFont("Courier New", 12, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {C.PRI}; background: transparent;")
+        layout.addWidget(title)
+
+        sub = QLabel("Connect only what you want — leave blank or skip anything you don't need.")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub.setFont(QFont("Courier New", 8))
+        sub.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        layout.addWidget(sub)
+
+        inp_style = f"""
+            QLineEdit {{
+                background: #020810; color: {C.PRI};
+                border: 1px solid {C.BORDER_B}; border-radius: 3px;
+                padding: 4px 8px; font-family: 'Courier New'; font-size: 9pt;
+            }}
+        """
+        self._fields: dict[str, QLineEdit] = {}
+        rows = [
+            ("email_addr", "Email Address (optional):", "you@gmail.com"),
+            ("email_pw", "Email App Password:", "16-char Gmail/Outlook App Password", True),
+            ("google_tok", "Google OAuth Token (Drive/Calendar/Gmail):", "ya29... (optional)", True),
+            ("github_tok", "GitHub Token:", "ghp_... (optional)", True),
+            ("notion_tok", "Notion Token:", "ntn_... / secret_... (optional)", True),
+            ("slack_wh", "Slack Token or Webhook:", "xoxb-... or https://hooks.slack.com/...", True),
+            ("discord_wh", "Discord Webhook or Bot Token:", "https://discord.com/api/webhooks/...", True),
+            ("telegram_tok", "Telegram Bot Token:", "123456:ABC... (optional)", True),
+        ]
+        for item in rows:
+            key, label_txt, ph = item[0], item[1], item[2]
+            is_pw = len(item) > 3 and item[3]
+            row = QHBoxLayout()
+            lbl = QLabel(label_txt)
+            lbl.setFixedWidth(235)
+            lbl.setFont(QFont("Courier New", 8))
+            lbl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+            ed = QLineEdit()
+            ed.setPlaceholderText(ph)
+            ed.setStyleSheet(inp_style)
+            if is_pw:
+                ed.setEchoMode(QLineEdit.EchoMode.Password)
+            self._fields[key] = ed
+            row.addWidget(lbl)
+            row.addWidget(ed)
+            layout.addLayout(row)
+
+        layout.addSpacing(6)
+        btns = QHBoxLayout()
+        skip_btn = QPushButton("IGNORE ALL / SKIP FOR NOW")
+        skip_btn.setFixedHeight(34)
+        skip_btn.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        skip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        skip_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {C.TEXT_MED};
+                border: 1px solid {C.BORDER_B}; border-radius: 4px;
+            }}
+            QPushButton:hover {{ color: {C.WHITE}; border-color: {C.PRI}; }}
+        """)
+        skip_btn.clicked.connect(self.skipped.emit)
+
+        save_btn = QPushButton("SAVE SELECTED & CONTINUE ▸")
+        save_btn.setFixedHeight(34)
+        save_btn.setFont(QFont("Courier New", 9, QFont.Weight.Bold))
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(0, 212, 255, 34); color: {C.PRI};
+                border: 1px solid {C.PRI}; border-radius: 4px;
+            }}
+            QPushButton:hover {{ background: {C.PRI}; color: #040810; }}
+        """)
+        save_btn.clicked.connect(self._on_save)
+        btns.addWidget(skip_btn)
+        btns.addWidget(save_btn)
+        layout.addLayout(btns)
+
+    def _on_save(self):
+        v = {k: ed.text().strip() for k, ed in self._fields.items()}
+        sl = v["slack_wh"]
+        dc = v["discord_wh"]
+        payload = {
+            "email": {"email": v["email_addr"], "app_password": v["email_pw"]},
+            "google": {"token": v["google_tok"], "email": v["email_addr"]},
+            "github": {"token": v["github_tok"]},
+            "notion": {"token": v["notion_tok"]},
+            "slack": {"webhook_url": sl if sl.startswith("http") else "", "token": "" if sl.startswith("http") else sl},
+            "discord": {"webhook_url": dc if dc.startswith("http") else "", "token": "" if dc.startswith("http") else dc},
+            "telegram": {"token": v["telegram_tok"]},
+        }
+        self.finished.emit(payload)
+
+
 class HueWheel(QWidget):
     """
     Circular colour picker. The user drags the handle (small white circle)
@@ -3189,6 +3305,7 @@ class MainWindow(QMainWindow):
         self.on_interrupt      = None   # callable: () -> None — stop JARVIS mid-speech
         self.on_voice_change   = None   # callable: () -> None — rebuild session with new voice
         self.on_audio_device_change = None  # callable: () -> None — reopen audio streams
+        self.on_integrations_change = None  # callable: () -> None — refresh connected accounts prompt
         self._confirm_overlay  = None   # live ConfirmBanner, if one is on screen
         self.get_plugins       = None   # callable: () -> list[dict], set by JarvisLive
         self.get_plugin_settings = None # callable: () -> list[dict] settings schemas, set by JarvisLive
@@ -6082,6 +6199,34 @@ class MainWindow(QMainWindow):
         self._centre_overlay(ov)
         self._persona_overlay = ov
 
+    def _show_integrations_chooser(self, on_done):
+        old_ov = getattr(self, "_integrations_overlay", None)
+        if old_ov is not None:
+            old_ov.hide()
+        ov = IntegrationsOverlay(parent=self.centralWidget())
+
+        def _finish(payload=None):
+            from memory import accounts
+            from memory.config_manager import save_integrations_onboarding_done
+            if isinstance(payload, dict):
+                accounts.save_onboarding_integrations(payload)
+            else:
+                save_integrations_onboarding_done(True)
+            self.mark_integrations_done()
+            if callable(on_done):
+                on_done()
+
+        ov.finished.connect(lambda p: _finish(p))
+        ov.skipped.connect(lambda: _finish(None))
+        self._centre_overlay(ov)
+        self._integrations_overlay = ov
+
+    def mark_integrations_done(self):
+        ov = getattr(self, "_integrations_overlay", None)
+        if ov is not None:
+            ov.hide()
+            self._integrations_overlay = None
+
 
 class _RootShim:
     def __init__(self, app: QApplication):
@@ -6099,6 +6244,12 @@ class JarvisUI:
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
         self._apex_bridge = None
+        from memory.config_manager import is_integrations_onboarding_done
+        self._integrations_ready = (
+            os.environ.get("JARVIS_SKIP_INTEGRATIONS_PROMPT", "").strip().lower()
+            in ("1", "true", "yes")
+            or is_integrations_onboarding_done()
+        )
         self._persona_selected = os.environ.get(
             "JARVIS_SKIP_PERSONA_PROMPT", ""
         ).strip().lower() in ("1", "true", "yes")
@@ -6112,19 +6263,24 @@ class JarvisUI:
 
         if classic_mode:
             self._win.show()
-            if not self._persona_selected:
+
+            def _after_api_key():
                 from memory.config_manager import get_persona
-                if self._win._ready:
-                    QTimer.singleShot(
-                        50,
-                        lambda: self._win._show_persona_chooser(
-                            get_persona(), self.select_persona
-                        ),
-                    )
-                else:
-                    self._win._on_after_setup_cb = lambda: self._win._show_persona_chooser(
-                        get_persona(), self.select_persona
-                    )
+
+                def _after_integrations():
+                    self._integrations_ready = True
+                    if not self._persona_selected:
+                        self._win._show_persona_chooser(get_persona(), self.select_persona)
+
+                if not self._integrations_ready:
+                    self._win._show_integrations_chooser(_after_integrations)
+                elif not self._persona_selected:
+                    self._win._show_persona_chooser(get_persona(), self.select_persona)
+
+            if self._win._ready:
+                QTimer.singleShot(50, _after_api_key)
+            else:
+                self._win._on_after_setup_cb = _after_api_key
         else:
             try:
                 from core.apex_bridge import ApexHudBridge, launch_app_window
@@ -6229,6 +6385,14 @@ class JarvisUI:
     @on_audio_device_change.setter
     def on_audio_device_change(self, cb):
         self._win.on_audio_device_change = cb
+
+    @property
+    def on_integrations_change(self):
+        return self._win.on_integrations_change
+
+    @on_integrations_change.setter
+    def on_integrations_change(self, cb):
+        self._win.on_integrations_change = cb
 
     def show_confirm(self, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action
@@ -6411,6 +6575,10 @@ class JarvisUI:
     def wait_for_api_key(self):
         while not self._win._ready:
             time.sleep(0.1)
+
+    def wait_for_integrations(self):
+        while not getattr(self, "_integrations_ready", True):
+            time.sleep(0.08)
 
     def wait_for_persona(self):
         while not self._persona_selected:

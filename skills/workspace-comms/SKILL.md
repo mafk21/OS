@@ -16,7 +16,8 @@ Sending or searching Gmail, creating/writing Google Docs, uploading files to Dri
 1. **Resolve people & preferences first**:
    - If the user names a person ("email Sarah", "message Ahmed") without an address/handle, call `recall_memory` (`query="<name>"`) to look up their stored contact details and preferred channel. If still unknown, ask — never guess an email address or handle.
 2. **Choose the right channel tool**:
-   - **Google Workspace (`gws_pack`)**: Use `gmail_search`, `gmail_send`, `docs_create`, `docs_write`, `drive_upload`, `calendar_add`, `gws_open`, or `workflow` (`send_meeting_notes`, `save_research_to_drive`, `schedule_meeting`).
+   - **Direct Connected Accounts (`cloud_integrations`) — ALWAYS PREFER FIRST**: Check `[CONNECTED ACCOUNTS]` in context (or `cloud_integrations(action="status")`). When connected, execute silently in the background via `email_unread`, `email_search`, `email_send`, `drive_list`, `drive_search`, `drive_upload`, `drive_download`, `calendar_list`, `calendar_add`, `notion_search`, `notion_read`, `notion_create_page`, `notion_append`, `slack_send`, `slack_channels`, `slack_history`, `discord_send`, `discord_read`, `trello_boards`, or `trello_create_card`.
+   - **Google Workspace Browser Fallback (`gws_pack`)**: If Google/Email was skipped/ignored in Integrations, or for live Google Docs editing (`docs_create`, `docs_write`, `gws_open`, `workflow`), use `gws_pack`.
    - **Webhook / Bot Channels (`multi_channel`)**: Check active channels via `multi_channel` (`action="channels"`), then `action="send"` (`channel`, `message`, `recipient`) or `action="broadcast"`.
    - **Desktop App Messaging (`send_message`)**: Use for native desktop WhatsApp/Telegram automation when requested.
 3. **Draft & confirm outbound messages**:
