@@ -301,22 +301,72 @@ def _cooling(model: str) -> bool:
         return False
 
 
+_cached_key_mtime: float = 0.0
+
+
 def api_key(refresh: bool = False) -> str:
-    """The Gemini key from config/api_keys.json. Cached; never raises."""
-    global _cached_key
+    """The Gemini key from config/api_keys.json or GEMINI_API_KEY env. Cached with mtime invalidation."""
+    global _cached_key, _cached_key_mtime
     with _key_lock:
-        if _cached_key is not None and not refresh:
+        try:
+            st_mtime = _KEY_FILE.stat().st_mtime if _KEY_FILE.exists() else 0.0
+        except Exception:
+            st_mtime = 0.0
+        if _cached_key is not None and not refresh and st_mtime == _cached_key_mtime and _cached_key != "":
             return _cached_key
         try:
-            data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
-            raw_k = str(data.get("gemini_api_key") or "")
-            if raw_k.startswith("enc:v1:"):
-                from core.security_vault import decrypt_secret
-                raw_k = decrypt_secret(raw_k)
+            if _KEY_FILE.exists():
+                data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
+                raw_k = str(data.get("gemini_api_key") or "")
+                if raw_k.startswith("enc:v1:"):
+                    from core.security_vault import decrypt_secret
+                    raw_k = decrypt_secret(raw_k)
+            else:
+                raw_k = ""
+            if not raw_k:
+                import os
+                raw_k = os.environ.get("GEMINI_API_KEY", "").strip()
             _cached_key = raw_k
+            _cached_key_mtime = st_mtime
         except Exception:
             _cached_key = ""
         return _cached_key
+
+
+def _openai_key_from_store() -> str:
+    """Read OpenAI API key respecting _KEY_FILE overrides in tests, Vault encryption, and env."""
+    try:
+        if _KEY_FILE.exists():
+            data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
+            raw_k = str(data.get("openai_api_key") or "").strip()
+            if raw_k.startswith("enc:v1:"):
+                from core.security_vault import decrypt_secret
+                raw_k = decrypt_secret(raw_k).strip()
+            if raw_k:
+                return raw_k
+    except Exception:
+        pass
+    try:
+        from memory.config_manager import get_openai_key
+        return get_openai_key() or ""
+    except Exception:
+        return ""
+
+
+def _provider_pref() -> str:
+    try:
+        if _KEY_FILE.exists():
+            data = json.loads(_KEY_FILE.read_text(encoding="utf-8"))
+            p = str(data.get("provider") or "").strip().lower()
+            if p:
+                return p
+    except Exception:
+        pass
+    try:
+        from memory.config_manager import get_provider
+        return get_provider()
+    except Exception:
+        return "auto"
 
 
 _client_lock = threading.Lock()
@@ -506,9 +556,28 @@ def call(contents, tier: str = FAST, config=None,
     if ladder is None:
         ladder = (tier,) + tuple(m for m in _LADDERS[SMART] if m != tier)
 
+    # Explicit OpenAI key passed directly
+    if key and key.strip().startswith("sk-"):
+        from core.openai_compat import openai_generate_content
+        return openai_generate_content(
+            contents, tier=tier, config=config, timeout_ms=timeout_ms, key=key.strip()
+        )
+
+    pref = _provider_pref()
+    oai_key = _openai_key_from_store()
     resolved_key = key or api_key()
+
+    # OpenAI-first when pinned to "openai" OR when only an OpenAI key is configured
+    if oai_key and (pref == "openai" or not resolved_key):
+        from core.openai_compat import openai_generate_content
+        oai_resp = openai_generate_content(
+            contents, tier=tier, config=config, timeout_ms=timeout_ms, key=oai_key
+        )
+        if oai_resp is not None or not resolved_key:
+            return oai_resp
+
     if not resolved_key:
-        print("[Gemini] no Gemini API key is configured")
+        print("[Gemini] no Gemini or OpenAI API key is configured")
         return None
 
     cl = None
@@ -541,6 +610,17 @@ def call(contents, tier: str = FAST, config=None,
                       f"{_UNAVAILABLE_SECONDS // 60} minutes")
             else:
                 print(f"[Gemini] {model}: {type(e).__name__}: {msg[:140]}")
+
+    # Automatic OpenAI failover if every Gemini rung failed and OpenAI key is available
+    if oai_key and pref != "gemini":
+        try:
+            from core.openai_compat import openai_generate_content
+            return openai_generate_content(
+                contents, tier=tier, config=config, timeout_ms=timeout_ms, key=oai_key
+            )
+        except Exception as exc:
+            print(f"[Gemini->OpenAI Failover] {exc}")
+
     return None
 
 

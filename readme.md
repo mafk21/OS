@@ -1,16 +1,16 @@
 # ⚡ OS — Full-Duplex 3D AI Operating Companion
 
-**A local-first desktop AI operating layer combining real-time bidirectional voice (`Male` & `Female` 3D HUD Editions), a Zero-Reset Forever Brain Timeline, orbiting 3D Worker Orbs, Specialist Companions, 17 native SaaS & Mail connectors, a Custom REST/Webhook & MCP Builder, recurring Automations, a live streaming Dev Workspace, Set-of-Mark visual computer use, FTS5 screen memory, an `AES-256-GCM` credential vault with `SHA-256` hash-chained audit logs, revocable Guest Portals, and 100% offline local voice fallback.**
+**A local-first desktop AI operating layer with first-class Dual-Engine OpenAI & Google Gemini support (`OpenAI Realtime` + `GPT-4o Vision` + `Gemini 3.8 Live`), combining real-time bidirectional voice (`Male` & `Female` 3D HUD Editions), a Zero-Reset Forever Brain Timeline, orbiting 3D Worker Orbs, Specialist Companions, 17 native SaaS & Mail connectors, a Custom REST/Webhook & MCP Builder, recurring Automations, a live streaming Dev Workspace, Set-of-Mark visual computer use, FTS5 screen memory, an `AES-256-GCM` credential vault with `SHA-256` hash-chained audit logs, revocable Guest Portals, and 100% offline local voice fallback.**
 
 | Metric | Verified Scale |
 | :--- | :--- |
-| **Codebase** | **61,700+ lines** across **154 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
+| **Codebase** | **62,800+ lines** across **156 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
 | **Execution Surface** | **49 OS, cloud & companion action modules** + **15 built-in live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
-| **Live Voice & 3D World** | **Gemini 3.8 Live** full-duplex audio + **Male (`Charon`) & Female (`Aoede`) 3D HUD Editions** + **Orbiting 3D Worker Orbs** + **Dual-Monitor Pop-Out Console** + **Custom Hex Theme Studio** + **97-language** live switching |
+| **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male (`Charon` / `ash`) & Female (`Aoede` / `shimmer`) 3D HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Mail & Automations** | **17 Native SaaS & Mail Connectors** (**Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **265 automated `pytest` tests across 31 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **275 automated `pytest` tests across 32 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -27,11 +27,11 @@
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                             ▼
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                   REAL-TIME ORCHESTRATION & MULTI-PROVIDER KERNEL                      │
+│                   REAL-TIME ORCHESTRATION & DUAL-ENGINE AI KERNEL                      │
+│  • OpenAI Realtime + REST Live──► `gpt-4o-realtime-preview` + Whisper/GPT-4o/TTS tier  │
 │  • Gemini 3.8 Live WebSocket  ──► SessionResumption + Compression + 15m Auto-Recycle   │
 │  • Per-Tool Scheduling        ──► NON_BLOCKING + WHEN_IDLE speech-gap delivery         │
-│  • 9-Rung Gemini Ladder       ──► Auto-failover on quota / timeout / deprecation       │
-│  • Universal Provider Ladder  ──► Anthropic · OpenAI · xAI · DeepSeek · Groq · Ollama  │
+│  • Dual-Engine Auto-Failover  ──► Seamless OpenAI ◄──► Gemini live & multimodal switch │
 │  • Offline Local Voice Loop   ──► Local LLM + Whisper STT + Local TTS (zero cloud)     │
 └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                             ▼
@@ -188,7 +188,7 @@ python install_jarvis.py --install --launch
 
 # Option B — OS-aware installer + direct launch
 python setup.py        # installs deps for YOUR OS + Playwright browser engine
-python main.py         # launches 3D APEX-UI HUD -> API key -> optional Integrations -> Male/Female chooser
+python main.py         # launches 3D APEX-UI HUD -> OpenAI / Gemini API key -> optional Integrations -> Male/Female chooser
 ```
 
 After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_JARVIS.command`** (macOS) anytime — **zero Node.js required** (`apex_ui/static_hud/` ships pre-compiled).
@@ -196,10 +196,10 @@ After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_J
 ### Useful Launch Flags & Environment Modes
 
 ```bash
-python main.py --male                # Boot directly into Male Edition (Electric Cyan/Gold · Charon)
-python main.py --female              # Boot directly into Female Edition (Rose-Magenta/Amethyst · Aoede)
+python main.py --male                # Boot directly into Male Edition (Electric Cyan/Gold · Charon / ash)
+python main.py --female              # Boot directly into Female Edition (Rose-Magenta/Amethyst · Aoede / shimmer)
 JARVIS_CLASSIC_UI=1 python main.py   # Launch Classic PyQt6 3D face-mesh HUD instead of APEX 3D Orb HUD
-pytest tests/ -q                     # Run all 265 automated unit & integration tests
+python -m pytest -q                  # Run all 275 automated unit & integration tests
 ```
 
 > 💡 **Optional Add-ons:**
@@ -215,7 +215,7 @@ pytest tests/ -q                     # Run all 265 automated unit & integration 
 | **OS** | Windows 10/11, macOS, or Linux |
 | **Python** | **3.11 – 3.15** (uses `asyncio.TaskGroup` & `BaseExceptionGroup`) |
 | **Audio** | Microphone + speakers/headphones (enumerated, measured & selectable live in HUD) |
-| **API Key** | Free Gemini API key (prompted on first launch → saved locally to git-ignored `config/api_keys.json`; optional multi-provider keys or Hosted Auth OTP supported) |
+| **API Key** | **OpenAI API key (`sk-...`)**, **Google Gemini API key (`AIza...`)**, or **both** (automatic dual-engine failover) — prompted on first launch & hot-swappable anytime under **⚙ → AI ENGINES** |
 | **Node.js / GPU** | **Neither required at runtime** — `apex_ui/static_hud/` is pre-exported and Classic 3D avatar renders in software |
 
 ---
@@ -224,7 +224,7 @@ pytest tests/ -q                     # Run all 265 automated unit & integration 
 
 ```text
 OS/
-├── main.py                        # Core runtime — Gemini 3.8 Live loop, duplex audio, visemes, tool & scheduler router
+├── main.py                        # Core runtime — Dual-Engine OpenAI Realtime & Gemini 3.8 Live loop, duplex audio & 60 tools
 ├── ui.py                          # Desktop bridge + Classic PyQt6 3D Avatar HUD fallback (`JARVIS_CLASSIC_UI=1`)
 ├── install_jarvis.py              # 1-click isolated `.venv` installer & native launcher generator
 ├── Start_JARVIS.bat               # Double-click native Windows launcher
@@ -248,8 +248,10 @@ OS/
 │       ├── DevWorkspaceModal.tsx  # Live streaming Dev Terminal, Codebase File-Tree & Colorized Git Diffs
 │       └── SecurityModal.tsx      # AES-256-GCM Vault, SHA-256 Audit Chain verifier & Guest Portals
 │
-├── core/                          # Engine, cognition, vault security & gateway internals (35 modules)
+├── core/                          # Engine, cognition, vault security & gateway internals (37 modules)
 │   ├── apex_bridge.py             # FastAPI + `/ws/hud` real-time bridge, `/portal/<token>` & HUD action router
+│   ├── openai_live.py             # Full-duplex OpenAI Realtime WebSocket + Universal REST Live (Whisper+GPT-4o+TTS)
+│   ├── openai_compat.py           # Universal OpenAI Multimodal Vision, JSON, Search, DALL-E 3, STT & TTS adapter
 │   ├── companions.py              # Behavior Interviews, Adaptive Style Learning, Specialist Companions & Themes
 │   ├── automations.py             # Recurring interval & daily Automations scheduler + run history
 │   ├── mcp_adapter.py             # Custom REST/Webhook Builder + MCP JSON-RPC 2.0 (`HTTP` & `stdio`) client
@@ -317,7 +319,7 @@ OS/
 │   ├── shell_agent.py             # Background shell / PowerShell execution agent
 │   ├── github_automation.py       # GitHub repository, commit & pull request automation
 │   ├── web_studio.py              # Local web server, preview, SEO auditor & 9 theme presets
-│   ├── image_generation.py        # AI image generation (Gemini Imagen / local SD)
+│   ├── image_generation.py        # AI image generation (OpenAI DALL-E 3 / Gemini Imagen / local SD)
 │   ├── video_player.py            # Renders local/streamed video directly in the HUD avatar slot
 │   ├── youtube_video.py           # YouTube search, playback & summary integration
 │   ├── music_selection.py         # Spotify playback control + selection summarize/translate
@@ -364,7 +366,7 @@ OS/
 ├── plugins/                       # Drop-in user plugins (`_template.py` starter included)
 ├── config/                        # Local runtime keys, `.vault.key` & self-signed TLS certs (git-ignored)
 ├── LICENSE                        # MIT License
-└── tests/                         # 265 automated `pytest` unit & integration tests across 31 test suites
+└── tests/                         # 275 automated `pytest` unit & integration tests across 32 test suites
 ```
 
 ---

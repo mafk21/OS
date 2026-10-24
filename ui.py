@@ -1535,11 +1535,11 @@ class SetupOverlay(QWidget):
         sep.setStyleSheet(f"color: {C.BORDER};"); layout.addWidget(sep)
         layout.addSpacing(4)
 
-        layout.addWidget(_lbl("GEMINI API KEY", 8, color=C.TEXT_DIM,
+        layout.addWidget(_lbl("OPENAI OR GEMINI API KEY", 8, color=C.TEXT_DIM,
                                align=Qt.AlignmentFlag.AlignLeft))
         self._key_input = QLineEdit()
         self._key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self._key_input.setPlaceholderText("AIza…")
+        self._key_input.setPlaceholderText("sk-proj-…  or  AIzaSy…")
         self._key_input.setFont(QFont("Courier New", 10))
         self._key_input.setFixedHeight(32)
         self._key_input.setStyleSheet(f"""
@@ -6149,10 +6149,18 @@ class MainWindow(QMainWindow):
         self.hud.speaking = (state == "SPEAKING")
 
     def _check_config(self) -> bool:
-        if not API_FILE.exists(): return False
+        try:
+            from memory.config_manager import is_configured
+            if is_configured():
+                return True
+        except Exception:
+            pass
+        if not API_FILE.exists():
+            return False
         try:
             d = json.loads(API_FILE.read_text(encoding="utf-8"))
-            return bool(d.get("gemini_api_key")) and bool(d.get("os_system"))
+            has_k = bool(d.get("gemini_api_key")) or bool(d.get("openai_api_key"))
+            return has_k and bool(d.get("os_system"))
         except Exception:
             return False
 
@@ -6172,7 +6180,14 @@ class MainWindow(QMainWindow):
     def _on_setup_done(self, key: str, os_name: str):
         os.makedirs(CONFIG_DIR, exist_ok=True)
         existing = _read_full_config()
-        existing["gemini_api_key"] = key
+        clean_k = (key or "").strip()
+        if clean_k:
+            if clean_k.startswith("sk-"):
+                existing["openai_api_key"] = clean_k
+                if not existing.get("gemini_api_key"):
+                    existing["provider"] = "openai"
+            else:
+                existing["gemini_api_key"] = clean_k
         existing["os_system"] = os_name
         API_FILE.write_text(
             json.dumps(existing, indent=4),

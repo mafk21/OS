@@ -87,63 +87,14 @@ def _local_available() -> bool:
 # ── OpenAI-compatible one-shot ───────────────────────────────────────────
 
 def _openai_call(contents, tier: str, config, timeout_ms: int, key: str = ""):
-    """Try the OpenAI-compatible endpoint. Returns response-like or raises."""
-    import requests
-    oc = get_openai_cfg()
-    api_key = key or oc["api_key"]
-    if not api_key:
-        raise RuntimeError("no openai_api_key configured")
-    base = oc["base_url"]
-    model = oc["model"]
-
-    # contents -> messages (strip SDK Part wrapper)
-    msgs: list[dict] = []
-    if config:
-        sys_txt = None
-        if isinstance(config, dict):
-            sys_txt = config.get("system_instruction")
-        else:
-            sys_txt = getattr(config, "system_instruction", None)
-        if sys_txt:
-            msgs.append({"role": "system", "content": str(sys_txt)})
-    # contents can be str, list[str], or SDK Part objects
-    items = contents if isinstance(contents, (list, tuple)) else [contents]
-    user_text = ""
-    for it in items:
-        if isinstance(it, str):
-            user_text += it + "\n"
-        else:
-            t = getattr(it, "text", None)
-            if t:
-                user_text += str(t) + "\n"
-    user_text = user_text.strip() or "hi"
-    msgs.append({"role": "user", "content": user_text})
-
-    payload = {
-        "model": model,
-        "messages": msgs,
-        "max_tokens": 800,
-    }
-    # best-effort: if tier is SMART give more tokens
-    if tier == SMART:
-        payload["max_tokens"] = 1200
-
-    resp = requests.post(
-        f"{base}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=max(10, timeout_ms / 1000 + 5),
+    """Try the OpenAI multimodal/JSON/search endpoint via core.openai_compat."""
+    from core.openai_compat import openai_generate_content
+    resp = openai_generate_content(
+        contents, tier=tier, config=config, timeout_ms=timeout_ms, key=key
     )
-    resp.raise_for_status()
-    data = resp.json()
-    choice = (data.get("choices") or [{}])[0]
-    text = (choice.get("message", {}).get("content") or "").strip()
-
-    class _R:
-        def __init__(self, t): self.text = t
-    if not text:
+    if resp is None or not getattr(resp, "text", ""):
         raise RuntimeError("openai provider returned empty reply")
-    return _R(text)
+    return resp
 
 
 def _local_call(contents, tier: str, config, timeout_ms: int):

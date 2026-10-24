@@ -325,12 +325,46 @@ def _get_api_key() -> str:
             return key
     except Exception:
         pass
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        raw = str(json.load(f).get("gemini_api_key") or "")
-    if raw.startswith("enc:v1:"):
-        from core.security_vault import decrypt_secret
-        return decrypt_secret(raw)
-    return raw
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            raw = str(json.load(f).get("gemini_api_key") or "")
+        if raw.startswith("enc:v1:"):
+            from core.security_vault import decrypt_secret
+            return decrypt_secret(raw)
+        return raw
+    except Exception:
+        return ""
+
+
+def _get_openai_key() -> str:
+    try:
+        from memory.config_manager import get_openai_key
+        key = get_openai_key()
+        if key:
+            return key
+    except Exception:
+        pass
+    try:
+        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+            raw = str(json.load(f).get("openai_api_key") or "")
+        if raw.startswith("enc:v1:"):
+            from core.security_vault import decrypt_secret
+            return decrypt_secret(raw)
+        return raw
+    except Exception:
+        return ""
+
+
+def _resolve_live_engine(skip_engine: str = "") -> str:
+    try:
+        from memory.config_manager import resolve_cloud_engine
+        return resolve_cloud_engine(skip_engine=skip_engine)
+    except Exception:
+        gk = _get_api_key()
+        ok = _get_openai_key()
+        if ok and not gk:
+            return "openai"
+        return "gemini"
 
 
 def _load_system_prompt() -> str:
@@ -1497,13 +1531,28 @@ class JarvisLive:
             "Answer the user's message directly and helpfully."
         )
         try:
-            reply = (_gemini.text(text, _gemini.FAST, system=sys_hint, timeout_ms=20_000) or "").strip()
+            reply = (
+                _gemini.text(
+                    text,
+                    _gemini.FAST,
+                    config={"system_instruction": sys_hint},
+                    timeout_ms=20_000,
+                )
+                or ""
+            ).strip()
         except Exception as e1:
-            print(f"[TextFallback] Gemini REST fallback failed: {e1}")
+            print(f"[TextFallback] Gemini/OpenAI REST fallback failed: {e1}")
         if not reply:
             try:
-                from core.provider import generate as _prov_gen
-                reply = (_prov_gen(text, system=sys_hint) or "").strip()
+                from core.provider import text as _prov_text
+                reply = (
+                    _prov_text(
+                        text,
+                        config={"system_instruction": sys_hint},
+                        timeout_ms=20_000,
+                    )
+                    or ""
+                ).strip()
             except Exception as e2:
                 print(f"[TextFallback] Provider fallback failed: {e2}")
         if reply:
@@ -1708,6 +1757,15 @@ class JarvisLive:
         # The words we were about to mouth are never going to be spoken now.
         self._visemes.reset()
         self._play_cursor = 0.0     # next batch starts a fresh timeline
+        # Cancel active OpenAI Realtime / REST generation immediately on barge-in
+        _sess_obj = getattr(self, "session", None)
+        _loop_obj = getattr(self, "_loop", None)
+        _cancel_fn = getattr(_sess_obj, "cancel_response", None) if _sess_obj else None
+        if callable(_cancel_fn) and _loop_obj:
+            try:
+                asyncio.run_coroutine_threadsafe(_cancel_fn(), _loop_obj)
+            except Exception:
+                pass
         if self._turn_done_event:
             self._turn_done_event.clear()
         self.ui.write_log("SYS: Interrupted — listening...")
@@ -1854,6 +1912,12 @@ class JarvisLive:
                 for d in _all_decls
             ]
 
+        _raw_voice = get_voice()
+        _GEMINI_VOICES = {"Charon", "Fenrir", "Puck", "Orus", "Aoede", "Kore", "Leda", "Zephyr"}
+        _gemini_voice = _raw_voice if _raw_voice in _GEMINI_VOICES else (
+            "Aoede" if get_persona() == "female" else "Charon"
+        )
+
         cfg = dict(
             response_modalities=["AUDIO"],
             output_audio_transcription={},
@@ -1879,7 +1943,7 @@ class JarvisLive:
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                        voice_name=get_voice()
+                        voice_name=_gemini_voice
                     )
                 )
             ),
@@ -3550,33 +3614,54 @@ class JarvisLive:
                 print("[JARVIS] Connecting...")
                 if not self._proactive_recycle_pending:
                     self.ui.set_state("THINKING")
-                # Pick the rung to open the conversation on. A model resting
-                # off a quota limit is skipped; the name is published back to
-                # LIVE_MODEL so plugins follow whatever is actually in use.
+                # Pick active cloud engine ('gemini' or 'openai') based on user
+                # provider preference and configured keys, with automatic failover.
                 global LIVE_MODEL
-                LIVE_MODEL = _gemini.live_model()
-                live_model = LIVE_MODEL
-                print(f"[JARVIS] Live model: {live_model}")
+                _forced_eng = getattr(self, "_force_engine_once", "")
+                self._force_engine_once = ""
+                active_engine = _forced_eng or _resolve_live_engine()
+                self._active_engine = active_engine
 
-                _resumed_with = self._resume_handle is not None
+                _resumed_with = self._resume_handle is not None and active_engine == "gemini"
+                if active_engine == "openai":
+                    from memory.config_manager import get_openai_cfg
+                    live_model = get_openai_cfg().get("realtime_model") or "gpt-4o-realtime-preview"
+                else:
+                    live_model = _gemini.live_model()
+                LIVE_MODEL = live_model
                 config = self._build_config()
 
-                # Fresh client on every reconnect — avoids stale HTTP session state.
-                # Older rungs: v1alpha carries the proactivity field.
-                # gemini-3.8-live: GA surface is v1beta (Google's own examples),
-                # and the proactivity field must NOT be sent to it.
-                client = genai.Client(
-                    api_key=_get_api_key(),
-                    http_options={"api_version": (
-                        "v1beta" if "gemini-3.8" in live_model
-                        else ("v1alpha" if self._enhanced_live else "v1beta")
-                    )}
-                )
+                if active_engine == "openai":
+                    from core.openai_live import connect_openai_live
+                    print(f"[JARVIS] Live engine: OpenAI ({live_model})")
+                    live_cm = connect_openai_live(
+                        api_key=_get_openai_key(),
+                        live_config=config,
+                        voice=get_voice(),
+                        persona=get_persona(),
+                    )
+                else:
+                    print(f"[JARVIS] Live model: {live_model}")
+                    # Fresh client on every reconnect — avoids stale HTTP session state.
+                    # Older rungs: v1alpha carries the proactivity field.
+                    # gemini-3.8-live: GA surface is v1beta (Google's own examples),
+                    # and the proactivity field must NOT be sent to it.
+                    client = genai.Client(
+                        api_key=_get_api_key(),
+                        http_options={"api_version": (
+                            "v1beta" if "gemini-3.8" in live_model
+                            else ("v1alpha" if self._enhanced_live else "v1beta")
+                        )}
+                    )
+                    live_cm = client.aio.live.connect(model=live_model, config=config)
 
                 async with (
-                    client.aio.live.connect(model=live_model, config=config) as session,
+                    live_cm as session,
                     asyncio.TaskGroup() as tg,
                 ):
+                    if active_engine == "openai" and getattr(session, "model", None):
+                        LIVE_MODEL = session.model
+                        live_model = session.model
                     self.session          = session
                     self.audio_in_queue   = asyncio.Queue()
                     # 1024-sample mic blocks @16 kHz = 64 ms each, so 64 blocks
@@ -3729,25 +3814,44 @@ class JarvisLive:
                 traceback.print_exc()
 
                 # Out of quota, or this model is not available to this key —
-                # step down the ladder and reconnect straight away. This is the
-                # difference between "JARVIS is quieter today" and "JARVIS does
-                # not start today": one model means one daily limit, and the
-                # limit always arrives mid-conversation.
-                if _gemini.note_live_failure(live_model, err_str):
+                # step down the ladder and reconnect straight away. If Gemini
+                # rungs are exhausted AND an OpenAI key is configured in 'auto'
+                # mode, seamlessly fail over to OpenAI Live!
+                if getattr(self, "_active_engine", "gemini") == "gemini" and _gemini.note_live_failure(live_model, err_str):
                     nxt = _gemini.live_model()
                     if nxt != live_model:
                         self._tuned_live = True
                         self._enhanced_live = True
                         self._strip_tool_behavior = False
-                    self.ui.write_log(
-                        f"SYS: Switching to {nxt.split('/')[-1]} — the previous "
-                        f"model is unavailable or out of quota."
-                        if nxt != live_model else
-                        "SYS: Every live model is rate-limited — retrying.")
-                    self._conn_backoff = 0 if nxt != live_model else 15
-                    if nxt == live_model:
+                        self.ui.write_log(
+                            f"SYS: Switching to {nxt.split('/')[-1]} — the previous "
+                            f"model is unavailable or out of quota."
+                        )
+                        self._conn_backoff = 0
+                        continue
+                    elif _get_openai_key() and _resolve_live_engine(skip_engine="gemini") == "openai":
+                        self._force_engine_once = "openai"
+                        self.ui.write_log(
+                            "SYS: Gemini Live rate-limited — failing over seamlessly to OpenAI Live."
+                        )
+                        self._conn_backoff = 0
+                        continue
+                    else:
+                        self.ui.write_log("SYS: Every live model is rate-limited — retrying.")
+                        self._conn_backoff = 15
                         await asyncio.sleep(self._conn_backoff)
-                    continue
+                        continue
+
+                if getattr(self, "_active_engine", "") == "openai" and (
+                    "429" in err_str or "quota" in err_str.lower() or "rate limit" in err_str.lower()
+                ):
+                    if _get_api_key() and _resolve_live_engine(skip_engine="openai") == "gemini":
+                        self._force_engine_once = "gemini"
+                        self.ui.write_log(
+                            "SYS: OpenAI Live rate-limited — failing over seamlessly to Gemini Live."
+                        )
+                        self._conn_backoff = 0
+                        continue
 
                 err_low = err_str.lower()
                 is_bad_api_key = any(
@@ -3757,6 +3861,7 @@ class JarvisLive:
                         "api_key_invalid",
                         "api key expired",
                         "invalid api key",
+                        "incorrect api key",
                     )
                 )
 

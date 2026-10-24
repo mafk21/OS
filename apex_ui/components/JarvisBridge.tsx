@@ -110,6 +110,18 @@ export type ThemeCustomConfig = {
   effective_secondary: string;
 };
 
+export type AiProviderState = {
+  provider: string;
+  activeEngine: string;
+  hasGeminiKey: boolean;
+  hasOpenaiKey: boolean;
+  geminiKeyMasked: string;
+  openaiKeyMasked: string;
+  openaiModel: string;
+  openaiRealtimeModel: string;
+  openaiBaseUrl: string;
+};
+
 function hexToRgbTuple(hex: string): string | null {
   const m = /^#([0-9a-fA-F]{6})$/.exec((hex || "").trim());
   if (!m) return null;
@@ -139,6 +151,7 @@ export type JarvisContextValue = {
   terminalSessions: TerminalSession[];
   activeCompanion: CompanionSummary | null;
   themeCustom: ThemeCustomConfig;
+  aiProviders: AiProviderState;
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -218,7 +231,18 @@ export type JarvisContextValue = {
   setBarge: (enabled: boolean) => void;
   setGrace: (seconds: number) => void;
   resolveConfirm: (approved: boolean) => void;
-  saveApiKey: (key: string) => Promise<boolean>;
+  saveApiKey: (
+    keyOrPayload:
+      | string
+      | {
+          openai_key?: string;
+          gemini_key?: string;
+          provider?: string;
+          openai_model?: string;
+          openai_realtime_model?: string;
+          openai_base_url?: string;
+        }
+  ) => Promise<boolean>;
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
@@ -333,6 +357,17 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     custom_secondary: "",
     effective_primary: "",
     effective_secondary: "",
+  });
+  const [aiProviders, setAiProviders] = useState<AiProviderState>({
+    provider: "auto",
+    activeEngine: "gemini",
+    hasGeminiKey: false,
+    hasOpenaiKey: false,
+    geminiKeyMasked: "",
+    openaiKeyMasked: "",
+    openaiModel: "gpt-4o",
+    openaiRealtimeModel: "gpt-4o-realtime-preview",
+    openaiBaseUrl: "https://api.openai.com/v1",
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -463,6 +498,33 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       if (d.theme_custom && typeof d.theme_custom === "object") {
         setThemeCustom(d.theme_custom as ThemeCustomConfig);
       }
+      setAiProviders((prev) => ({
+        provider: typeof d.provider === "string" ? d.provider : prev.provider,
+        activeEngine:
+          typeof d.active_engine === "string" ? d.active_engine : prev.activeEngine,
+        hasGeminiKey:
+          typeof d.has_gemini_key === "boolean" ? d.has_gemini_key : prev.hasGeminiKey,
+        hasOpenaiKey:
+          typeof d.has_openai_key === "boolean" ? d.has_openai_key : prev.hasOpenaiKey,
+        geminiKeyMasked:
+          typeof d.gemini_key_masked === "string"
+            ? d.gemini_key_masked
+            : prev.geminiKeyMasked,
+        openaiKeyMasked:
+          typeof d.openai_key_masked === "string"
+            ? d.openai_key_masked
+            : prev.openaiKeyMasked,
+        openaiModel:
+          typeof d.openai_model === "string" ? d.openai_model : prev.openaiModel,
+        openaiRealtimeModel:
+          typeof d.openai_realtime_model === "string"
+            ? d.openai_realtime_model
+            : prev.openaiRealtimeModel,
+        openaiBaseUrl:
+          typeof d.openai_base_url === "string"
+            ? d.openai_base_url
+            : prev.openaiBaseUrl,
+      }));
 
       if (d.persona === "female" || d.persona === "male") {
         setPersona(d.persona);
@@ -840,16 +902,31 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   );
 
   const saveApiKey = useCallback(
-    async (key: string): Promise<boolean> => {
-      const trimmed = key.trim();
-      if (!trimmed) return false;
+    async (
+      keyOrPayload:
+        | string
+        | {
+            openai_key?: string;
+            gemini_key?: string;
+            provider?: string;
+            openai_model?: string;
+            openai_realtime_model?: string;
+            openai_base_url?: string;
+          }
+    ): Promise<boolean> => {
+      const bodyPayload =
+        typeof keyOrPayload === "string"
+          ? { action: "save_api_key", key: keyOrPayload.trim() }
+          : { action: "save_api_key", ...keyOrPayload };
       try {
         const r = await fetch("/api/hud/action", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save_api_key", key: trimmed }),
+          body: JSON.stringify(bodyPayload),
         });
         if (r.ok) {
+          const data = await r.json().catch(() => ({}));
+          if (data && data.ok === false) return false;
           setReady(true);
           setSetupOpen(false);
           if (!integrationsReady) {
@@ -1068,6 +1145,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       terminalSessions,
       activeCompanion,
       themeCustom,
+      aiProviders,
       persona,
       activePersona,
       theme,
@@ -1157,6 +1235,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       terminalSessions,
       activeCompanion,
       themeCustom,
+      aiProviders,
       persona,
       activePersona,
       theme,

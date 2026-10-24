@@ -44,6 +44,7 @@ export default function JarvisHudOverlays() {
     integrations,
     privacy,
     brainCounts,
+    aiProviders,
     persona,
     activePersona,
     theme,
@@ -109,7 +110,13 @@ export default function JarvisHudOverlays() {
   const SECONDARY = theme.secondary;
 
   const [cmd, setCmd] = useState("");
-  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [openaiKeyInput, setOpenaiKeyInput] = useState("");
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [providerPref, setProviderPref] = useState<string>("auto");
+  const [openaiModelInput, setOpenaiModelInput] = useState<string>("gpt-4o");
+  const [openaiRealtimeInput, setOpenaiRealtimeInput] = useState<string>(
+    "gpt-4o-realtime-preview"
+  );
   const [savingKey, setSavingKey] = useState(false);
   const [keyError, setKeyError] = useState("");
   const [draftPersona, setDraftPersona] = useState<PersonaMode>("male");
@@ -170,20 +177,48 @@ export default function JarvisHudOverlays() {
     setCmd("");
   };
 
+  useEffect(() => {
+    if (setupOpen) {
+      setProviderPref(aiProviders.provider || "auto");
+      setOpenaiModelInput(aiProviders.openaiModel || "gpt-4o");
+      setOpenaiRealtimeInput(
+        aiProviders.openaiRealtimeModel || "gpt-4o-realtime-preview"
+      );
+      setKeyError("");
+    }
+  }, [
+    setupOpen,
+    aiProviders.provider,
+    aiProviders.openaiModel,
+    aiProviders.openaiRealtimeModel,
+  ]);
+
   const onSaveKey = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (apiKeyInput.trim().length < 15) {
-      setKeyError("Please enter a valid Gemini API key.");
+    const oClean = openaiKeyInput.trim();
+    const gClean = geminiKeyInput.trim();
+    const hasAlready = aiProviders.hasOpenaiKey || aiProviders.hasGeminiKey;
+    if (oClean.length < 15 && gClean.length < 15 && !hasAlready) {
+      setKeyError(
+        "Enter your OpenAI API key (sk-...), Gemini API key (AIza...), or both."
+      );
       return;
     }
     setSavingKey(true);
     setKeyError("");
-    const ok = await saveApiKey(apiKeyInput);
+    const ok = await saveApiKey({
+      openai_key: oClean || undefined,
+      gemini_key: gClean || undefined,
+      provider: providerPref,
+      openai_model: openaiModelInput,
+      openai_realtime_model: openaiRealtimeInput,
+    });
     setSavingKey(false);
     if (!ok) {
-      setKeyError("Could not save API key — check that JARVIS is running.");
+      setKeyError("Could not save API keys — check that JARVIS is running.");
     } else {
-      setApiKeyInput("");
+      setOpenaiKeyInput("");
+      setGeminiKeyInput("");
     }
   };
 
@@ -1269,10 +1304,14 @@ export default function JarvisHudOverlays() {
                     setSettingsOpen(false);
                     setSetupOpen(true);
                   }}
-                  style={pillBase}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${GREEN}66`,
+                    color: GREEN,
+                  }}
                 >
                   <KeyRound size={12} />
-                  API KEY
+                  AI ENGINES ({(aiProviders.activeEngine || "gemini").toUpperCase()})
                 </button>
 
                 <button
@@ -1563,12 +1602,12 @@ export default function JarvisHudOverlays() {
         </div>
       )}
 
-      {/* ── First-Boot / Reconfigure Gemini API Key Modal ── */}
+      {/* ── First-Boot / Reconfigure OpenAI & Gemini AI Engines Modal ── */}
       {setupOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Configure Gemini API Key"
+          aria-label="Configure OpenAI and Gemini API Keys"
           style={{
             position: "fixed",
             inset: 0,
@@ -1584,7 +1623,7 @@ export default function JarvisHudOverlays() {
           <form
             onSubmit={onSaveKey}
             style={{
-              width: "min(420px, 94vw)",
+              width: "min(480px, 95vw)",
               background: theme.panelBg,
               border: `1px solid ${PRIMARY}55`,
               borderRadius: 18,
@@ -1592,7 +1631,7 @@ export default function JarvisHudOverlays() {
               boxShadow: `0 0 50px ${PRIMARY}24, 0 18px 50px rgba(0,0,0,0.85)`,
               display: "flex",
               flexDirection: "column",
-              gap: 14,
+              gap: 13,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -1607,8 +1646,8 @@ export default function JarvisHudOverlays() {
                 }}
               >
                 {!integrationsReady
-                  ? `STEP 1 OF 3 · INITIALIZE ${assistantName.toUpperCase()}`
-                  : `INITIALIZE ${assistantName.toUpperCase()}`}
+                  ? `STEP 1 OF 3 · AI ENGINES (${assistantName.toUpperCase()})`
+                  : `AI ENGINES · OPENAI & GEMINI`}
               </span>
               {(["male", "female"] as PersonaMode[]).map((pKey) => {
                 const pTheme = PERSONA_THEMES[pKey];
@@ -1659,34 +1698,171 @@ export default function JarvisHudOverlays() {
             <div
               style={{
                 fontSize: 12,
-                lineHeight: 1.55,
-                color: "rgba(240,237,232,0.72)",
+                lineHeight: 1.52,
+                color: "rgba(240,237,232,0.75)",
               }}
             >
-              Enter your Google Gemini API key to activate real-time voice,
-              vision, and autonomous tools. Next, you can optionally connect
-              your accounts (Email, Google Drive, GitHub, Notion, Slack,
-              Discord — or skip what you don&apos;t need) and pick the{" "}
-              <strong>Male</strong> or <strong>Female</strong> edition.
+              Connect your <strong>OpenAI API Key</strong>,{" "}
+              <strong>Google Gemini API Key</strong>, or <strong>both</strong>{" "}
+              (automatic dual-engine failover) for full-duplex voice, vision,
+              web search, image generation, and all 60 autonomous tools across{" "}
+              <strong>Male</strong> &amp; <strong>Female</strong> editions.
             </div>
 
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="AIzaSy..."
-              autoFocus
+            {/* OpenAI API Key */}
+            <div style={{ display: "grid", gap: 5 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9.5,
+                  letterSpacing: "0.14em",
+                  color: "rgba(240,237,232,0.7)",
+                }}
+              >
+                <span>OPENAI API KEY (REALTIME VOICE · GPT-4O VISION · TOOLS)</span>
+                {aiProviders.hasOpenaiKey && (
+                  <span style={{ color: GREEN }}>
+                    ✓ {aiProviders.openaiKeyMasked || "CONFIGURED"}
+                  </span>
+                )}
+              </div>
+              <input
+                type="password"
+                value={openaiKeyInput}
+                onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                placeholder={
+                  aiProviders.hasOpenaiKey
+                    ? "Leave blank to keep saved OpenAI key (sk-...)"
+                    : "sk-proj-..."
+                }
+                autoFocus={!aiProviders.hasOpenaiKey}
+                style={{
+                  background: theme.inputBg,
+                  color: "#f0ede8",
+                  border: `1px solid ${PRIMARY}44`,
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 12.5,
+                  outline: "none",
+                  fontFamily: "var(--font-mono)",
+                }}
+              />
+            </div>
+
+            {/* Gemini API Key */}
+            <div style={{ display: "grid", gap: 5 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9.5,
+                  letterSpacing: "0.14em",
+                  color: "rgba(240,237,232,0.7)",
+                }}
+              >
+                <span>GOOGLE GEMINI API KEY (OPTIONAL IF OPENAI SET)</span>
+                {aiProviders.hasGeminiKey && (
+                  <span style={{ color: GREEN }}>
+                    ✓ {aiProviders.geminiKeyMasked || "CONFIGURED"}
+                  </span>
+                )}
+              </div>
+              <input
+                type="password"
+                value={geminiKeyInput}
+                onChange={(e) => setGeminiKeyInput(e.target.value)}
+                placeholder={
+                  aiProviders.hasGeminiKey
+                    ? "Leave blank to keep saved Gemini key (AIza...)"
+                    : "AIzaSy..."
+                }
+                style={{
+                  background: theme.inputBg,
+                  color: "#f0ede8",
+                  border: `1px solid ${PRIMARY}33`,
+                  borderRadius: 10,
+                  padding: "9px 12px",
+                  fontSize: 12.5,
+                  outline: "none",
+                  fontFamily: "var(--font-mono)",
+                }}
+              />
+            </div>
+
+            {/* Active Engine Routing & OpenAI Model */}
+            <div
               style={{
-                background: theme.inputBg,
-                color: "#f0ede8",
-                border: `1px solid ${PRIMARY}44`,
-                borderRadius: 10,
-                padding: "10px 12px",
-                fontSize: 13,
-                outline: "none",
-                fontFamily: "var(--font-mono)",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
               }}
-            />
+            >
+              <label style={{ display: "grid", gap: 4 }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 9,
+                    letterSpacing: "0.14em",
+                    color: "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  ENGINE ROUTING
+                </span>
+                <select
+                  value={providerPref}
+                  onChange={(e) => setProviderPref(e.target.value)}
+                  style={{
+                    background: theme.inputBg,
+                    color: "#f0ede8",
+                    border: `1px solid ${theme.primaryBorder}`,
+                    borderRadius: 8,
+                    padding: "7px 9px",
+                    fontSize: 11.5,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  <option value="auto">AUTO (Dual Failover)</option>
+                  <option value="openai">OPENAI PRIMARY</option>
+                  <option value="gemini">GEMINI PRIMARY</option>
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 4 }}>
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 9,
+                    letterSpacing: "0.14em",
+                    color: "rgba(240,237,232,0.58)",
+                  }}
+                >
+                  OPENAI BRAIN MODEL
+                </span>
+                <select
+                  value={openaiModelInput}
+                  onChange={(e) => setOpenaiModelInput(e.target.value)}
+                  style={{
+                    background: theme.inputBg,
+                    color: "#f0ede8",
+                    border: `1px solid ${theme.primaryBorder}`,
+                    borderRadius: 8,
+                    padding: "7px 9px",
+                    fontSize: 11.5,
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  <option value="gpt-4o">gpt-4o (Multimodal)</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini (Fast)</option>
+                  <option value="gpt-4.1">gpt-4.1</option>
+                  <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                </select>
+              </label>
+            </div>
 
             {keyError && (
               <div style={{ fontSize: 11.5, color: RED }}>{keyError}</div>
@@ -1709,7 +1885,7 @@ export default function JarvisHudOverlays() {
                 ? "SAVING..."
                 : !integrationsReady
                 ? "NEXT · OPTIONAL INTEGRATIONS →"
-                : "SAVE API KEY"}
+                : "SAVE AI ENGINE SETTINGS"}
             </button>
           </form>
         </div>
