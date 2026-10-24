@@ -189,6 +189,7 @@ export type JarvisContextValue = {
   securityModalOpen: boolean;
   activityOpen: boolean;
   personaModalOpen: boolean;
+  backgroundMode: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -243,6 +244,8 @@ export type JarvisContextValue = {
           openai_base_url?: string;
         }
   ) => Promise<boolean>;
+  enterBackgroundMode: () => Promise<void>;
+  exitBackgroundMode: () => Promise<void>;
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
@@ -348,6 +351,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [securityModalOpen, setSecurityModalOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
+  const [backgroundMode, setBackgroundMode] = useState(false);
   const [workers, setWorkers] = useState<WorkerItem[]>([]);
   const [terminalSessions, setTerminalSessions] = useState<TerminalSession[]>([]);
   const [activeCompanion, setActiveCompanion] = useState<CompanionSummary | null>(null);
@@ -690,6 +694,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
             case "reconfig":
               setReady(false);
               setSetupOpen(true);
+              break;
+            case "background_mode":
+              if (typeof msg.active === "boolean") {
+                setBackgroundMode(msg.active);
+              }
               break;
             case "config":
               applyBootstrap(msg);
@@ -1133,6 +1142,40 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sendAction]);
 
+  const enterBackgroundMode = useCallback(async () => {
+    setBackgroundMode(true);
+    try {
+      const r = await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "enter_background_mode" }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (data?.native_dock && typeof window !== "undefined") {
+          try {
+            window.close();
+          } catch {}
+        }
+      }
+    } catch {
+      sendAction({ action: "enter_background_mode" });
+    }
+  }, [sendAction]);
+
+  const exitBackgroundMode = useCallback(async () => {
+    setBackgroundMode(false);
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "exit_background_mode" }),
+      });
+    } catch {
+      sendAction({ action: "exit_background_mode" });
+    }
+  }, [sendAction]);
+
   const value = useMemo<JarvisContextValue>(
     () => ({
       connected,
@@ -1183,6 +1226,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       securityModalOpen,
       activityOpen,
       personaModalOpen,
+      backgroundMode,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
@@ -1223,6 +1267,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setGrace,
       resolveConfirm,
       saveApiKey,
+      enterBackgroundMode,
+      exitBackgroundMode,
     }),
     [
       connected,
@@ -1274,6 +1320,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       securityModalOpen,
       activityOpen,
       personaModalOpen,
+      backgroundMode,
       choosePersona,
       saveIntegrations,
       skipIntegrations,
@@ -1300,6 +1347,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setGrace,
       resolveConfirm,
       saveApiKey,
+      enterBackgroundMode,
+      exitBackgroundMode,
     ]
   );
 
