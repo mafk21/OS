@@ -138,11 +138,13 @@ def _ask_for_url(prompt_text: str = "YouTube video URL:") -> str | None:
 def _get_transcript(video_id: str) -> str | None:
     if not _TRANSCRIPT_OK:
         return None
+    lang_priority = ["en", "tr", "de", "fr", "es", "it", "pt", "ru", "ja", "ko", "ar", "zh"]
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        transcript      = None
-
-        lang_priority = ["en", "tr", "de", "fr", "es", "it", "pt", "ru", "ja", "ko", "ar", "zh"]
+        if hasattr(YouTubeTranscriptApi, "list_transcripts"):
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        else:
+            transcript_list = YouTubeTranscriptApi().list(video_id)
+        transcript = None
 
         try:
             transcript = transcript_list.find_manually_created_transcript(lang_priority)
@@ -161,7 +163,12 @@ def _get_transcript(video_id: str) -> str | None:
             return None
 
         fetched = transcript.fetch()
-        return " ".join(entry["text"] for entry in fetched)
+        parts: list[str] = []
+        for entry in fetched:
+            txt = entry["text"] if isinstance(entry, dict) else getattr(entry, "text", "")
+            if txt:
+                parts.append(str(txt))
+        return " ".join(parts)
 
     except Exception as e:
         print(f"[YouTube] ⚠️ Transcript fetch failed: {e}")
@@ -312,14 +319,27 @@ def _handle_play(parameters: dict, player) -> str:
 
 
 def _handle_summarize(parameters: dict, player, speak) -> str:
-    if not _TRANSCRIPT_OK:
-        return "youtube-transcript-api is not installed. Run: pip install youtube-transcript-api"
+    from core.media_engine import extract_url_from_text_or_clipboard, summarize_media
 
-    url = _ask_for_url("Please paste the YouTube video URL:")
+    raw_url = (parameters.get("url") or parameters.get("query") or "").strip()
+    url = extract_url_from_text_or_clipboard(raw_url, allow_clipboard=(not raw_url))
+    if not url:
+        url = _ask_for_url("Please paste the video URL:")
     if not url:
         return "No URL provided, sir. Summary cancelled."
+
+    # Non-YouTube links (Instagram, Snapchat, TikTok, X, etc.) delegate to universal media_engine
     if not _is_valid_youtube_url(url):
-        return "That doesn't appear to be a valid YouTube URL, sir."
+        res = summarize_media(url)
+        if not res.get("ok"):
+            return f"Could not summarize that video, sir: {res.get('error')}"
+        summary = str(res.get("summary") or "").strip()
+        if speak and summary:
+            speak(summary)
+        if parameters.get("save", False):
+            saved_path = _save_summary(summary, url)
+            return f"Summary complete and saved to Desktop: {saved_path}"
+        return summary
 
     video_id = _extract_video_id(url)
     if not video_id:
@@ -332,6 +352,16 @@ def _handle_summarize(parameters: dict, player, speak) -> str:
 
     transcript = _get_transcript(video_id)
     if not transcript:
+        # Fallback to yt-dlp subtitles / audio transcription via media_engine
+        res = summarize_media(url)
+        if res.get("ok") and res.get("summary"):
+            summary = str(res["summary"]).strip()
+            if speak:
+                speak(summary)
+            if parameters.get("save", False):
+                saved_path = _save_summary(summary, url)
+                return f"Summary complete and saved to Desktop: {saved_path}"
+            return summary
         return "I couldn't retrieve a transcript for that video, sir."
 
     if speak:
@@ -350,6 +380,39 @@ def _handle_summarize(parameters: dict, player, speak) -> str:
         return f"Summary complete and saved to Desktop: {saved_path}"
 
     return summary
+
+
+def _handle_download(parameters: dict, player, speak) -> str:
+    from core.media_engine import download_media, extract_url_from_text_or_clipboard
+
+    raw_url = (parameters.get("url") or parameters.get("query") or "").strip()
+    target = extract_url_from_text_or_clipboard(raw_url, allow_clipboard=(not raw_url)) or raw_url
+    if not target:
+        return "Please provide a video URL or search phrase to download, sir."
+
+    audio_only = bool(parameters.get("audio_only", False))
+    quality = str(parameters.get("quality") or "best").strip()
+    destination = str(parameters.get("destination") or "Downloads").strip()
+    res = download_media(
+        target,
+        output_dir=destination,
+        audio_only=audio_only,
+        quality=quality,
+    )
+    if not res.ok:
+        return f"Download failed, sir: {res.error}"
+    msg = (
+        f"Downloaded {res.platform} {'audio' if res.audio_only else 'video'} "
+        f"'{res.title or res.filename}' ({res.filesize_mb} MB) to {res.filepath}."
+    )
+    if player and hasattr(player, "show_content"):
+        try:
+            player.show_content("Video Download Complete", msg)
+        except Exception:
+            pass
+    if speak:
+        speak(f"Saved {res.title or 'the video'} to your {destination} folder, sir.")
+    return msg
 
 
 def _handle_get_info(parameters: dict, player, speak) -> str:
@@ -408,6 +471,7 @@ def _handle_trending(parameters: dict, player, speak) -> str:
 
 _ACTION_MAP = {
     "play":      _handle_play,
+    "download":  _handle_download,
     "summarize": _handle_summarize,
     "get_info":  _handle_get_info,
     "trending":  _handle_trending,
@@ -432,7 +496,7 @@ def youtube_video(
     if handler is None:
         return (
             f"Unknown YouTube action: '{action}'. "
-            "Available: play, summarize, get_info, trending."
+            "Available: play, download, summarize, get_info, trending."
         )
 
     try:
@@ -447,17 +511,17 @@ def youtube_video(
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
 TOOL = {
     "name": "youtube_video",
-    "description": "Controls YouTube. Use for: playing videos, summarizing a video's content, getting video info, or showing trending videos.",
+    "description": "Controls YouTube in the browser, summarizes transcripts, downloads YouTube videos/audio, gets video info, or shows trending videos. (For Instagram, Snapchat, TikTok, X, Reddit, and universal multi-site downloads/playback, prefer 'social_video'.)",
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "play | summarize | get_info | trending (default: play)"
+                "description": "play | download | summarize | get_info | trending (default: play)"
             },
             "query": {
                 "type": "STRING",
-                "description": "Search query for play action"
+                "description": "Search query for play or download action"
             },
             "save": {
                 "type": "BOOLEAN",
@@ -469,7 +533,15 @@ TOOL = {
             },
             "url": {
                 "type": "STRING",
-                "description": "Video URL for get_info action"
+                "description": "Video URL for summarize, download, or get_info action"
+            },
+            "audio_only": {
+                "type": "BOOLEAN",
+                "description": "Download MP3 audio only when action='download'"
+            },
+            "destination": {
+                "type": "STRING",
+                "description": "Download folder ('Downloads', 'Desktop', 'Videos')"
             }
         },
         "required": []

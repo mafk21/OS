@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import mimetypes
 import os
 import platform
+import secrets
 import shutil
 import socket
 import subprocess
@@ -26,11 +28,17 @@ from typing import Any, Callable
 
 try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+    from fastapi.responses import (
+        FileResponse,
+        HTMLResponse,
+        JSONResponse,
+        Response,
+        StreamingResponse,
+    )
     from fastapi.staticfiles import StaticFiles
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
-    FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
+    FileResponse = HTMLResponse = JSONResponse = Response = StreamingResponse = StaticFiles = None  # type: ignore[assignment,misc]
 from core import (
     audio_devices,
     automations,
@@ -55,6 +63,8 @@ STATIC_HUD_DIR = BASE_DIR / "apex_ui" / "static_hud"
 TOOL_NODE_MAP: dict[str, list[str]] = {
     "web_search": ["researcher"],
     "youtube_video": ["researcher", "social_media"],
+    "social_video": ["social_media", "researcher"],
+    "video_player": ["social_media", "design"],
     "memory": ["memory"],
     "brain_control": ["memory", "editor"],
     "smart_notes": ["memory", "editor"],
@@ -150,6 +160,8 @@ class ApexHudBridge:
             pass
         self._confirm: dict[str, str] | None = None
         self._content: dict[str, str] | None = None
+        self._video: dict[str, Any] | None = None
+        self._media_streams: dict[str, dict[str, Any]] = {}
         self._last_level_push = 0.0
         self._tool_tasks: dict[str, dict[str, Any]] = {}
         self._cancelled_task_ids: set[str] = set()
@@ -241,6 +253,7 @@ class ApexHudBridge:
             logs_list = list(self._logs)
             confirm_obj = dict(self._confirm) if self._confirm else None
             content_obj = dict(self._content) if self._content else None
+            video_obj = dict(self._video) if self._video else None
             raw_state = self._raw_state
             offline = self._offline
             offline_reason = self._offline_reason
@@ -308,10 +321,91 @@ class ApexHudBridge:
             "logs": logs_list,
             "confirm": confirm_obj,
             "content": content_obj,
+            "video": video_obj,
             "background_mode": bool(self._background_mode),
         }
 
     # ── Push methods called from JarvisUI / audio threads ─────────────────────
+
+    def _register_media_stream(
+        self, source: str, headers: dict[str, str] | None = None
+    ) -> str:
+        raw = (source or "").strip()
+        if not raw:
+            return ""
+        tok = secrets.token_urlsafe(12)
+        with self._lock:
+            self._media_streams[tok] = {
+                "source": raw,
+                "headers": dict(headers or {}),
+                "created_at": time.time(),
+            }
+            if len(self._media_streams) > 28:
+                oldest = sorted(
+                    self._media_streams.items(),
+                    key=lambda kv: kv[1].get("created_at", 0.0),
+                )[:8]
+                for k, _ in oldest:
+                    self._media_streams.pop(k, None)
+        return f"/api/hud/media/{tok}"
+
+    def push_video(
+        self,
+        source: str,
+        *,
+        title: str = "",
+        muted: bool = True,
+        audio_source: str = "",
+        headers: dict[str, str] | None = None,
+        webpage_url: str = "",
+        platform: str = "",
+    ) -> None:
+        raw = (source or "").strip()
+        if not raw:
+            return
+        v_url = self._register_media_stream(raw, headers=headers)
+        a_url = (
+            self._register_media_stream(audio_source, headers=headers)
+            if (audio_source or "").strip()
+            else ""
+        )
+        plat = (platform or "").strip()
+        if not plat:
+            try:
+                from core.media_engine import detect_platform
+
+                plat = detect_platform(webpage_url or raw)
+            except Exception:
+                plat = "Video"
+        rec = {
+            "id": secrets.token_hex(4),
+            "video_url": v_url,
+            "audio_url": a_url,
+            "title": (title or Path(raw).name or "Video")[:120],
+            "muted": bool(muted),
+            "webpage_url": (webpage_url or "").strip(),
+            "platform": plat,
+        }
+        with self._lock:
+            self._video = rec
+        self._broadcast_threadsafe({"type": "video", "video": dict(rec)})
+
+    def stop_video(self) -> None:
+        with self._lock:
+            self._video = None
+        self._broadcast_threadsafe({"type": "video", "video": None})
+
+    def set_video_muted(self, muted: bool) -> None:
+        with self._lock:
+            if self._video is None:
+                return
+            self._video["muted"] = bool(muted)
+            snap = dict(self._video)
+        self._broadcast_threadsafe({"type": "video", "video": snap})
+
+    def video_is_playing(self) -> bool:
+        with self._lock:
+            return self._video is not None
 
     def notify_background_mode(self, active: bool, native_dock: bool = False) -> None:
         self._background_mode = bool(active)
@@ -795,6 +889,21 @@ class ApexHudBridge:
                 ui.exit_background_mode()
             self.notify_background_mode(False, native_dock=False)
             return {"ok": True, "background_mode": False}
+
+        if action == "video_close":
+            if ui is not None and callable(getattr(ui, "stop_video", None)):
+                ui.stop_video()
+            else:
+                self.stop_video()
+            return {"ok": True}
+
+        if action == "video_mute":
+            muted_flag = bool(data.get("muted", True))
+            if ui is not None and callable(getattr(ui, "set_video_muted", None)):
+                ui.set_video_muted(muted_flag)
+            else:
+                self.set_video_muted(muted_flag)
+            return {"ok": True, "muted": muted_flag}
 
         if action == "region_capture" and win is not None:
             if ui is not None and getattr(ui, "_on_region_capture", None) and not getattr(win, "_on_region_capture", None):
@@ -1496,6 +1605,85 @@ class ApexHudBridge:
                 body = {}
             res = await asyncio.to_thread(self.handle_action, body)
             return JSONResponse(res)
+
+        @app.get("/api/hud/media/{token}")
+        async def _stream_hud_media(token: str, req: Request):
+            with self._lock:
+                entry = self._media_streams.get(token)
+            if not entry:
+                return JSONResponse({"error": "Media stream expired or not found."}, status_code=404)
+
+            src = str(entry.get("source") or "")
+            saved_headers = dict(entry.get("headers") or {})
+            range_hdr = req.headers.get("range")
+
+            # 1. Local file with HTTP Range (206 Partial Content) support
+            local_p = Path(src)
+            if not src.lower().startswith(("http://", "https://")) and local_p.is_file():
+                total = local_p.stat().st_size
+                mime = mimetypes.guess_type(local_p.name)[0] or "video/mp4"
+                if range_hdr and range_hdr.startswith("bytes="):
+                    try:
+                        spec = range_hdr.split("=", 1)[1].split(",", 1)[0].strip()
+                        s_part, e_part = spec.split("-", 1)
+                        start = int(s_part) if s_part else 0
+                        end = int(e_part) if e_part else min(total - 1, start + 2 * 1024 * 1024 - 1)
+                        start = max(0, min(start, total - 1))
+                        end = max(start, min(end, total - 1))
+                        length = end - start + 1
+                        with local_p.open("rb") as fh:
+                            fh.seek(start)
+                            chunk = fh.read(length)
+                        return Response(
+                            content=chunk,
+                            status_code=206,
+                            media_type=mime,
+                            headers={
+                                "Content-Range": f"bytes {start}-{end}/{total}",
+                                "Accept-Ranges": "bytes",
+                                "Content-Length": str(length),
+                            },
+                        )
+                    except Exception:
+                        pass
+                return FileResponse(local_p, media_type=mime, headers={"Accept-Ranges": "bytes"})
+
+            # 2. Remote social/video CDN proxy (Instagram, Snapchat, TikTok, YouTube, X, Reddit, etc.)
+            import httpx
+
+            upstream_headers = {k: v for k, v in saved_headers.items() if k.lower() != "host"}
+            if range_hdr:
+                upstream_headers["Range"] = range_hdr
+
+            client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
+            try:
+                up_req = client.build_request("GET", src, headers=upstream_headers)
+                up_resp = await client.send(up_req, stream=True)
+            except Exception as exc:
+                await client.aclose()
+                return JSONResponse({"error": f"Upstream media error: {exc}"}, status_code=502)
+
+            out_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
+            for hk in ("content-length", "content-range", "accept-ranges"):
+                hv = up_resp.headers.get(hk)
+                if hv:
+                    out_headers[hk] = hv
+            media_type = up_resp.headers.get("content-type", "video/mp4")
+
+            async def _iter_remote():
+                try:
+                    async for chunk in up_resp.aiter_bytes(chunk_size=65536):
+                        yield chunk
+                finally:
+                    await up_resp.aclose()
+                    await client.aclose()
+
+            return StreamingResponse(
+                _iter_remote(),
+                status_code=up_resp.status_code,
+                media_type=media_type,
+                headers=out_headers,
+            )
 
         @app.get("/api/weather")
         async def _weather():

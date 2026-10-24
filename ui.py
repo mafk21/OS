@@ -6904,32 +6904,59 @@ class JarvisUI:
         """Thread-safe: show a webcam frame in the small overlay (screen captures)."""
         self._win._camera_sig.emit(img_bytes)
 
-    def show_video(self, source: str, title: str = "", muted: bool = True,
-                   audio_source: str = "") -> None:
-        """Thread-safe: play a video where the avatar normally is.
-
-        `source` is a local path or a direct media URL. `audio_source` is for
-        the case where the sound arrives as its own stream — YouTube serves no
-        combined format any more — and when it is given the two are played
-        together and kept in step.
-
-        Muted by default, and that is a decision rather than a default: a
-        soundtrack talking over JARVIS is the one way this could make the
-        assistant worse. The user turns sound on from the header button or by
-        asking, and closes it the same two ways.
-        """
-        self._win._video_open_sig.emit(str(source or ""), str(title or ""),
-                                       bool(muted), str(audio_source or ""))
+    def show_video(
+        self,
+        source: str,
+        title: str = "",
+        muted: bool = True,
+        audio_source: str = "",
+        headers: dict | None = None,
+        webpage_url: str = "",
+        platform: str = "",
+    ) -> None:
+        """Thread-safe: play a video in both Classic Qt and the 3D Web HUD."""
+        if self._apex_bridge is None or self._win.isVisible():
+            self._win._video_open_sig.emit(
+                str(source or ""),
+                str(title or ""),
+                bool(muted),
+                str(audio_source or ""),
+            )
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.push_video(
+                    str(source or ""),
+                    title=str(title or ""),
+                    muted=bool(muted),
+                    audio_source=str(audio_source or ""),
+                    headers=headers,
+                    webpage_url=str(webpage_url or ""),
+                    platform=str(platform or ""),
+                )
+            except Exception:
+                pass
 
     def stop_video(self) -> None:
         """Thread-safe: close the video and give the HUD back to the avatar."""
         self._win._video_close_sig.emit()
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.stop_video()
+            except Exception:
+                pass
 
     def set_video_muted(self, muted: bool) -> None:
         """Thread-safe: silence or unsilence whatever is playing."""
         self._win._video_mute_sig.emit(bool(muted))
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.set_video_muted(bool(muted))
+            except Exception:
+                pass
 
     def video_is_playing(self) -> bool:
+        if self._apex_bridge is not None and self._apex_bridge.video_is_playing():
+            return True
         return bool(self._win.video_is_playing())
 
     def start_camera_stream(self) -> None:

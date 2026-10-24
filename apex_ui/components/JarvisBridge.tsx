@@ -35,6 +35,16 @@ export type ContentCard = {
   text: string;
 };
 
+export type HudVideoState = {
+  id: string;
+  video_url: string;
+  audio_url?: string;
+  title: string;
+  muted: boolean;
+  webpage_url?: string;
+  platform?: string;
+};
+
 export type IntegrationServiceInfo = {
   service: string;
   connected: boolean;
@@ -178,6 +188,7 @@ export type JarvisContextValue = {
   trace: TraceEvent | null;
   confirm: ConfirmBanner | null;
   content: ContentCard | null;
+  video: HudVideoState | null;
   consoleOpen: boolean;
   settingsOpen: boolean;
   setupOpen: boolean;
@@ -246,6 +257,8 @@ export type JarvisContextValue = {
   ) => Promise<boolean>;
   enterBackgroundMode: () => Promise<void>;
   exitBackgroundMode: () => Promise<void>;
+  closeVideo: () => Promise<void>;
+  setVideoMuted: (muted: boolean) => Promise<void>;
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
@@ -340,6 +353,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [trace, setTrace] = useState<TraceEvent | null>(null);
   const [confirm, setConfirm] = useState<ConfirmBanner | null>(null);
   const [content, setContent] = useState<ContentCard | null>(null);
+  const [video, setVideo] = useState<HudVideoState | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -596,6 +610,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       if (d.content && typeof d.content === "object") {
         setContent(d.content as ContentCard);
       }
+      if (d.video && typeof d.video === "object") {
+        setVideo(d.video as HudVideoState);
+      } else if (d.video === null) {
+        setVideo(null);
+      }
     },
     []
   );
@@ -676,6 +695,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
               break;
             case "content":
               setContent(msg.content || null);
+              break;
+            case "video":
+              setVideo((msg.video as HudVideoState) || null);
               break;
             case "activity":
               if (Array.isArray(msg.workers)) {
@@ -1176,6 +1198,35 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sendAction]);
 
+  const closeVideo = useCallback(async () => {
+    setVideo(null);
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "video_close" }),
+      });
+    } catch {
+      sendAction({ action: "video_close" });
+    }
+  }, [sendAction]);
+
+  const setVideoMuted = useCallback(
+    async (nextMuted: boolean) => {
+      setVideo((prev) => (prev ? { ...prev, muted: nextMuted } : prev));
+      try {
+        await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "video_mute", muted: nextMuted }),
+        });
+      } catch {
+        sendAction({ action: "video_mute", muted: nextMuted });
+      }
+    },
+    [sendAction]
+  );
+
   const value = useMemo<JarvisContextValue>(
     () => ({
       connected,
@@ -1215,6 +1266,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       trace,
       confirm,
       content,
+      video,
       consoleOpen,
       settingsOpen,
       setupOpen,
@@ -1269,6 +1321,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       saveApiKey,
       enterBackgroundMode,
       exitBackgroundMode,
+      closeVideo,
+      setVideoMuted,
     }),
     [
       connected,
@@ -1309,6 +1363,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       trace,
       confirm,
       content,
+      video,
       consoleOpen,
       settingsOpen,
       setupOpen,
@@ -1349,6 +1404,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       saveApiKey,
       enterBackgroundMode,
       exitBackgroundMode,
+      closeVideo,
+      setVideoMuted,
     ]
   );
 

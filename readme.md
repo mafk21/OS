@@ -5,12 +5,12 @@
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **63,700+ lines** across **157 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **49 OS, cloud & companion action modules** + **15 built-in live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Execution Surface** | **50 OS, cloud, media & companion action modules** (`social_video` + `video_player` across **Instagram**, **YouTube**, **Snapchat**, **TikTok**, **X**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
 | **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Mail & Automations** | **17 Native SaaS & Mail Connectors** (**Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **284 automated `pytest` tests across 35 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **290 automated `pytest` tests across 36 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -76,6 +76,7 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`AUTOMATE`** | Recurring Interval & Daily Automations Scheduler with 1-click Run Now, Pause/Resume, and execution history | `companion_os` (`automation_save`, `automation_run`, `automation_list`) |
 | **`CODE`** | Live Streaming Dev Terminal (`stdout`/`stderr` + interactive `stdin` + Stop), Codebase File-Tree Explorer, and Colorized Unified Git Diffs | `dev_agent`, `shell_agent`, `code_helper`, `github_automation` |
 | **`SHIELD`** | `AES-256-GCM` Vault status & 256-bit key rotation, `SHA-256` Hash-Chained Action Audit Log verifier, and Revocable Read-Only Guest Portals (`/portal/<token>`) | `companion_os` (`portal_create`, `portal_revoke_all`, `audit_verify`) |
+| **Universal Social & Web Video** | Download MP4 video (4K/1080p/720p) or MP3 audio, play inline inside the 3D HUD theater player, or transcribe & summarize videos from **Instagram**, **YouTube**, **Snapchat**, **TikTok**, **X**, **Reddit**, **Facebook**, **Twitch**, **Vimeo** & **1,800+ sites** (auto-reads clipboard links) | `social_video` (`download`, `play`, `summarize`, `info`), `video_player`, `youtube_video` |
 | **`BG` (Background Mode)** | Minimizes/hides the full HUD window and docks a glowing always-on-top orb button in the **bottom-right corner of the screen**; clicking it expands a sleek quick-type & live-transcript drawer while JARVIS continuously listens and talks back | Live mic + TTS stay 100% active (`FULL ⤢` restores full 3D HUD) |
 | **`ACTIVITY` / `POP OUT`** | Live `Running · Queued · Done` worker drawer with 1-click Cancel, drag-resizable bottom console, and Dual-Monitor Pop-Out Console (`/?view=console`) | `subagent` (`spawn`, `list`, `status`, `cancel`) |
 | **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
