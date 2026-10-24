@@ -34,6 +34,9 @@ playwright>=1.40,<2
 # eventually pin a fresh clone to a version YouTube has already broken, which is
 # the opposite of what bounds are for. Keep it current: pip install -U yt-dlp
 yt-dlp
+imageio-ffmpeg               # Bundled cross-platform ffmpeg binary for merging
+                             # split MP4 video+audio & extracting MP3s across
+                             # Instagram, YouTube, Snapchat, TikTok, Reddit & X
 
 # ── Automation / input control ────────────────────────────────────────────────
 pyautogui

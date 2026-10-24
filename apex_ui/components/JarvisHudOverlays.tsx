@@ -28,6 +28,7 @@ import AutomationsModal from "./AutomationsModal";
 import BackgroundCornerDock from "./BackgroundCornerDock";
 import BrainModal from "./BrainModal";
 import DevWorkspaceModal from "./DevWorkspaceModal";
+import HudVideoModal from "./HudVideoModal";
 import IntegrationsModal from "./IntegrationsModal";
 import SecurityModal from "./SecurityModal";
 import StudioModal from "./StudioModal";
@@ -294,6 +295,7 @@ export default function JarvisHudOverlays() {
   return (
     <>
       <ActivityTimelineHud />
+      <HudVideoModal />
       <StudioModal />
       <AutomationsModal />
       <DevWorkspaceModal />
