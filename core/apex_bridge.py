@@ -359,6 +359,11 @@ class ApexHudBridge:
         headers: dict[str, str] | None = None,
         webpage_url: str = "",
         platform: str = "",
+        queue: list[dict[str, Any]] | None = None,
+        queue_index: int = 0,
+        playlist_title: str = "",
+        playlist_url: str = "",
+        _keep_queue: bool = False,
     ) -> None:
         raw = (source or "").strip()
         if not raw:
@@ -377,19 +382,94 @@ class ApexHudBridge:
                 plat = detect_platform(webpage_url or raw)
             except Exception:
                 plat = "Video"
-        rec = {
-            "id": secrets.token_hex(4),
-            "video_url": v_url,
-            "audio_url": a_url,
-            "title": (title or Path(raw).name or "Video")[:120],
-            "muted": bool(muted),
-            "webpage_url": (webpage_url or "").strip(),
-            "platform": plat,
-        }
+
         with self._lock:
+            if queue is not None:
+                self._video_queue = [dict(item) for item in queue if isinstance(item, dict)]
+                self._video_queue_index = max(0, min(int(queue_index or 0), max(0, len(self._video_queue) - 1)))
+                self._video_playlist_title = str(playlist_title or "").strip()[:120]
+                self._video_playlist_url = str(playlist_url or "").strip()
+            elif not _keep_queue:
+                self._video_queue = []
+                self._video_queue_index = 0
+                self._video_playlist_title = ""
+                self._video_playlist_url = ""
+
+            q_copy = [dict(item) for item in getattr(self, "_video_queue", [])]
+            q_idx = int(getattr(self, "_video_queue_index", 0))
+            p_title = str(getattr(self, "_video_playlist_title", ""))
+            p_url = str(getattr(self, "_video_playlist_url", ""))
+
+            rec = {
+                "id": secrets.token_hex(4),
+                "video_url": v_url,
+                "audio_url": a_url,
+                "title": (title or Path(raw).name or "Video")[:120],
+                "muted": bool(muted),
+                "webpage_url": (webpage_url or "").strip(),
+                "platform": plat,
+                "playlist_title": p_title,
+                "playlist_url": p_url,
+                "queue_index": q_idx,
+                "queue_total": len(q_copy),
+                "queue": q_copy,
+            }
             self._video = rec
             self._last_video_target = (webpage_url or raw).strip()
         self._broadcast_threadsafe({"type": "video", "video": dict(rec)})
+
+    def jump_video_queue(self, index: int) -> dict[str, Any]:
+        with self._lock:
+            q = [dict(item) for item in getattr(self, "_video_queue", [])]
+            cur_muted = bool(self._video.get("muted", True)) if self._video else False
+            p_title = str(getattr(self, "_video_playlist_title", ""))
+        if not q:
+            return {"ok": False, "error": "No Mix or Playlist queue is currently loaded."}
+        target_idx = int(index) % len(q)
+        entry = q[target_idx]
+        target_url = str(entry.get("url") or "").strip()
+        if not target_url:
+            return {"ok": False, "error": "Selected track has no playable URL."}
+
+        try:
+            from core.media_engine import resolve_playable_stream
+
+            stream = resolve_playable_stream(target_url)
+            if not stream.ok or not stream.video_url:
+                return {"ok": False, "error": stream.error or "Could not resolve track stream."}
+            with self._lock:
+                self._video_queue_index = target_idx
+            self.push_video(
+                stream.video_url,
+                title=stream.title or str(entry.get("title") or f"Track {target_idx + 1}"),
+                muted=cur_muted,
+                audio_source=stream.audio_url or "",
+                headers=stream.http_headers,
+                webpage_url=stream.webpage_url or target_url,
+                platform=stream.platform or str(entry.get("platform") or "YouTube"),
+                _keep_queue=True,
+            )
+            self.push_log(
+                f"MIX [{target_idx + 1}/{len(q)}]: {stream.title or entry.get('title')}"
+                + (f" ({p_title})" if p_title else "")
+            )
+            return {
+                "ok": True,
+                "index": target_idx,
+                "total": len(q),
+                "title": stream.title or str(entry.get("title") or ""),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def step_video_queue(self, delta: int = 1) -> dict[str, Any]:
+        with self._lock:
+            q = getattr(self, "_video_queue", [])
+            cur_idx = int(getattr(self, "_video_queue_index", 0))
+            total = len(q)
+        if total == 0:
+            return {"ok": False, "error": "No Mix or Playlist queue is currently loaded."}
+        return self.jump_video_queue((cur_idx + int(delta)) % total)
 
     def current_video_target(self) -> str:
         with self._lock:
@@ -397,9 +477,19 @@ class ApexHudBridge:
                 return str(getattr(self, "_last_video_target", "") or self._video.get("webpage_url") or "")
             return ""
 
+    def current_mix_target(self) -> str:
+        with self._lock:
+            if self._video is not None:
+                return str(getattr(self, "_video_playlist_url", "") or "")
+            return ""
+
     def stop_video(self) -> None:
         with self._lock:
             self._video = None
+            self._video_queue = []
+            self._video_queue_index = 0
+            self._video_playlist_title = ""
+            self._video_playlist_url = ""
         self._broadcast_threadsafe({"type": "video", "video": None})
 
     def set_video_muted(self, muted: bool) -> None:
@@ -911,6 +1001,19 @@ class ApexHudBridge:
             else:
                 self.set_video_muted(muted_flag)
             return {"ok": True, "muted": muted_flag}
+
+        if action == "video_next":
+            threading.Thread(target=self.step_video_queue, args=(1,), daemon=True).start()
+            return {"ok": True}
+
+        if action == "video_prev":
+            threading.Thread(target=self.step_video_queue, args=(-1,), daemon=True).start()
+            return {"ok": True}
+
+        if action == "video_jump":
+            idx = int(data.get("index", 0))
+            threading.Thread(target=self.jump_video_queue, args=(idx,), daemon=True).start()
+            return {"ok": True, "index": idx}
 
         if action == "region_capture" and win is not None:
             if ui is not None and getattr(ui, "_on_region_capture", None) and not getattr(win, "_on_region_capture", None):

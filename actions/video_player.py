@@ -22,9 +22,12 @@ import threading
 import webbrowser
 
 from core.media_engine import (
+    clean_media_url,
     detect_platform,
+    extract_mix_or_playlist,
     extract_url_from_text_or_clipboard,
     is_direct_media_url,
+    is_mix_or_playlist_url,
     resolve_playable_stream,
 )
 
@@ -85,7 +88,29 @@ def _call_show_video(
     headers: dict[str, str] | None = None,
     webpage_url: str = "",
     platform: str = "",
+    queue: list[dict] | None = None,
+    queue_index: int = 0,
+    playlist_title: str = "",
+    playlist_url: str = "",
 ) -> None:
+    if queue is not None:
+        try:
+            player.show_video(
+                source,
+                title,
+                muted=muted,
+                audio_source=audio_source,
+                headers=headers or {},
+                webpage_url=webpage_url,
+                platform=platform,
+                queue=queue,
+                queue_index=queue_index,
+                playlist_title=playlist_title,
+                playlist_url=playlist_url,
+            )
+            return
+        except TypeError:
+            pass
     try:
         player.show_video(
             source,
@@ -108,7 +133,7 @@ def video_player(
 ) -> str:
     params = parameters or {}
     action = (params.get("action") or "play").strip().lower()
-    source = (params.get("source") or "").strip()
+    source = clean_media_url((params.get("source") or "").strip())
 
     if player is None:
         return "There is no display to play a video on."
@@ -129,6 +154,19 @@ def video_player(
         muted = action in ("mute", "sound_off")
         player.set_video_muted(muted)
         return "Muted the video." if muted else "Turned the video's sound on."
+
+    # ---- mix / playlist queue navigation ----------------------------------
+    if action in ("next", "skip") and hasattr(player, "next_video"):
+        step = player.next_video()
+        if step.get("ok"):
+            return f"Playing Mix track {step['index'] + 1}/{step['total']}: {step['title']}."
+        return str(step.get("error") or "No Mix queue is active.")
+
+    if action in ("previous", "prev", "back") and hasattr(player, "prev_video"):
+        step = player.prev_video()
+        if step.get("ok"):
+            return f"Playing Mix track {step['index'] + 1}/{step['total']}: {step['title']}."
+        return str(step.get("error") or "No Mix queue is active.")
 
     # ---- play -------------------------------------------------------------
     if not source or "clipboard" in source.lower():
@@ -151,8 +189,7 @@ def video_player(
         return f"Playing {Path(local).name} on the display, muted."
 
     # Direct media file URL (.mp4/.webm/.m3u8) goes straight to the player;
-    # ANY social/web page URL (Instagram, YouTube, Snapchat, TikTok, X, Reddit, etc.)
-    # resolves through yt-dlp on a background thread.
+    # ANY social/web page URL or YouTube Mix (`list=RD...`) / Playlist resolves via yt-dlp.
     if _is_url(source) and is_direct_media_url(source):
         _call_show_video(
             player,
@@ -174,6 +211,48 @@ def video_player(
 
 
 def _play_resolved(player, source: str, token: int) -> None:
+    # Check if `source` is a YouTube Mix (`watch?v=...&list=RD...`) or Playlist first!
+    if _is_url(source) and is_mix_or_playlist_url(source):
+        try:
+            coll = extract_mix_or_playlist(source, max_items=25)
+            if not _still_wanted(token):
+                return
+            if coll.ok and coll.tracks:
+                lead = coll.tracks[coll.start_index]
+                stream = resolve_playable_stream(lead.url, max_height=720)
+                if not _still_wanted(token):
+                    return
+                if stream.ok and stream.video_url:
+                    q_payload = [
+                        {
+                            "index": tr.index,
+                            "id": tr.id,
+                            "title": tr.title,
+                            "uploader": tr.uploader,
+                            "duration": tr.duration,
+                            "url": tr.url,
+                            "platform": tr.platform,
+                        }
+                        for tr in coll.tracks
+                    ]
+                    _call_show_video(
+                        player,
+                        stream.video_url,
+                        stream.title or lead.title,
+                        muted=True,
+                        audio_source=stream.audio_url,
+                        headers=stream.http_headers,
+                        webpage_url=stream.webpage_url or lead.url,
+                        platform=stream.platform or coll.platform,
+                        queue=q_payload,
+                        queue_index=coll.start_index,
+                        playlist_title=coll.title,
+                        playlist_url=source,
+                    )
+                    return
+        except Exception:
+            pass
+
     try:
         stream = resolve_playable_stream(source, max_height=720)
     except Exception as exc:  # noqa: BLE001
@@ -231,29 +310,26 @@ def _say(player, instruction: str) -> None:
 TOOL = {
     "name": "video_player",
     "description": (
-        "Plays a VIDEO directly on JARVIS's own HUD display (and stops, mutes, "
-        "or unmutes it). Supports Instagram Reels/Posts, YouTube Videos/Shorts, "
-        "Snapchat Spotlights/Stories, TikTok, X / Twitter, Reddit, Facebook, "
-        "Twitch, Vimeo, any yt-dlp video URL, local video files, direct .mp4 "
-        "URLs, or spoken search queries ('play the new Dune trailer'). "
-        "Video always starts MUTED — only call action='unmute' when the user "
-        "asks to hear the audio. For DOWNLOADING videos/audio to disk, use "
-        "'social_video' with action='download'."
+        "Plays a VIDEO, YouTube Mix (`watch?v=...&list=RD...`), or Playlist directly on JARVIS's "
+        "own HUD display (and stops, mutes, unmutes, or steps Next / Previous track in a Mix). "
+        "Supports Instagram Reels/Posts, YouTube Videos/Shorts/Radio Mixes/Playlists, "
+        "Snapchat Spotlights/Stories, TikTok, X / Twitter, Reddit, Facebook, Twitch, Vimeo, "
+        "SoundCloud, local video files, direct .mp4 URLs, or spoken search queries. "
+        "Video always starts MUTED — call action='unmute' when the user asks to hear the audio."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "'play' (default), 'stop' to close it, 'unmute' to turn sound on, 'mute' to silence it.",
-                "enum": ["play", "stop", "mute", "unmute"],
+                "description": "'play' (default), 'stop', 'unmute', 'mute', 'next' (next Mix track), or 'previous' (previous Mix track).",
+                "enum": ["play", "stop", "mute", "unmute", "next", "previous"],
             },
             "source": {
                 "type": "STRING",
                 "description": (
-                    "For action='play': any video URL (Instagram, YouTube, Snapchat, "
-                    "TikTok, X, Reddit, etc.), local file path, or search query. "
-                    "Omit to play a link currently copied on the clipboard."
+                    "For action='play': any video, YouTube Mix (`watch?v=...&list=RD...`), or Playlist URL, "
+                    "local file path, or search query. Omit to play a link on the clipboard."
                 ),
             },
         },

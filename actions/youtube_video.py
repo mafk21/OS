@@ -487,6 +487,22 @@ def youtube_video(
 ) -> str:
     params = parameters or {}
     action = params.get("action", "play").lower().strip()
+    raw_u = str(params.get("url") or params.get("query") or "").strip()
+
+    # Route YouTube Mixes (`watch?v=...&list=RD...`) & Playlists to the Mix-aware universal engine!
+    if raw_u:
+        try:
+            from core.media_engine import clean_media_url, is_mix_or_playlist_url
+            cleaned_u = clean_media_url(raw_u)
+            if is_mix_or_playlist_url(cleaned_u) or action in ("watch", "next", "previous", "jump"):
+                from actions.social_video import social_video
+                fwd = dict(params)
+                fwd["url"] = cleaned_u
+                if action == "get_info":
+                    fwd["action"] = "info"
+                return social_video(fwd, response=response, player=player, session_memory=session_memory, speak=speak)
+        except Exception as mix_exc:
+            print(f"[YouTube] Mix delegation note: {mix_exc}")
 
     if player:
         player.write_log(f"[YouTube] Action: {action}")

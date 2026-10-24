@@ -366,3 +366,204 @@ def test_watch_media_extracts_real_visual_frames_and_watches_active_hud_video(tm
     pil_passed = [x for x in captured_contents if isinstance(x, Image.Image)]
     assert len(pil_passed) >= 2
 
+
+def test_youtube_mix_url_cleaning_and_classification():
+    # Exact user-style YouTube Mix URL & HTML-escaped `&amp;list=` variant
+    escaped = "https://www.youtube.com/watch?v=RP0z0PzZ1aU&amp;list=RDjP7zBOjU8OY"
+    cleaned = me.clean_media_url(escaped)
+    assert cleaned == "https://www.youtube.com/watch?v=RP0z0PzZ1aU&list=RDjP7zBOjU8OY"
+    assert me.is_mix_or_playlist_url(escaped) is True
+
+    cls = me.classify_mix_or_playlist(escaped)
+    assert cls["is_collection"] is True
+    assert cls["is_mix"] is True
+    assert cls["kind"] == "YouTube Mix"
+    assert cls["list_id"] == "RDjP7zBOjU8OY"
+    assert cls["seed_video_id"] == "RP0z0PzZ1aU"
+
+    # Bare `playlist?list=RD<11-char-id>` is automatically rescued to `watch?v=<seed>&list=RD<seed>`
+    rescued = me.clean_media_url("https://www.youtube.com/playlist?list=RDjP7zBOjU8OY")
+    assert rescued == "https://www.youtube.com/watch?v=jP7zBOjU8OY&list=RDjP7zBOjU8OY"
+
+    # Normal playlist & SoundCloud set vs single video
+    pl_cls = me.classify_mix_or_playlist("https://www.youtube.com/playlist?list=PL1234567890ABCDEF")
+    assert pl_cls["is_collection"] is True and pl_cls["kind"] == "Playlist"
+    assert me.is_mix_or_playlist_url("https://soundcloud.com/artist/sets/chill-mix") is True
+    assert me.is_mix_or_playlist_url("https://www.youtube.com/watch?v=RP0z0PzZ1aU") is False
+
+
+def test_youtube_mix_hud_queue_playback_step_jump_and_sound_preservation():
+    from core.apex_bridge import ApexHudBridge
+
+    mix_url = "https://www.youtube.com/watch?v=RP0z0PzZ1aU&amp;list=RDjP7zBOjU8OY"
+    fake_mix_info = {
+        "title": "Mix - Late Night Synthwave",
+        "entries": [
+            {"id": "jP7zBOjU8OY", "title": "Seed Track One", "uploader": "Artist A", "duration": 210},
+            {"id": "RP0z0PzZ1aU", "title": "Selected Track Two", "uploader": "Artist B", "duration": 195},
+            {"id": "k99zBOjU8ZZ", "title": "Next Track Three", "uploader": "Artist C", "duration": 240},
+        ],
+    }
+
+    def _fake_resolve(url: str, **_kwargs):
+        vid = url.split("v=")[-1]
+        return me.ResolvedStream(
+            ok=True,
+            video_url=f"https://cdn.example.com/{vid}.mp4",
+            title=f"Stream {vid}",
+            platform="YouTube",
+            webpage_url=url,
+        )
+
+    bridge = ApexHudBridge(None)
+
+    class _BridgePlayer:
+        def show_video(self, source, title="", muted=True, audio_source="", headers=None, webpage_url="", platform="", queue=None, queue_index=0, playlist_title="", playlist_url=""):
+            bridge.push_video(
+                source,
+                title=title,
+                muted=muted,
+                audio_source=audio_source,
+                headers=headers,
+                webpage_url=webpage_url,
+                platform=platform,
+                queue=queue,
+                queue_index=queue_index,
+                playlist_title=playlist_title,
+                playlist_url=playlist_url,
+            )
+
+        def next_video(self):
+            return bridge.step_video_queue(1)
+
+        def prev_video(self):
+            return bridge.step_video_queue(-1)
+
+        def jump_video(self, index):
+            return bridge.jump_video_queue(index)
+
+        def current_mix_source(self):
+            return bridge.current_mix_target()
+
+        def current_video_source(self):
+            return bridge.current_video_target()
+
+        def write_log(self, _m):
+            pass
+
+        def show_content(self, _t, _b):
+            pass
+
+    bp = _BridgePlayer()
+
+    with patch("core.media_engine._extract_with_ytdlp", return_value=fake_mix_info), patch(
+        "actions.social_video.resolve_playable_stream", side_effect=_fake_resolve
+    ), patch("core.media_engine.resolve_playable_stream", side_effect=_fake_resolve):
+        out = social_video({"action": "play", "url": mix_url}, player=bp)
+        assert "YouTube Mix" in out
+        assert "2/3" in out  # `v=RP0z0PzZ1aU` is entry #2 (`start_index == 1`)!
+        assert bridge._video is not None
+        assert bridge._video["queue_total"] == 3
+        assert bridge._video["queue_index"] == 1
+        assert bridge._video["muted"] is True
+
+        # User unmutes the Mix -> stepping to Next track MUST preserve SOUND ON (`muted=False`)!
+        bridge.set_video_muted(False)
+        assert bridge._video["muted"] is False
+
+        nxt = social_video({"action": "next"}, player=bp)
+        assert "3/3" in nxt
+        assert bridge._video["queue_index"] == 2
+        assert bridge._video["muted"] is False
+
+        # Info / tracklist on the currently playing HUD Mix without re-passing URL!
+        info_out = social_video({"action": "info", "url": "this mix"}, player=bp)
+        assert "01. Seed Track One" in info_out
+        assert "02. Selected Track Two" in info_out
+        assert "03. Next Track Three" in info_out
+
+
+def test_youtube_mix_batch_download_summarize_and_visual_watch(tmp_path):
+    from PIL import Image
+    import subprocess
+
+    mix_url = "https://www.youtube.com/watch?v=RP0z0PzZ1aU&list=RDjP7zBOjU8OY"
+    fake_coll = me.MixCollectionResult(
+        ok=True,
+        title="Midnight Drive Mix",
+        kind="YouTube Mix",
+        platform="YouTube",
+        list_id="RDjP7zBOjU8OY",
+        webpage_url=mix_url,
+        start_index=0,
+        tracks=[
+            me.MixTrackItem(index=0, id="RP0z0PzZ1aU", title="First Song", url="https://www.youtube.com/watch?v=RP0z0PzZ1aU", uploader="SynthKid", duration=180),
+            me.MixTrackItem(index=1, id="jP7zBOjU8OY", title="Second Song", url="https://www.youtube.com/watch?v=jP7zBOjU8OY", uploader="NeonWave", duration=200),
+        ],
+    )
+
+    def _fake_dl(url, *, output_dir="", audio_only=False, filename_hint="", **_kw):
+        ext = ".mp3" if audio_only else ".mp4"
+        fp = Path(output_dir) / f"{filename_hint}{ext}"
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        fp.write_bytes(b"ID3" + b"\x00" * 2048)
+        return me.DownloadResult(
+            ok=True,
+            filepath=str(fp),
+            filename=fp.name,
+            filesize_bytes=fp.stat().st_size,
+            title=filename_hint,
+            platform="YouTube",
+            audio_only=audio_only,
+        )
+
+    with patch("core.media_engine.extract_mix_or_playlist", return_value=fake_coll), patch(
+        "core.media_engine.download_media", side_effect=_fake_dl
+    ):
+        dl_out = social_video(
+            {
+                "action": "download",
+                "url": mix_url,
+                "audio_only": True,
+                "destination": str(tmp_path),
+                "max_items": 2,
+            }
+        )
+        assert "Downloaded 2 MP3 tracks" in dl_out
+        assert "Midnight Drive Mix" in dl_out
+
+    # Test Mix summarization
+    with patch("core.media_engine.extract_mix_or_playlist", return_value=fake_coll), patch(
+        "core.media_engine._extract_with_ytdlp", return_value={"description": "Atmospheric synthwave track"}
+    ), patch(
+        "core.gemini.call", return_value=SimpleNamespace(text="A moody synthwave mix spanning SynthKid and NeonWave.")
+    ):
+        sum_out = social_video({"action": "summarize", "url": mix_url})
+        assert "YouTube Mix Summary" in sum_out
+        assert "moody synthwave mix" in sum_out
+
+    # Test visual Mix watching (`watch`) across Mix videos!
+    ff = me.resolve_ffmpeg_path()
+    assert ff is not None
+    clip = tmp_path / "mix_sample.mp4"
+    subprocess.run(
+        [ff, "-y", "-f", "lavfi", "-i", "color=c=green:s=160x120:d=1:r=5", "-pix_fmt", "yuv420p", str(clip)],
+        check=True,
+        timeout=20,
+    )
+
+    seen_items: list[object] = []
+
+    def _fake_vis(contents, **_kw):
+        seen_items.extend(contents if isinstance(contents, list) else [contents])
+        return SimpleNamespace(text="Both Mix videos feature neon green studio visuals.")
+
+    with patch("core.media_engine.extract_mix_or_playlist", return_value=fake_coll), patch(
+        "core.media_engine._stage_video_for_vision", return_value=(clip, {"duration": 1})
+    ), patch("core.gemini.call", side_effect=_fake_vis):
+        watch_out = social_video({"action": "watch", "url": mix_url, "max_items": 2})
+        assert "YouTube Mix Visual Analysis" in watch_out
+        assert "neon green" in watch_out
+        assert sum(1 for x in seen_items if isinstance(x, Image.Image)) >= 2
+
+

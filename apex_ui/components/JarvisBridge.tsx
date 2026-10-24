@@ -35,6 +35,16 @@ export type ContentCard = {
   text: string;
 };
 
+export type HudVideoQueueItem = {
+  index: number;
+  id?: string;
+  title: string;
+  uploader?: string;
+  duration?: number;
+  url?: string;
+  platform?: string;
+};
+
 export type HudVideoState = {
   id: string;
   video_url: string;
@@ -43,6 +53,11 @@ export type HudVideoState = {
   muted: boolean;
   webpage_url?: string;
   platform?: string;
+  playlist_title?: string;
+  playlist_url?: string;
+  queue_index?: number;
+  queue_total?: number;
+  queue?: HudVideoQueueItem[];
 };
 
 export type IntegrationServiceInfo = {
@@ -259,6 +274,9 @@ export type JarvisContextValue = {
   exitBackgroundMode: () => Promise<void>;
   closeVideo: () => Promise<void>;
   setVideoMuted: (muted: boolean) => Promise<void>;
+  nextVideo: () => Promise<void>;
+  prevVideo: () => Promise<void>;
+  jumpVideo: (index: number) => Promise<void>;
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
@@ -1227,6 +1245,45 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [sendAction]
   );
 
+  const nextVideo = useCallback(async () => {
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "video_next" }),
+      });
+    } catch {
+      sendAction({ action: "video_next" });
+    }
+  }, [sendAction]);
+
+  const prevVideo = useCallback(async () => {
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "video_prev" }),
+      });
+    } catch {
+      sendAction({ action: "video_prev" });
+    }
+  }, [sendAction]);
+
+  const jumpVideo = useCallback(
+    async (index: number) => {
+      try {
+        await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "video_jump", index }),
+        });
+      } catch {
+        sendAction({ action: "video_jump", index });
+      }
+    },
+    [sendAction]
+  );
+
   const value = useMemo<JarvisContextValue>(
     () => ({
       connected,
@@ -1323,6 +1380,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       exitBackgroundMode,
       closeVideo,
       setVideoMuted,
+      nextVideo,
+      prevVideo,
+      jumpVideo,
     }),
     [
       connected,
@@ -1406,6 +1466,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       exitBackgroundMode,
       closeVideo,
       setVideoMuted,
+      nextVideo,
+      prevVideo,
+      jumpVideo,
     ]
   );
 

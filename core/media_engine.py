@@ -12,6 +12,7 @@ Twitch, Vimeo, Dailymotion, SoundCloud, Pinterest, LinkedIn, Bilibili, and
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import html
 import json
 import mimetypes
 import os
@@ -21,7 +22,7 @@ import shutil
 import subprocess
 import tempfile
 from typing import Any, Callable
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -120,11 +121,147 @@ class DownloadResult:
         return round(self.filesize_bytes / (1024 * 1024), 2)
 
 
-# ── Helpers: Platform, URL, Clipboard & FFmpeg Discovery ─────────────────────
+@dataclass
+class MixTrackItem:
+    index: int
+    id: str
+    title: str
+    url: str
+    uploader: str = ""
+    duration: int = 0
+    platform: str = "YouTube"
+
+
+@dataclass
+class MixCollectionResult:
+    ok: bool
+    title: str = ""
+    kind: str = "YouTube Mix"  # "YouTube Mix" | "Playlist"
+    platform: str = "YouTube"
+    list_id: str = ""
+    webpage_url: str = ""
+    start_index: int = 0
+    tracks: list[MixTrackItem] = field(default_factory=list)
+    error: str = ""
+
+
+@dataclass
+class MixDownloadResult:
+    ok: bool
+    folder_path: str = ""
+    title: str = ""
+    kind: str = "YouTube Mix"
+    platform: str = "YouTube"
+    files: list[str] = field(default_factory=list)
+    total_size_bytes: int = 0
+    audio_only: bool = False
+    error: str = ""
+
+    @property
+    def total_size_mb(self) -> float:
+        return round(self.total_size_bytes / (1024 * 1024), 2)
+
+
+# ── Helpers: Platform, URL, Mix/Playlist Detection, Clipboard & FFmpeg ───────
+
+
+def clean_media_url(url: str) -> str:
+    """Unescape HTML entities (e.g. `&amp;list=RD...`) and rescue bare YouTube RD mix links."""
+    u = html.unescape((url or "").strip().strip('"').strip("'")).rstrip(".,;!")
+    if not u.lower().startswith(("http://", "https://")):
+        return u
+    try:
+        parsed = urlparse(u)
+        host = (parsed.hostname or "").lower()
+        if "youtube.com" in host or "youtu.be" in host:
+            qs = parse_qs(parsed.query)
+            list_id = (qs.get("list") or [""])[0].strip()
+            v_id = (qs.get("v") or [""])[0].strip()
+            # Bare `youtube.com/playlist?list=RD<11-char-seed>` fails on YouTube unless paired with `watch?v=<seed>`
+            if (
+                not v_id
+                and list_id.startswith("RD")
+                and len(list_id) == 13
+                and re.fullmatch(r"[A-Za-z0-9_-]{11}", list_id[2:])
+            ):
+                seed = list_id[2:]
+                base_host = "music.youtube.com" if "music.youtube.com" in host else "www.youtube.com"
+                return f"https://{base_host}/watch?v={seed}&list={list_id}"
+    except Exception:
+        pass
+    return u
+
+
+def classify_mix_or_playlist(url: str) -> dict[str, Any]:
+    """Identify YouTube Mixes (`list=RD...`), YouTube Playlists (`list=PL...`), SoundCloud sets, etc."""
+    cleaned = clean_media_url(url)
+    if not cleaned.lower().startswith(("http://", "https://")):
+        return {
+            "is_collection": False,
+            "is_mix": False,
+            "kind": "Single",
+            "list_id": "",
+            "seed_video_id": "",
+        }
+    try:
+        parsed = urlparse(cleaned)
+        host = (parsed.hostname or "").lower()
+        path_low = (parsed.path or "").lower()
+        qs = parse_qs(parsed.query)
+        list_id = (qs.get("list") or [""])[0].strip()
+        v_id = (qs.get("v") or [""])[0].strip()
+        if not v_id and "youtu.be" in host:
+            seg = (parsed.path or "").strip("/").split("/")[0]
+            if re.fullmatch(r"[A-Za-z0-9_-]{11}", seg):
+                v_id = seg
+
+        if list_id:
+            is_mix = list_id.startswith(("RD", "UL"))
+            return {
+                "is_collection": True,
+                "is_mix": is_mix,
+                "kind": "YouTube Mix" if is_mix else "Playlist",
+                "list_id": list_id,
+                "seed_video_id": v_id,
+            }
+
+        if "youtube.com" in host and path_low.startswith("/playlist"):
+            return {
+                "is_collection": True,
+                "is_mix": False,
+                "kind": "Playlist",
+                "list_id": "",
+                "seed_video_id": "",
+            }
+
+        if ("soundcloud.com" in host and "/sets/" in path_low) or (
+            "vimeo.com" in host and ("/showcase/" in path_low or "/album/" in path_low)
+        ):
+            return {
+                "is_collection": True,
+                "is_mix": False,
+                "kind": "Playlist",
+                "list_id": "",
+                "seed_video_id": "",
+            }
+    except Exception:
+        pass
+
+    return {
+        "is_collection": False,
+        "is_mix": False,
+        "kind": "Single",
+        "list_id": "",
+        "seed_video_id": "",
+    }
+
+
+def is_mix_or_playlist_url(url: str) -> bool:
+    return bool(classify_mix_or_playlist(url).get("is_collection"))
 
 
 def detect_platform(url_or_path: str) -> str:
-    raw = (url_or_path or "").strip()
+    raw = clean_media_url(url_or_path)
     if not raw:
         return "Web"
     if not raw.lower().startswith(("http://", "https://")):
@@ -142,7 +279,7 @@ def detect_platform(url_or_path: str) -> str:
 
 
 def is_direct_media_url(url: str) -> bool:
-    raw = (url or "").strip()
+    raw = clean_media_url(url)
     if not raw.lower().startswith(("http://", "https://", "file://")):
         return False
     try:
@@ -164,19 +301,19 @@ def extract_url_from_text_or_clipboard(
     allow_clipboard: bool = True,
 ) -> str:
     """Return an http(s) URL from `text`, falling back to system clipboard if requested."""
-    raw = (text or "").strip().strip('"').strip("'")
+    raw = html.unescape((text or "").strip().strip('"').strip("'"))
     m = _URL_RE.search(raw)
     if m:
-        return m.group(0).rstrip(".,;!")
+        return clean_media_url(m.group(0))
 
     if allow_clipboard:
         try:
             import pyperclip
 
-            clip = (pyperclip.paste() or "").strip()
+            clip = html.unescape((pyperclip.paste() or "").strip())
             mc = _URL_RE.search(clip)
             if mc:
-                return mc.group(0).rstrip(".,;!")
+                return clean_media_url(mc.group(0))
         except Exception:
             pass
     return ""
@@ -247,8 +384,15 @@ def _extract_with_ytdlp(
     *,
     download: bool = False,
     cookies_browser: str = "",
+    keep_playlist: bool = False,
 ) -> dict[str, Any]:
     import yt_dlp
+
+    target_url = (
+        clean_media_url(query_or_url)
+        if (query_or_url or "").strip().lower().startswith(("http://", "https://"))
+        else query_or_url
+    )
 
     opts = dict(base_opts)
     opts.setdefault("http_headers", dict(DEFAULT_HEADERS))
@@ -257,7 +401,7 @@ def _extract_with_ytdlp(
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(query_or_url, download=download)
+            info = ydl.extract_info(target_url, download=download)
     except Exception as first_exc:
         if cookies_browser or not _needs_cookie_retry(str(first_exc)):
             raise
@@ -268,7 +412,7 @@ def _extract_with_ytdlp(
             retry_opts["cookiesfrombrowser"] = (browser,)
             try:
                 with yt_dlp.YoutubeDL(retry_opts) as ydl:
-                    info = ydl.extract_info(query_or_url, download=download)
+                    info = ydl.extract_info(target_url, download=download)
                 if info:
                     break
             except Exception as retry_exc:
@@ -277,9 +421,12 @@ def _extract_with_ytdlp(
         if info is None:
             raise last_exc from first_exc
 
-    if info and info.get("entries"):
+    if info and info.get("entries") is not None:
         entries = [e for e in info["entries"] if e]
-        if entries:
+        if keep_playlist:
+            info = dict(info)
+            info["entries"] = entries
+        elif entries:
             info = entries[0]
     return info or {}
 
@@ -1248,3 +1395,428 @@ def summarize_media(
         "has_transcript": bool(transcript),
         "summary": summary_text,
     }
+
+
+# ── 5. YouTube Mixes (`list=RD...`) & Multi-Item Playlists Engine ────────────
+
+
+def _entry_to_track_url(entry: dict[str, Any], default_platform: str = "YouTube") -> str:
+    u = str(entry.get("webpage_url") or entry.get("url") or "").strip()
+    vid = str(entry.get("id") or "").strip()
+    if u.lower().startswith(("http://", "https://")):
+        return clean_media_url(u)
+    if default_platform == "YouTube" and (u or vid):
+        cand = u or vid
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", cand):
+            return f"https://www.youtube.com/watch?v={cand}"
+    return u
+
+
+def extract_mix_or_playlist(
+    url: str,
+    *,
+    max_items: int = 25,
+    cookies_browser: str = "",
+) -> MixCollectionResult:
+    """Extract tracklist for a YouTube Mix (`watch?v=...&list=RD...`), YouTube Playlist, SoundCloud set, etc."""
+    cleaned = clean_media_url(url)
+    if not cleaned:
+        return MixCollectionResult(ok=False, error="No Mix or Playlist URL provided.")
+
+    cls = classify_mix_or_playlist(cleaned)
+    platform = detect_platform(cleaned)
+    kind = str(cls.get("kind") or ("YouTube Mix" if "RD" in str(cls.get("list_id")) else "Playlist"))
+    list_id = str(cls.get("list_id") or "")
+    seed_vid = str(cls.get("seed_video_id") or "")
+    capped = max(1, min(60, int(max_items or 25)))
+
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": False,
+        "extract_flat": "in_playlist",
+        "playlistend": capped,
+        "ignoreerrors": True,
+    }
+
+    try:
+        info = _extract_with_ytdlp(
+            cleaned,
+            opts,
+            download=False,
+            cookies_browser=cookies_browser,
+            keep_playlist=True,
+        )
+    except Exception as exc:
+        return MixCollectionResult(
+            ok=False,
+            kind=kind,
+            platform=platform,
+            list_id=list_id,
+            webpage_url=cleaned,
+            error=str(exc),
+        )
+
+    raw_entries = list(info.get("entries") or [])
+    # If YouTube collapsed to a single video dict with no `entries`, wrap it cleanly
+    if not raw_entries and (info.get("id") or info.get("url") or info.get("webpage_url")):
+        raw_entries = [info]
+
+    tracks: list[MixTrackItem] = []
+    seen_ids: set[str] = set()
+    for ent in raw_entries:
+        if not isinstance(ent, dict):
+            continue
+        t_url = _entry_to_track_url(ent, default_platform=platform)
+        if not t_url:
+            continue
+        t_id = str(ent.get("id") or t_url)
+        if t_id in seen_ids:
+            continue
+        seen_ids.add(t_id)
+        tracks.append(
+            MixTrackItem(
+                index=len(tracks),
+                id=t_id,
+                title=str(ent.get("title") or f"Track {len(tracks) + 1}").strip()[:140],
+                url=t_url,
+                uploader=str(ent.get("uploader") or ent.get("channel") or "").strip(),
+                duration=int(ent.get("duration") or 0),
+                platform=detect_platform(t_url) if t_url.startswith("http") else platform,
+            )
+        )
+        if len(tracks) >= capped:
+            break
+
+    # Guarantee the explicit `v=<seed_vid>` from `watch?v=RP0z0PzZ1aU&list=RD...` is playable & selected!
+    start_index = 0
+    if seed_vid:
+        found_idx = next(
+            (i for i, tr in enumerate(tracks) if tr.id == seed_vid or f"v={seed_vid}" in tr.url),
+            None,
+        )
+        if found_idx is not None:
+            start_index = found_idx
+        elif platform == "YouTube":
+            seed_url = f"https://www.youtube.com/watch?v={seed_vid}"
+            tracks.insert(
+                0,
+                MixTrackItem(
+                    index=0,
+                    id=seed_vid,
+                    title=str(info.get("title") or f"Mix Lead ({seed_vid})")[:140],
+                    url=seed_url,
+                    uploader=str(info.get("uploader") or info.get("channel") or ""),
+                    duration=int(info.get("duration") or 0),
+                    platform="YouTube",
+                ),
+            )
+            for idx, tr in enumerate(tracks):
+                tr.index = idx
+            start_index = 0
+
+    if not tracks:
+        return MixCollectionResult(
+            ok=False,
+            kind=kind,
+            platform=platform,
+            list_id=list_id,
+            webpage_url=cleaned,
+            error="Could not find playable items in that Mix / Playlist.",
+        )
+
+    raw_title = str(info.get("title") or "").strip()
+    if not raw_title or raw_title.lower() in ("playlist", "mix"):
+        raw_title = f"{kind} — {tracks[start_index].title[:56]}"
+
+    return MixCollectionResult(
+        ok=True,
+        title=raw_title,
+        kind=kind,
+        platform=platform,
+        list_id=list_id,
+        webpage_url=cleaned,
+        start_index=start_index,
+        tracks=tracks,
+    )
+
+
+def download_mix_or_playlist(
+    url: str,
+    *,
+    output_dir: str = "",
+    audio_only: bool = False,
+    quality: str = "best",
+    max_items: int = 10,
+    cookies_browser: str = "",
+    progress_cb: Callable[[str], None] | None = None,
+) -> MixDownloadResult:
+    """Download a YouTube Mix (`list=RD...`) or Playlist into a clean numbered subfolder."""
+    cleaned = clean_media_url(url)
+    if not cleaned:
+        return MixDownloadResult(ok=False, error="No Mix or Playlist URL provided.")
+
+    coll = extract_mix_or_playlist(
+        cleaned, max_items=max(1, min(50, int(max_items or 10))), cookies_browser=cookies_browser
+    )
+    if not coll.ok or not coll.tracks:
+        return MixDownloadResult(
+            ok=False,
+            kind=coll.kind,
+            platform=coll.platform,
+            audio_only=audio_only,
+            error=coll.error or "Could not extract Mix tracks.",
+        )
+
+    base_dir = resolve_output_directory(output_dir)
+    folder_name = sanitize_filename(f"{coll.title} [{coll.kind}]", max_len=84)
+    mix_dir = base_dir / folder_name
+    mix_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_files: list[str] = []
+    total_bytes = 0
+    capped_tracks = coll.tracks[: max(1, min(50, int(max_items or 10)))]
+
+    for pos, tr in enumerate(capped_tracks, start=1):
+        if callable(progress_cb):
+            progress_cb(f"Downloading track {pos}/{len(capped_tracks)}: {tr.title[:48]}")
+        hint = f"{pos:02d} - {tr.title}"
+        res = download_media(
+            tr.url,
+            output_dir=str(mix_dir),
+            audio_only=audio_only,
+            quality=quality,
+            filename_hint=hint,
+            cookies_browser=cookies_browser,
+        )
+        if res.ok and res.filepath:
+            saved_files.append(res.filepath)
+            total_bytes += res.filesize_bytes
+
+    if not saved_files:
+        return MixDownloadResult(
+            ok=False,
+            folder_path=str(mix_dir),
+            title=coll.title,
+            kind=coll.kind,
+            platform=coll.platform,
+            audio_only=audio_only,
+            error="None of the Mix/Playlist items could be downloaded.",
+        )
+
+    return MixDownloadResult(
+        ok=True,
+        folder_path=str(mix_dir),
+        title=coll.title,
+        kind=coll.kind,
+        platform=coll.platform,
+        files=saved_files,
+        total_size_bytes=total_bytes,
+        audio_only=audio_only,
+    )
+
+
+def summarize_mix_or_playlist(
+    url: str,
+    *,
+    focus: str = "",
+    max_items: int = 6,
+    cookies_browser: str = "",
+) -> dict[str, Any]:
+    """Summarize an entire YouTube Mix (`list=RD...`) or Playlist across its tracks."""
+    cleaned = clean_media_url(url)
+    coll = extract_mix_or_playlist(cleaned, max_items=25, cookies_browser=cookies_browser)
+    if not coll.ok or not coll.tracks:
+        return {
+            "ok": False,
+            "platform": coll.platform,
+            "error": coll.error or "Could not extract Mix / Playlist.",
+        }
+
+    inspect_n = max(1, min(10, int(max_items or 6), len(coll.tracks)))
+    track_notes: list[str] = []
+    for tr in coll.tracks[:inspect_n]:
+        snippet = ""
+        try:
+            info = _extract_with_ytdlp(
+                tr.url,
+                {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True},
+                download=False,
+                cookies_browser=cookies_browser,
+            )
+            sub = _fetch_subtitles_from_info(info)
+            desc = str(info.get("description") or "").strip()
+            snippet = (sub[:700] if sub else desc[:450]).strip()
+        except Exception:
+            snippet = ""
+        dur_s = f"{tr.duration // 60}:{tr.duration % 60:02d}" if tr.duration else "?"
+        line = (
+            f"Track {tr.index + 1}: {tr.title}"
+            + (f" — {tr.uploader}" if tr.uploader else "")
+            + f" ({dur_s})"
+            + (f"\n  Excerpt: {snippet}" if snippet else "")
+        )
+        track_notes.append(line)
+
+    full_roster = "\n".join(
+        f"{tr.index + 1:02d}. {tr.title}" + (f" — {tr.uploader}" if tr.uploader else "")
+        for tr in coll.tracks
+    )
+
+    from core import gemini
+
+    focus_line = f"User focus / question: {focus}\n" if focus else ""
+    prompt = (
+        f"Summarize this {coll.kind} ({len(coll.tracks)} tracks total).\n"
+        f"Collection Title: {coll.title}\n"
+        f"{focus_line}\n"
+        f"Full Tracklist:\n{full_roster}\n\n"
+        f"Detailed Notes on Lead Tracks:\n" + "\n\n".join(track_notes) + "\n\n"
+        "Give a crisp overview of the Mix/Playlist's vibe, themes, or musical/content arc, "
+        "followed by highlights of the standout tracks."
+    )
+    resp = gemini.call(prompt, tier=gemini.SMART, timeout_ms=55_000)
+    summary_text = (getattr(resp, "text", "") or "").strip() if resp else ""
+    if not summary_text:
+        summary_text = f"{coll.title} ({len(coll.tracks)} tracks):\n{full_roster}"
+
+    return {
+        "ok": True,
+        "kind": coll.kind,
+        "platform": coll.platform,
+        "title": coll.title,
+        "track_count": len(coll.tracks),
+        "tracks": [
+            {
+                "index": tr.index + 1,
+                "title": tr.title,
+                "uploader": tr.uploader,
+                "duration": tr.duration,
+                "url": tr.url,
+            }
+            for tr in coll.tracks
+        ],
+        "summary": summary_text,
+    }
+
+
+def _stamp_mix_frame_badge(img: Any, track_num: int, sec: float) -> Any:
+    try:
+        from PIL import ImageDraw
+
+        out = img.convert("RGB")
+        draw = ImageDraw.Draw(out, "RGBA")
+        m, s = divmod(max(0, int(round(sec))), 60)
+        label = f"#{track_num} {m:02d}:{s:02d}"
+        draw.rounded_rectangle((8, 8, 92, 30), radius=6, fill=(5, 12, 22, 215))
+        draw.text((14, 13), label, fill=(110, 240, 255, 255))
+        return out
+    except Exception:
+        return img
+
+
+def watch_mix_or_playlist(
+    url: str,
+    *,
+    question: str = "",
+    max_tracks: int = 3,
+    frames_per_track: int = 3,
+    track_index: int | None = None,
+    cookies_browser: str = "",
+) -> dict[str, Any]:
+    """Visually watch keyframes across a YouTube Mix (`list=RD...`) or Playlist (or a specific track in it)."""
+    cleaned = clean_media_url(url)
+    coll = extract_mix_or_playlist(cleaned, max_items=25, cookies_browser=cookies_browser)
+    if not coll.ok or not coll.tracks:
+        return {
+            "ok": False,
+            "platform": coll.platform,
+            "error": coll.error or "Could not extract Mix / Playlist.",
+        }
+
+    # If the user asked to see a specific 1-based track in the Mix, watch that track in high detail!
+    if track_index is not None and 1 <= int(track_index) <= len(coll.tracks):
+        chosen = coll.tracks[int(track_index) - 1]
+        res = watch_media(
+            chosen.url,
+            question=question,
+            max_frames=8,
+            cookies_browser=cookies_browser,
+        )
+        res["kind"] = coll.kind
+        res["mix_title"] = coll.title
+        res["track_index"] = int(track_index)
+        return res
+
+    sample_tracks = coll.tracks[: max(1, min(5, int(max_tracks or 3)))]
+    all_frames: list[Any] = []
+    per_track_context: list[str] = []
+
+    stage_root = Path(tempfile.mkdtemp(prefix=".jarvis_mix_watch_"))
+    try:
+        for idx, tr in enumerate(sample_tracks, start=1):
+            t_dir = stage_root / f"t_{idx}"
+            t_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                vid_file, info = _stage_video_for_vision(
+                    tr.url, t_dir, cookies_browser=cookies_browser
+                )
+                sub = _fetch_subtitles_from_info(info)
+                raw_frames = (
+                    extract_video_frames(
+                        vid_file,
+                        max_frames=max(1, min(4, int(frames_per_track or 3))),
+                        max_dim=640,
+                        duration_hint=int(info.get("duration") or tr.duration or 0),
+                    )
+                    if vid_file is not None
+                    else []
+                )
+                stamped = [_stamp_mix_frame_badge(im, idx, sec) for sec, im in raw_frames]
+                all_frames.extend(stamped)
+                per_track_context.append(
+                    f"Track #{idx}: {tr.title}"
+                    + (f" by {tr.uploader}" if tr.uploader else "")
+                    + f" ({len(stamped)} keyframes attached)"
+                    + (f"\n  Captions: {sub[:450]}" if sub else "")
+                )
+            except Exception as exc:
+                per_track_context.append(f"Track #{idx}: {tr.title} (frame capture skipped: {exc})")
+
+        if not all_frames:
+            return summarize_mix_or_playlist(
+                cleaned, focus=question, cookies_browser=cookies_browser
+            )
+
+        from core import gemini
+
+        q_line = (
+            f"Specific user question: {question}\n"
+            if question
+            else "Describe what you visually see across each sampled video in this Mix/Playlist, their visual aesthetic/scenes, and how they connect.\n"
+        )
+        prompt = (
+            f"You are visually watching {len(sample_tracks)} lead videos from {coll.kind} '{coll.title}' "
+            f"({len(coll.tracks)} total tracks in the Mix; {len(all_frames)} badged keyframes `#Track MM:SS` attached).\n\n"
+            + "\n".join(per_track_context)
+            + f"\n\n{q_line}"
+        )
+        resp = gemini.call([*all_frames, prompt], tier=gemini.SMART, timeout_ms=65_000)
+        analysis = (getattr(resp, "text", "") or "").strip() if resp else ""
+        if not analysis:
+            analysis = "\n".join(per_track_context)
+
+        return {
+            "ok": True,
+            "kind": coll.kind,
+            "platform": coll.platform,
+            "title": coll.title,
+            "track_count": len(coll.tracks),
+            "tracks_watched": len(sample_tracks),
+            "frames_analyzed": len(all_frames),
+            "analysis": analysis,
+            "summary": analysis,
+        }
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
