@@ -8,10 +8,24 @@ by voice or text across both Male and Female editions.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from core import automations, companions, security_vault
 from memory import timeline
+
+
+def _parse_json_obj(val: Any, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str) and val.strip():
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+    return dict(default) if default is not None else {}
 
 
 def companion_os(parameters: dict[str, Any] | None = None, player=None, **_kwargs) -> str:
@@ -45,9 +59,9 @@ def companion_os(parameters: dict[str, Any] | None = None, player=None, **_kwarg
                     "every_minutes": int(params.get("every_minutes") or 60),
                     "daily_at": str(params.get("daily_at") or "09:00"),
                     "tool": str(params.get("tool") or "cloud_integrations"),
-                    "params": params.get("tool_params")
-                    if isinstance(params.get("tool_params"), dict)
-                    else {"action": "status"},
+                    "params": _parse_json_obj(
+                        params.get("tool_params"), default={"action": "status"}
+                    ),
                 }
             )
             return f"Saved automation '{rec['name']}' (id={rec['id']}, {rec['schedule_type']})."
@@ -193,7 +207,10 @@ TOOL = {
             "every_minutes": {"type": "INTEGER", "description": "Interval minutes for automation_save"},
             "daily_at": {"type": "STRING", "description": "HH:MM time for daily automation_save"},
             "tool": {"type": "STRING", "description": "Target action tool name for automation_save"},
-            "tool_params": {"type": "OBJECT", "description": "Parameters dict for automation_save"},
+            "tool_params": {
+                "type": "STRING",
+                "description": "Optional JSON object string of parameters for automation_save, e.g. '{\"action\": \"status\"}'",
+            },
             "role": {"type": "STRING", "description": "Specialist companion role"},
             "persona": {"type": "STRING", "description": "male | female"},
             "voice": {"type": "STRING", "description": "Voice name (e.g. Charon, Aoede)"},

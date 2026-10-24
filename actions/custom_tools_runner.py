@@ -5,9 +5,23 @@ connectors and Model Context Protocol (MCP) servers created in HUD -> Automate.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from core import mcp_adapter
+
+
+def _parse_json_obj(val: Any) -> dict[str, Any]:
+    if isinstance(val, dict):
+        return val
+    if isinstance(val, str) and val.strip():
+        try:
+            parsed = json.loads(val)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+    return {}
 
 
 def custom_connector(parameters: dict[str, Any] | None = None, **_kwargs) -> str:
@@ -28,7 +42,7 @@ def custom_connector(parameters: dict[str, Any] | None = None, **_kwargs) -> str
 
         if action == "call_rest":
             name = str(params.get("name") or "").strip()
-            args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            args = _parse_json_obj(params.get("arguments"))
             return mcp_adapter.invoke_rest_connector(name, args)
 
         if action == "discover_mcp":
@@ -39,7 +53,7 @@ def custom_connector(parameters: dict[str, Any] | None = None, **_kwargs) -> str
         if action == "call_mcp":
             srv = str(params.get("server") or "").strip()
             tname = str(params.get("tool_name") or params.get("name") or "").strip()
-            args = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            args = _parse_json_obj(params.get("arguments"))
             return mcp_adapter.call_mcp_tool(srv, tname, args)
 
         return "Unknown action. Use: list | call_rest | discover_mcp | call_mcp."
@@ -62,7 +76,10 @@ TOOL = {
             "name": {"type": "STRING", "description": "REST connector name/id or MCP tool name"},
             "server": {"type": "STRING", "description": "MCP server name/id"},
             "tool_name": {"type": "STRING", "description": "MCP tool name for call_mcp"},
-            "arguments": {"type": "OBJECT", "description": "JSON arguments/parameters"},
+            "arguments": {
+                "type": "STRING",
+                "description": "Optional JSON object string of arguments/parameters, e.g. '{\"query\": \"status\"}'",
+            },
         },
         "required": ["action"],
     },
