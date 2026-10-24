@@ -80,6 +80,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "focus_guardian": ["chief_of_staff", "strategist"],
     "cloud_integrations": ["email", "drive", "calendar"],
     "custom_connector": ["developer", "ops"],
+    "companion_os": ["chief_of_staff", "strategist"],
     "manage_accounts": ["chief_of_staff", "email"],
     "gws_pack": ["email", "drive", "calendar"],
     "github_automation": ["developer", "engineering"],

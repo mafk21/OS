@@ -4,7 +4,11 @@ def manage_accounts(parameters: dict, player=None, **_):
     try:
         if action=="list":
             rows=ac.list_accounts()
-            if not rows: return "No accounts connected. Supported: gmail, google_calendar, google_classroom, google_drive, github, trello, slack, notion, discord. Use action=connect with service and token."
+            if not rows:
+                return (
+                    f"No accounts connected. Supported: {', '.join(ac.SUPPORTED)}. "
+                    "Use action=connect with service and token."
+                )
             lines=["Accounts:"]
             for r in rows:
                 lines.append(f"  {r['service']} — {r['permission']} — {'✓' if r['connected'] else '✗'} {r['email']}")
@@ -45,7 +49,7 @@ def manage_accounts(parameters: dict, player=None, **_):
 
 TOOL={
     "name":"manage_accounts",
-    "description":"Account Center: list/connect/disconnect accounts (gmail, calendar, classroom, drive, github, trello, slack, notion, discord). Each has permission ask/full/readonly/paused.",
+    "description":"Account Center: list/connect/disconnect accounts (email, gmail, google_calendar, google_classroom, google_drive, github, trello, slack, notion, discord, telegram, spotify, linear, outlook, dropbox, hubspot, calendly). Each has permission ask/full/readonly/paused.",
     "parameters":{
         "type":"OBJECT",
         "properties":{
