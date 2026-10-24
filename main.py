@@ -1012,6 +1012,16 @@ class JarvisLive:
             logger=lambda msg: print(f"[Skills] {msg}"),
         )
 
+        # Ensure recurring Automations run even in Classic PyQt6 mode (no ApexHudBridge)
+        self._classic_auto_scheduler = None
+        if getattr(self.ui, "_apex_bridge", None) is None:
+            try:
+                from core.automations import AutomationScheduler
+                self._classic_auto_scheduler = AutomationScheduler(on_log=self.ui.write_log)
+                self._classic_auto_scheduler.start()
+            except Exception:
+                pass
+
         # ── Wake word ────────────────────────────────────────────────────────
         # _awake gates the mic (see _listen_audio) and the background speakers.
         # It is True whenever wake word is OFF, so default behaviour is unchanged.

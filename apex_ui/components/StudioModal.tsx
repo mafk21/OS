@@ -84,6 +84,8 @@ export default function StudioModal() {
   const [skillBody, setSkillBody] = useState(
     "## When to use\nTrigger on ...\n\n## Procedure\n1. Step one\n\n## Pitfalls\n- Watch out for ...\n\n## Verification\n- Confirm result"
   );
+  const [customPri, setCustomPri] = useState("");
+  const [customSec, setCustomSec] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -93,6 +95,8 @@ export default function StudioModal() {
         if (j.studio) {
           setData(j.studio);
           setAnswers(j.studio.interview_answers || {});
+          setCustomPri(j.studio.theme?.custom_primary || "");
+          setCustomSec(j.studio.theme?.custom_secondary || "");
         }
       }
     } catch {}
@@ -968,6 +972,103 @@ export default function StudioModal() {
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Custom Hex Color Pickers */}
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: 16,
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.025)",
+                  border: "1px solid rgba(255,255,255,0.09)",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    letterSpacing: "0.14em",
+                    color: SECONDARY,
+                  }}
+                >
+                  CUSTOM ORB & HUD HEX PALETTE
+                </span>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+                  Primary:
+                  <input
+                    type="color"
+                    value={customPri || PRIMARY}
+                    onChange={(e) => setCustomPri(e.target.value)}
+                    style={{ width: 30, height: 28, border: "none", background: "none", cursor: "pointer" }}
+                  />
+                  <input
+                    value={customPri}
+                    onChange={(e) => setCustomPri(e.target.value)}
+                    placeholder="#00e5ff"
+                    style={{
+                      width: 92,
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.35)",
+                      color: "#f0ede8",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                    }}
+                  />
+                </label>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+                  Secondary:
+                  <input
+                    type="color"
+                    value={customSec || SECONDARY}
+                    onChange={(e) => setCustomSec(e.target.value)}
+                    style={{ width: 30, height: 28, border: "none", background: "none", cursor: "pointer" }}
+                  />
+                  <input
+                    value={customSec}
+                    onChange={(e) => setCustomSec(e.target.value)}
+                    placeholder="#f5a623"
+                    style={{
+                      width: 92,
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.35)",
+                      color: "#f0ede8",
+                      fontFamily: "var(--font-mono)",
+                      fontSize: 11,
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    postAction({
+                      action: "studio_save_theme",
+                      preset: data?.theme?.preset || "default",
+                      custom_primary: customPri,
+                      custom_secondary: customSec,
+                    })
+                  }
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 999,
+                    border: `1px solid ${PRIMARY}66`,
+                    background: `${PRIMARY}22`,
+                    color: PRIMARY,
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  APPLY CUSTOM HEX
+                </button>
               </div>
             </div>
           )}

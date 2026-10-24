@@ -85,7 +85,7 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 ---
 
 ### 2. Multi-Provider Ladder & 100% Offline Local Mode
-  never bricks when an API key hits quota or Wi-Fi drops:
+JARVIS never bricks when an API key hits quota or Wi-Fi drops:
 
 - **9-Rung Gemini Model Ladder (`core/gemini.py`)**: Every Live and one-shot call walks a measured fallback ladder with automatic per-model cooldowns on quota (`429`), timeout, or preview deprecation.
 - **Universal Provider Abstraction (`core/provider.py`)**: Unified failover across **Gemini**, **Anthropic**, **OpenAI**, **xAI (Grok)**, **DeepSeek**, **Groq**, **Together**, and local **Ollama / LM Studio** (`core/llm_client.py`).
@@ -160,21 +160,22 @@ Talk to and control the same live JARVIS instance from your desk, phone, or chat
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Start (1-Click Native Launcher or CLI)
 
 ```bash
 git clone https://github.com/mafk21/OS.git
 cd OS
-python setup.py        # OS-aware installer: installs deps for YOUR OS + Playwright browser engine
-python main.py         # launches APEX-UI HUD -> pick Male or Female edition -> starts Gemini Live
+
+# Option A — 1-Click Isolated .venv + Native Desktop Launchers (Windows .bat / macOS .command)
+python install_jarvis.py --install --launch
+
+# Option B — OS-aware installer + direct launch
+python setup.py        # installs deps for YOUR OS + Playwright browser engine
+python main.py         # launches 3D APEX-UI HUD -> API key -> optional Integrations -> Male/Female chooser
 # Optional direct CLI preset: python main.py --female   or   python main.py --male
 ```
 
-`setup.py` validates your Python version up front and automatically skips packages meant for other operating systems (Windows-only COM/UIA libraries are skipped on macOS/Linux and vice versa). Manual install works too:
-
-```bash
-pip install -r requirements.txt
-```
+After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_JARVIS.command`** (macOS) anytime — zero Node.js required (`apex_ui/static_hud` ships pre-compiled).
 
 ### Running the Test Suite
 
@@ -205,11 +206,19 @@ pytest tests/ -q
 ```text
 OS/
 ├── main.py                        # Core runtime — Gemini 3.8 Live loop, duplex audio, visemes, tool router
-├── ui.py                          # PyQt6 HUD — 3D avatar canvas, waveform, content panel, memory & settings
+├── ui.py                          # Desktop bridge + Classic PyQt6 HUD fallback (`JARVIS_CLASSIC_UI=1`)
+├── install_jarvis.py              # 1-click isolated `.venv` installer & native `.bat` / `.command` launcher generator
 ├── setup.py                       # Cross-platform OS-aware dependency & browser installer
+├── apex_ui/                       # 3D Particle Orb HUD (`static_hud/` prebuilt: Brain, Worker Orbs, Studio, Automate, Code, Shield)
 ├── ROADMAP.md                     # Architectural phase roadmap & design milestones
 │
 ├── core/                          # Engine, cognition, safety & gateway internals
+│   ├── apex_bridge.py             # FastAPI + `/ws/hud` real-time bridge, Guest Portals & HUD action router
+│   ├── companions.py              # Behavior Interviews, Adaptive Style Learning, Specialist Companions & Themes
+│   ├── automations.py             # Recurring interval & daily Automations scheduler + run history
+│   ├── mcp_adapter.py             # Custom REST/Webhook Builder + MCP JSON-RPC 2.0 (HTTP & stdio) client
+│   ├── dev_workspace.py           # Live streaming Dev Terminal, Codebase File-Tree Map & Git Diffs
+│   ├── security_vault.py          # AES-256-GCM Credential Vault, SHA-256 Audit Chain & Revocable Guest Portals
 │   ├── gemini.py                  # 9-rung Gemini model ladder, cooldowns & timeout management
 │   ├── provider.py                # Universal multi-provider ladder (Anthropic/OpenAI/xAI/DeepSeek/Groq/Ollama)
 │   ├── llm_client.py              # Local LLM client (Ollama / LM Studio)
@@ -243,8 +252,11 @@ OS/
 │   ├── installer.py               # On-demand optional package installer
 │   └── prompt.txt                 # Dynamic system prompt template hydrated from live runtime state
 │
-├── actions/                       # 48 self-describing OS, cloud, research, productivity & creative actions
-│   ├── cloud_integrations.py      # Direct background APIs (Email IMAP/SMTP & Gmail, Drive, Calendar, Notion, Slack, Discord, Trello)
+├── actions/                       # 51 self-describing OS, cloud, research, productivity & creative actions
+│   ├── brain_control.py           # Unified Brain & Forever Timeline tool (search, remember, forget, ingest_file, outputs)
+│   ├── companion_os.py            # Voice/text control for Automations, Specialist Companions, Portals & Audit Chain
+│   ├── custom_tools_runner.py     # Runtime dispatcher for user-created Custom REST/Webhooks & MCP servers
+│   ├── cloud_integrations.py      # Direct APIs (Email, Gmail, Drive, Calendar, Notion, Slack, Discord, Trello, Linear, Outlook, Dropbox, HubSpot, Calendly)
 │   ├── device_manager.py          # Verified window, terminal, process, port, disk, battery & network manager
 │   ├── computer_use.py            # Set-of-Mark visual grounding (som_capture, click/type/hover_by_id)
 │   ├── accessibility.py           # Native UI Automation (Win) / AT-SPI (Linux) semantic element control
