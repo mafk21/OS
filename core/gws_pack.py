@@ -116,7 +116,13 @@ def _find_element_id(som_result: str, hint: str) -> Optional[str]:
 # ── Individual GWS actions ────────────────────────────────────────────────
 
 def _gmail_send(to: str, subject: str, body: str) -> str:
-    """Compose and send an email in Gmail."""
+    """Compose and send an email in Gmail (direct API/SMTP first if connected, else browser SoM)."""
+    try:
+        import memory.accounts as _ac
+        if _ac.is_service_connected("gmail") or _ac.is_service_connected("email"):
+            return _ac.email_send_message(to, subject, body)
+    except Exception:
+        pass
     # 1. Capture screen to see current state
     som = _som_capture()
 
@@ -158,7 +164,18 @@ def _gmail_send(to: str, subject: str, body: str) -> str:
 
 
 def _gmail_search(query: str) -> str:
-    """Search Gmail and list matching threads."""
+    """Search Gmail and list matching threads (direct API/IMAP first if connected, else browser SoM)."""
+    try:
+        import memory.accounts as _ac
+        if _ac.is_service_connected("gmail") or _ac.is_service_connected("email"):
+            msgs = _ac.email_search_messages(query, max_results=8)
+            if not msgs:
+                return f"Gmail search '{query}': no matching messages."
+            return f"Gmail search '{query}':\n" + "\n".join(
+                f"  • {m['subject']} — From: {m['from']} ({m['date']})" for m in msgs
+            )
+    except Exception:
+        pass
     som = _som_capture()
     search_id = _find_element_id(som, "search")
     if search_id:
@@ -203,7 +220,16 @@ def _docs_write(content: str) -> str:
 
 
 def _drive_upload(file_path: str) -> str:
-    """Upload a file to Google Drive."""
+    """Upload a file to Google Drive (direct Drive v3 API first if connected, else browser SoM)."""
+    try:
+        import memory.accounts as _ac
+        if _ac.is_service_connected("google_drive"):
+            up = _ac.drive_upload_file(file_path)
+            return f"Google Drive uploaded '{up.get('name', file_path)}': {up.get('webViewLink', up.get('id', ''))}"
+    except FileNotFoundError:
+        return f"gws_pack drive_upload: file not found — {file_path}"
+    except Exception:
+        pass
     if not file_path or not os.path.exists(file_path):
         return f"gws_pack drive_upload: file not found — {file_path}"
     som = _som_capture()
@@ -222,7 +248,14 @@ def _drive_upload(file_path: str) -> str:
 
 
 def _calendar_add(title: str, when: str, description: str = "") -> str:
-    """Add an event to Google Calendar."""
+    """Add an event to Google Calendar (direct Calendar API first if connected, else browser SoM)."""
+    try:
+        import memory.accounts as _ac
+        if _ac.is_service_connected("google_calendar"):
+            ev = _ac.calendar_quick_add(f"{title} {when}".strip())
+            return f"Google Calendar: added '{ev.get('summary', title)}' ({when}) — {ev.get('htmlLink', 'scheduled')}"
+    except Exception:
+        pass
     som = _som_capture()
     create_id = _find_element_id(som, "create")
     if create_id:

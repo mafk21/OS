@@ -5,11 +5,12 @@
 | Metric | Scale |
 | :--- | :--- |
 | **Codebase** | **34,000+ lines** across **85+ Python modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **46 self-describing OS actions** + **15 live-session tools** + **10 default `SKILL.md` playbooks** + **drop-in plugins & MCP** |
-| **Live Voice Engine** | **Gemini 3.8 Live** bidirectional audio + **9-rung model ladder** + **97-language** mid-turn switching |
+| **Execution Surface** | **48 self-describing OS & cloud actions** + **15 live-session tools** + **10 default `SKILL.md` playbooks** + **drop-in plugins & MCP** |
+| **Live Voice Engine** | **Gemini 3.8 Live** bidirectional audio + **Male (`Charon`) & Female (`Aoede`) Editions** + **9-rung model ladder** + **97-language** mid-turn switching |
+| **Cloud & Mail Integrations** | **Optional First-Run Setup (Ignore/Skip anything unused)** — direct **Email (IMAP/SMTP & Gmail API)**, **Google Drive**, **Google Calendar**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, and **Trello** |
 | **Provider & Offline Stack** | **8 cloud/local LLM providers** (Gemini, Anthropic, OpenAI, xAI, DeepSeek, Groq, Together, Ollama) + local **Whisper STT / Piper-Kokoro TTS** |
-| **Rendering** | **Zero GPU required** — 3D MediaPipe canonical head mesh, lighting, rig & ~50 Hz formant/transcript lip-sync rendered pure in software (`QPainter`) |
-| **Verification** | **179+ automated `pytest` tests** covering voice, session recycling, scheduling, memory, default skills, subagents, computer use, screen memory, gateway & GWS automation |
+| **Rendering** | **Zero GPU required** — 3D particle HUD (`apex_ui/`) + MediaPipe canonical head mesh & ~50 Hz formant/transcript lip-sync (`QPainter`) |
+| **Verification** | **235+ automated `pytest` tests** covering voice, Male/Female editions, first-run integrations & Email/Drive/Notion/Slack APIs, session recycling, scheduling, memory, skills, subagents, computer use & GWS automation |
 
 ---
 
@@ -63,7 +64,8 @@ Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`
 
 | Capability | Engineering |
 | :--- | :--- |
-| 🌐 **APEX-UI 3D Desktop HUD (Male & Female Editions)** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**. On launch (`python main.py`), choose between the **Male Edition** (Electric Cyan & Stark Gold 3D core · `Charon` deep baritone voice) and **Female Edition** (Luminous Rose-Magenta & Orchid-Amethyst 3D core · `Aoede` natural female voice), with live hover-preview and 1-click hot-swapping anytime from the HUD. Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
+| 🌐 **APEX-UI 3D Desktop HUD (Male & Female Editions)** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**. On launch (`python main.py`), choose between the **Male Edition** (Electric Cyan & Stark Gold 3D core · `Charon` deep baritone voice) and **Female Edition** (Luminous Rose-Magenta & Orchid-Amethyst 3D core · `Aoede` natural female voice), with live hover-preview and 1-click hot-swapping anytime from the HUD (`--male` / `--female` CLI flags also supported). Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
+| 🔗 **First-Run Optional Integrations & Direct Cloud/Mail APIs** | On first boot, right after entering your Gemini API key, JARVIS walks you through **Optional Integrations Setup** (**Email IMAP/SMTP App Password**, **Google Workspace OAuth for Gmail/Drive/Calendar**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**). Every service has an explicit **`IGNORE`** toggle plus **`IGNORE ALL / SKIP FOR NOW`** so nothing is ever forced — and connected accounts execute silently in the background via `cloud_integrations` across both **Male** and **Female** editions (manageable anytime via the HUD **`LINKS`** pill). |
 | 🧑‍🎤 **Classic Software 3D Avatar** | Optional classic PyQt6 HUD (`JARVIS_CLASSIC_UI=1`) rendering the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, dynamic lighting, and live hue/hex theming purely in `QPainter`. |
 | 👄 **50 Hz Formant + Transcript Lip-Sync** | `core/viseme.py` fuses real-time audio formants with incoming transcript phonemes for accurate bilabial closures, spreads, and rounded vowels across Latin, Cyrillic, and Greek scripts via Unicode reduction. |
 | 🙂 **State-Driven Facial Acting** | Phrase-tracking eyebrows, saccadic eye fixations, stressed-syllable nods, thinking gaze-away, eye contact while listening, closed lids while sleeping, and downward glances when HUD content updates. |
@@ -235,7 +237,8 @@ OS/
 │   ├── installer.py               # On-demand optional package installer
 │   └── prompt.txt                 # Dynamic system prompt template hydrated from live runtime state
 │
-├── actions/                       # 47 self-describing OS, research, productivity & creative actions
+├── actions/                       # 48 self-describing OS, cloud, research, productivity & creative actions
+│   ├── cloud_integrations.py      # Direct background APIs (Email IMAP/SMTP & Gmail, Drive, Calendar, Notion, Slack, Discord, Trello)
 │   ├── device_manager.py          # Verified window, terminal, process, port, disk, battery & network manager
 │   ├── computer_use.py            # Set-of-Mark visual grounding (som_capture, click/type/hover_by_id)
 │   ├── accessibility.py           # Native UI Automation (Win) / AT-SPI (Linux) semantic element control
@@ -300,7 +303,7 @@ OS/
 │   ├── memory_manager.py          # Two-tier long-term memory, search, hygiene & session summaries
 │   ├── config_manager.py          # Thread-safe config/api_keys.json preferences & toggles
 │   ├── productivity.py            # SQLite backend for tasks, notes & productivity state
-│   ├── accounts.py                # Connected service registry & permission tiers
+│   ├── accounts.py                # Connected service registry, OAuth/IMAP/SMTP/REST clients & permission tiers
 │   └── routines.json              # Saved multi-step voice routines
 │
 ├── dashboard/                     # Local HTTPS mobile companion server (QR pairing + phone mic relay)
@@ -310,7 +313,7 @@ OS/
 ├── plugins/                       # Drop-in user plugins (_template.py starter included)
 ├── config/                        # Local runtime keys & self-signed TLS certs (git-ignored)
 ├── LICENSE                        # MIT License
-└── tests/                         # 212+ pytest unit & integration tests across all phases
+└── tests/                         # 235+ pytest unit & integration tests across all phases
 ```
 
 ---
