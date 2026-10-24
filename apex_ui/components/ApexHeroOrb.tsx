@@ -6,7 +6,25 @@ import ApexOrb from "./ApexOrb";
 import "./apex-orb.css";
 
 // three/fiber must never SSR
-const ApexCore3D = dynamic(() => import("./ApexCore3D"), { ssr: false });
+const ApexCore3D = dynamic(() => import("./ApexCore3D"), {
+  ssr: false,
+}) as unknown as React.ComponentType<{
+  state?: OrbState;
+  variant?: string;
+  contained?: boolean;
+  onClick?: () => void;
+  primaryColor?: string;
+  secondaryColor?: string;
+  brightColor?: string;
+}>;
+
+const ApexOrbComp = ApexOrb as unknown as React.ComponentType<{
+  state?: OrbState;
+  variant?: string;
+  onRingClick?: () => void;
+  accent?: string;
+  accentBright?: string;
+}>;
 
 const STAGE_W = 900;
 const STAGE_H = 900;
@@ -17,10 +35,18 @@ export default function ApexHeroOrb({
   state: controlled,
   onStateChange,
   interactive = true,
+  primaryColor = "#00e5ff",
+  primaryBright = "#c8f7ff",
+  secondaryColor = "#f5a623",
+  secondaryBright = "#ffd080",
 }: {
   state?: OrbState;
   onStateChange?: (s: OrbState) => void;
   interactive?: boolean;
+  primaryColor?: string;
+  primaryBright?: string;
+  secondaryColor?: string;
+  secondaryBright?: string;
 } = {}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(0.6);
@@ -121,7 +147,13 @@ export default function ApexHeroOrb({
             pointerEvents: "none",
           }}
         >
-          <ApexOrb state={state} variant="frame" onRingClick={undefined} />
+          <ApexOrbComp
+            state={state}
+            variant="frame"
+            onRingClick={undefined}
+            accent={secondaryColor}
+            accentBright={secondaryBright}
+          />
         </div>
         {!reducedMotion && (
           <ApexCore3D
@@ -129,6 +161,9 @@ export default function ApexHeroOrb({
             variant="particles"
             contained
             onClick={undefined}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            brightColor={primaryBright}
           />
         )}
       </div>

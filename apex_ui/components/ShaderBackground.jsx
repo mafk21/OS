@@ -24,6 +24,7 @@ const fsSource = `
   uniform float iFlow;
   uniform float iVoiceIntensity;
   uniform float iGold;            // 0 = cyan (command center), 1 = gold (original)
+  uniform float iFemale;          // 0 = male edition, 1 = female rose/orchid edition
 
   const float overallSpeed    = 0.11;
   const float gridSmoothWidth = 0.015;
@@ -68,8 +69,12 @@ const fsSource = `
 
     // Voice intensity — clearly reactive when Apex speaks (amplitude + brightness + flow)
     float voiceBoost = iVoiceIntensity;
-    vec4 lineColorBase = mix(vec4(0.06, 0.45, 0.55, 1.0), vec4(0.62, 0.40, 0.06, 1.0), iGold);
-    vec4 lineColorCool = mix(vec4(0.03, 0.28, 0.38, 1.0), vec4(0.42, 0.27, 0.04, 1.0), iGold);
+    vec4 maleBase   = mix(vec4(0.06, 0.45, 0.55, 1.0), vec4(0.62, 0.40, 0.06, 1.0), iGold);
+    vec4 maleCool   = mix(vec4(0.03, 0.28, 0.38, 1.0), vec4(0.42, 0.27, 0.04, 1.0), iGold);
+    vec4 femaleBase = vec4(0.62, 0.16, 0.48, 1.0);
+    vec4 femaleCool = vec4(0.36, 0.12, 0.52, 1.0);
+    vec4 lineColorBase = mix(maleBase, femaleBase, iFemale);
+    vec4 lineColorCool = mix(maleCool, femaleCool, iFemale);
     float lineAmplitude = baseAmplitude * (1.0 + voiceBoost * 2.8);
     float brightnessBoost = 1.0 + voiceBoost * 2.2;
 
@@ -95,7 +100,8 @@ const fsSource = `
 
     // Background: near-pure black, barely warm at edges
     vec4 bgCenter = vec4(0.001, 0.002, 0.003, 1.0);
-    vec4 bgEdge   = mix(vec4(0.001, 0.006, 0.010, 1.0), vec4(0.009, 0.005, 0.001, 1.0), iGold);
+    vec4 maleEdge = mix(vec4(0.001, 0.006, 0.010, 1.0), vec4(0.009, 0.005, 0.001, 1.0), iGold);
+    vec4 bgEdge   = mix(maleEdge, vec4(0.011, 0.002, 0.012, 1.0), iFemale);
     vec4 fragColor = mix(bgCenter, bgEdge, edgeGlow * 0.45 + bottomGlow * 0.6);
     fragColor *= verticalFade * 0.92 + 0.08;
     fragColor.a = 1.0;
@@ -126,7 +132,8 @@ const fsSource = `
 
     // Very subtle glossy ring — barely visible
     float glossRing = smoothstep(0.38, 0.42, centerDist) * smoothstep(0.58, 0.42, centerDist);
-    fragColor += mix(vec4(0.06, 0.42, 0.55, 0.0), vec4(0.62, 0.40, 0.06, 0.0), iGold) * glossRing * 0.03;
+    vec4 glossCol = mix(mix(vec4(0.06, 0.42, 0.55, 0.0), vec4(0.62, 0.40, 0.06, 0.0), iGold), vec4(0.60, 0.18, 0.50, 0.0), iFemale);
+    fragColor += glossCol * glossRing * 0.03;
 
     fragColor += lines * brightnessBoost;
     gl_FragColor = fragColor;
@@ -159,23 +166,29 @@ function initShaderProgram(gl, vs, fs) {
   return program
 }
 
-export default function ShaderBackground({ opacity = 0.18, voiceActive = false, gold = false }) {
+export default function ShaderBackground({ opacity = 0.18, voiceActive = false, gold = false, female = false }) {
   const canvasRef      = useRef(null)
   const voiceRef       = useRef(0)          // current interpolated intensity 0–1
   const voiceTargetRef = useRef(0)          // target: 0 or 1
   const flowRef        = useRef(0)          // accumulated wave-flow time (advances faster when speaking)
   const goldRef        = useRef(gold ? 1 : 0)        // current 0=cyan → 1=gold
   const goldTargetRef  = useRef(gold ? 1 : 0)
+  const femRef         = useRef(female ? 1 : 0)
+  const femTargetRef   = useRef(female ? 1 : 0)
 
   // Smoothly ramp voice intensity
   useEffect(() => {
     voiceTargetRef.current = voiceActive ? 1.0 : 0.0
   }, [voiceActive])
 
-  // Smoothly cross-fade wave colour (cyan ↔ gold) when the design mode toggles
+  // Smoothly cross-fade wave colour (cyan ↔ gold ↔ female rose) when the design mode toggles
   useEffect(() => {
     goldTargetRef.current = gold ? 1.0 : 0.0
   }, [gold])
+
+  useEffect(() => {
+    femTargetRef.current = female ? 1.0 : 0.0
+  }, [female])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -199,6 +212,7 @@ export default function ShaderBackground({ opacity = 0.18, voiceActive = false, 
         time:           gl.getUniformLocation(program, 'iFlow'),
         voiceIntensity: gl.getUniformLocation(program, 'iVoiceIntensity'),
         gold:           gl.getUniformLocation(program, 'iGold'),
+        female:         gl.getUniformLocation(program, 'iFemale'),
       },
     }
 
@@ -231,6 +245,7 @@ export default function ShaderBackground({ opacity = 0.18, voiceActive = false, 
       // Flow advances faster while Apex speaks (up to ~3.4x), smoothly — no phase jump
       flowRef.current += dt * (1.0 + voiceRef.current * 2.4)
       goldRef.current += (goldTargetRef.current - goldRef.current) * Math.min(dt * 3, 1)  // cyan↔gold cross-fade
+      femRef.current  += (femTargetRef.current  - femRef.current)  * Math.min(dt * 3.5, 1) // male↔female cross-fade
       gl.clearColor(0, 0, 0, 1)
       gl.clear(gl.COLOR_BUFFER_BIT)
       gl.useProgram(programInfo.program)
@@ -238,6 +253,7 @@ export default function ShaderBackground({ opacity = 0.18, voiceActive = false, 
       gl.uniform1f(programInfo.uniformLocations.time, flowRef.current)
       gl.uniform1f(programInfo.uniformLocations.voiceIntensity, voiceRef.current)
       gl.uniform1f(programInfo.uniformLocations.gold, goldRef.current)
+      gl.uniform1f(programInfo.uniformLocations.female, femRef.current)
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
       gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0)
       gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition)

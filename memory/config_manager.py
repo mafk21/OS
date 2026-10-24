@@ -75,18 +75,31 @@ def save_assistant_config(assistant_name: str, user_name: str) -> None:
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
-# ── Assistant voice ──────────────────────────────────────────────────────────
+# ── Assistant voice & persona ("male" | "female") ────────────────────────────
 # Gemini Live prebuilt voices. Names are proper nouns — identical in every
 # language, so this list is safe to show verbatim in any locale.
-AVAILABLE_VOICES = ["Charon", "Puck", "Kore", "Fenrir", "Aoede"]
-DEFAULT_VOICE    = "Charon"
+AVAILABLE_VOICES     = ["Charon", "Puck", "Kore", "Fenrir", "Aoede"]
+MALE_VOICES          = ("Charon", "Fenrir", "Puck")
+FEMALE_VOICES        = ("Aoede", "Kore")
+DEFAULT_VOICE        = "Charon"
+DEFAULT_MALE_VOICE   = "Charon"
+DEFAULT_FEMALE_VOICE = "Aoede"
+
+PERSONAS         = ("male", "female")
+MALE_UI_COLOR    = "#00d4ff"
+FEMALE_UI_COLOR  = "#ff4db8"
 
 
 def get_voice() -> str:
-    """Return the configured Live voice, falling back to the default if unset
-    or if the stored value is not a voice we recognise."""
-    v = load_api_keys().get("voice_name", DEFAULT_VOICE) or DEFAULT_VOICE
-    return v if v in AVAILABLE_VOICES else DEFAULT_VOICE
+    """Return the configured Live voice, falling back to the persona default if
+    unset or if the stored value is not a voice we recognise."""
+    data = load_api_keys()
+    v = data.get("voice_name", "") or ""
+    if v in AVAILABLE_VOICES:
+        return v
+    if str(data.get("persona", "")).strip().lower() == "female":
+        return DEFAULT_FEMALE_VOICE
+    return DEFAULT_VOICE
 
 
 def save_voice(voice_name: str) -> None:
@@ -102,6 +115,46 @@ def save_voice(voice_name: str) -> None:
     v = (voice_name or "").strip()
     data["voice_name"] = v if v in AVAILABLE_VOICES else DEFAULT_VOICE
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+
+
+def get_persona() -> str:
+    """Return 'male' or 'female'. Infers from voice_name when unset."""
+    data = load_api_keys()
+    raw = str(data.get("persona", "") or "").strip().lower()
+    if raw in PERSONAS:
+        return raw
+    if str(data.get("voice_name", "") or "").strip() in FEMALE_VOICES:
+        return "female"
+    return "male"
+
+
+def save_persona(persona: str, voice_name: str | None = None) -> dict:
+    """Persist the chosen interface persona ('male' or 'female'), matching
+    Gemini Live voice, and UI accent colour in one atomic update."""
+    p = "female" if str(persona or "").strip().lower() == "female" else "male"
+    ensure_config_dir()
+    data: dict = {}
+    if CONFIG_FILE.exists():
+        try:
+            data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+
+    cur_voice = str(data.get("voice_name", "") or "").strip()
+    explicit_voice = str(voice_name or "").strip()
+    if explicit_voice in AVAILABLE_VOICES:
+        chosen_voice = explicit_voice
+    elif p == "female":
+        chosen_voice = cur_voice if cur_voice in FEMALE_VOICES else DEFAULT_FEMALE_VOICE
+    else:
+        chosen_voice = cur_voice if cur_voice in MALE_VOICES else DEFAULT_MALE_VOICE
+
+    ui_color = FEMALE_UI_COLOR if p == "female" else MALE_UI_COLOR
+    data["persona"] = p
+    data["voice_name"] = chosen_voice
+    data["ui_color"] = ui_color
+    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    return {"persona": p, "voice": chosen_voice, "ui_color": ui_color}
 
 
 def get_wake_word_enabled() -> bool:

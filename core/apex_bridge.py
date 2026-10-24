@@ -148,6 +148,15 @@ class ApexHudBridge:
             return bool(win._ready)
         return cfg.is_configured()
 
+    def _is_persona_chosen(self) -> bool:
+        if os.environ.get("JARVIS_SKIP_PERSONA_PROMPT", "").strip().lower() in (
+            "1", "true", "yes",
+        ):
+            return True
+        if self._ui is not None and hasattr(self._ui, "_persona_selected"):
+            return bool(self._ui._persona_selected)
+        return True
+
     def _is_muted(self) -> bool:
         if self._ui is not None and hasattr(self._ui, "muted"):
             try:
@@ -196,6 +205,8 @@ class ApexHudBridge:
         return {
             "type": "bootstrap",
             "ready": self._is_ready(),
+            "persona": cfg.get_persona(),
+            "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
             "raw_state": raw_state,
             "muted": self._is_muted(),
@@ -204,6 +215,8 @@ class ApexHudBridge:
             "offline_reason": offline_reason,
             "voice": cfg.get_voice(),
             "voices": list(cfg.AVAILABLE_VOICES),
+            "male_voices": list(cfg.MALE_VOICES),
+            "female_voices": list(cfg.FEMALE_VOICES),
             "barge_enabled": cfg.get_barge_in_enabled(),
             "grace_period": cfg.get_grace_period(),
             "inputs": in_devs,
@@ -435,6 +448,29 @@ class ApexHudBridge:
             if callable(cb):
                 threading.Thread(target=cb, daemon=True).start()
             return {"ok": True}
+
+        if action == "set_persona":
+            raw_p = str(data.get("persona") or "male").strip().lower()
+            req_voice = str(data.get("voice") or "").strip()
+            was_chosen = self._is_persona_chosen()
+            prev_voice = cfg.get_voice()
+            res = cfg.save_persona(raw_p, req_voice or None)
+            if ui is not None:
+                if hasattr(ui, "apply_persona_visuals"):
+                    self._invoke_qt(
+                        lambda p=res["persona"], c=res["ui_color"]: ui.apply_persona_visuals(p, c)
+                    )
+                else:
+                    setattr(ui, "_persona_selected", True)
+            if was_chosen and res["voice"] != prev_voice:
+                cb = getattr(ui, "on_voice_change", None) if ui else None
+                if callable(cb):
+                    threading.Thread(target=cb, args=(res["voice"],), daemon=True).start()
+            self.push_log(
+                f"SYS: {res['persona'].capitalize()} interface activated · Voice: {res['voice']}."
+            )
+            self._broadcast_threadsafe(self.snapshot())
+            return {"ok": True, **res}
 
         if action == "set_voice":
             v = str(data.get("voice") or "").strip()

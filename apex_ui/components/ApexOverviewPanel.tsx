@@ -8,10 +8,10 @@ import {
   Smartphone,
   Mic,
   MicOff,
+  Sparkles,
 } from "lucide-react";
 import { useJarvis } from "./JarvisBridge";
 
-const ACCENT = "#00e5ff";
 const WCODE: Record<number, string> = {
   0: "Clear",
   1: "Mainly clear",
@@ -37,7 +37,8 @@ const WCODE: Record<number, string> = {
 };
 
 function Clock() {
-  const { assistantName } = useJarvis();
+  const { assistantName, theme } = useJarvis();
+  const ACCENT = theme.primary;
   const [now, setNow] = useState<Date | null>(null);
   const [wx, setWx] = useState<{
     temp: number | null;
@@ -97,7 +98,7 @@ function Clock() {
             letterSpacing: "0.04em",
             color: "#f0ede8",
             lineHeight: 1,
-            textShadow: `0 0 22px ${ACCENT}33`,
+            textShadow: `0 0 22px ${ACCENT}44`,
           }}
         >
           {time}
@@ -116,7 +117,7 @@ function Clock() {
       </div>
       {wx && (
         <div>
-          <div style={{ fontSize: 22, fontWeight: 300, color: `${ACCENT}e6` }}>
+          <div style={{ fontSize: 22, fontWeight: 300, color: `${ACCENT}ee` }}>
             {wx.temp != null ? Math.round(wx.temp) + "°C" : "ONLINE"}
           </div>
           <div
@@ -142,14 +143,18 @@ export default function ApexOverviewPanel() {
   const [open, setOpen] = useState(false);
   const {
     assistantName,
+    activePersona,
+    theme,
     muted,
     toggleMute,
     setConsoleOpen,
     setSettingsOpen,
+    setPersonaModalOpen,
     captureRegion,
     openRemoteQr,
   } = useJarvis();
 
+  const ACCENT = theme.primary;
   const FIL = open ? 480 : 320;
   const FIL_CAP = "calc(100vw - 260px)";
 
@@ -158,8 +163,8 @@ export default function ApexOverviewPanel() {
     alignItems: "center",
     gap: 11,
     padding: "10px 14px",
-    background: "rgba(6,14,26,0.78)",
-    border: `1px solid ${ACCENT}2a`,
+    background: theme.tileBg,
+    border: `1px solid ${ACCENT}33`,
     borderRadius: 10,
     cursor: "pointer",
     textAlign: "left",
@@ -216,7 +221,7 @@ export default function ApexOverviewPanel() {
             width: `min(${FIL}px, ${FIL_CAP})`,
             height: 2,
             borderRadius: 2,
-            background: "#a5f3fc",
+            background: theme.filamentLine,
             boxShadow: `0 0 10px ${ACCENT}, 0 0 26px ${ACCENT}${
               open ? ", 0 0 54px " + ACCENT : ""
             }`,
@@ -231,9 +236,9 @@ export default function ApexOverviewPanel() {
             width: 8,
             height: 8,
             borderRadius: "50%",
-            background: "#e0fbff",
+            background: theme.filamentDot,
             boxShadow: `0 0 10px ${ACCENT}, 0 0 18px ${ACCENT}`,
-            transition: "left .5s ease",
+            transition: "left .5s ease, background .4s ease, box-shadow .4s ease",
             pointerEvents: "none",
           }}
         />
@@ -245,11 +250,11 @@ export default function ApexOverviewPanel() {
             fontFamily: "var(--font-mono)",
             fontSize: 9,
             letterSpacing: "0.34em",
-            color: `rgba(165,243,252,${open ? 0.92 : 0.6})`,
+            color: `rgba(${theme.filamentTextRgb},${open ? 0.92 : 0.64})`,
             transition: "color .4s",
           }}
         >
-          {assistantName.toUpperCase()} · OVERVIEW
+          {assistantName.toUpperCase()} · {activePersona.toUpperCase()} · OVERVIEW
         </span>
       </div>
 
@@ -267,12 +272,28 @@ export default function ApexOverviewPanel() {
           <div
             style={{
               marginTop: 16,
-              width: 260,
+              width: 268,
               display: "flex",
               flexDirection: "column",
               gap: 8,
             }}
           >
+            <button
+              type="button"
+              style={tileStyle}
+              onClick={() => {
+                setPersonaModalOpen(true);
+                setOpen(false);
+              }}
+            >
+              <span style={{ display: "flex", color: ACCENT }}>
+                <Sparkles size={16} />
+              </span>
+              <span style={{ flex: 1, fontSize: 11.5, letterSpacing: "0.05em" }}>
+                Switch Male / Female Edition
+              </span>
+            </button>
+
             <button
               type="button"
               style={tileStyle}

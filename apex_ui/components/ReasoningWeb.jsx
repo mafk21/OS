@@ -55,7 +55,7 @@ function nodeIdFromHelper(h) {
   return ({ create_visual: 'design', render_visual: 'design', visual: 'design' })[s] || s   // a visual lights Design
 }
 
-export default function ReasoningWeb({ state = 'standby', trace = null, mode = 'full', coreless = false, onSelect = null, light = false, roster = null, anchor = null, viewBox = null, traces = true }) {
+export default function ReasoningWeb({ state = 'standby', trace = null, mode = 'full', coreless = false, onSelect = null, light = false, persona = 'male', roster = null, anchor = null, viewBox = null, traces = true }) {
   const svgRef = useRef(null)
   const apiRef = useRef(null)
   const stateRef = useRef(state)
@@ -68,13 +68,18 @@ export default function ReasoningWeb({ state = 'standby', trace = null, mode = '
     const AX = anchor ? anchor[0] : AX_DEFAULT
     const AY = anchor ? anchor[1] : AY_DEFAULT
     const NODES = roster || ROSTER
-    // Day-mode palette (P5) — every structural color routes through P so the web is legible on the
-    // light paper bg (labels were white-on-light = invisible). Remounted via key={theme} upstream.
+    const isFemale = persona === 'female'
+    // Day-mode & Male/Female dark-mode palettes — every structural color routes through P.
     const P = light ? {
       ring: '#93a9bb', pcb: '#5d7f97', pcbDot: '#0e7490', fieldMesh: '#9db1c0', fieldDot: '#0e7490',
       mesh: '#8ba2b4', spoke: '#46708e', spokeHot: '#0891b2', link: '#0d9488',
       label: '#1f2d3a', labelMinor: '#55677a', labelDorm: '#8a99a8', mote: '#0aa9c8', moteHot: '#067a96',
       col: { consultant: '#067a96', doer: '#b26d05', tool: '#64748b' },
+    } : isFemale ? {
+      ring: '#69275c', pcb: '#6e2860', pcbDot: '#ff73cb', fieldMesh: '#4a1d46', fieldDot: '#e879f9',
+      mesh: '#5c2657', spoke: '#6b2c63', spokeHot: '#ff7ce5', link: '#e879f9',
+      label: '#f8e6f5', labelMinor: '#cda4cb', labelDorm: '#825b82', mote: '#ff8ee3', moteHot: '#ffe0f7',
+      col: { consultant: '#ff4db8', doer: '#c084fc', tool: '#b39ddb' },
     } : {
       ring: '#1b5f78', pcb: '#1c5f7a', pcbDot: '#37d6ef', fieldMesh: '#143f4f', fieldDot: '#2bd0e6',
       mesh: '#1a5468', spoke: '#22566b', spokeHot: '#33eaff', link: '#5eead4',
