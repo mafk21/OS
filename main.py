@@ -1872,6 +1872,13 @@ class JarvisLive:
         _notify_tool = getattr(self.ui, "notify_tool_call", None)
         if callable(_notify_tool):
             _notify_tool(name)
+        _task_id = f"fc-{getattr(fc, 'id', None) or int(time.time() * 1000)}-{name}"
+        _notify_start = getattr(self.ui, "notify_tool_start", None)
+        if callable(_notify_start):
+            _arg_preview = ", ".join(
+                f"{k}={str(v)[:28]}" for k, v in list(args.items())[:2]
+            )
+            _notify_start(_task_id, name, _arg_preview)
 
         # Learning-loop census: window restarts after 10 quiet minutes so the
         # hint measures one burst of work, not a whole day of chatting.
@@ -1888,6 +1895,9 @@ class JarvisLive:
             if key and value:
                 update_memory({category: {key: {"value": value}}})
                 print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+            _nf = getattr(self.ui, "notify_tool_finish", None)
+            if callable(_nf):
+                _nf(_task_id, f"{category}/{key}", "completed")
             if not self.ui.muted:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
@@ -2121,6 +2131,11 @@ class JarvisLive:
 
         if not self.ui.muted:
             self.ui.set_state("LISTENING")
+
+        _nf = getattr(self.ui, "notify_tool_finish", None)
+        if callable(_nf):
+            _st = "failed" if str(result).startswith(f"Tool '{name}' failed:") else "completed"
+            _nf(_task_id, str(result)[:220], _st)
 
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
 

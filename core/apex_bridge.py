@@ -142,6 +142,14 @@ class ApexHudBridge:
         self._confirm: dict[str, str] | None = None
         self._content: dict[str, str] | None = None
         self._last_level_push = 0.0
+        self._tool_tasks: dict[str, dict[str, Any]] = {}
+        self._cancelled_task_ids: set[str] = set()
+
+        try:
+            from core.subagents import get_subagent_manager
+            get_subagent_manager().add_listener(self.push_activity)
+        except Exception:
+            pass
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set[Any] = set()
@@ -243,6 +251,7 @@ class ApexHudBridge:
             "integrations": accounts.get_integrations_status_summary(),
             "privacy": cfg.get_privacy_settings(),
             "brain_counts": b_counts,
+            "workers": self.get_activity_snapshot(),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "assistant_name": cfg.get_assistant_name(),
@@ -346,6 +355,96 @@ class ApexHudBridge:
                     "nodes": nodes[:4],
                 }
             )
+
+    def get_activity_snapshot(self) -> list[dict[str, Any]]:
+        """Unified live worker list combining SubagentManager + running/recent tool tasks."""
+        items: list[dict[str, Any]] = []
+        try:
+            from core.subagents import get_subagent_manager
+            items.extend(get_subagent_manager().list_detailed())
+        except Exception:
+            pass
+
+        now = time.time()
+        with self._lock:
+            tasks = list(self._tool_tasks.values())
+        for t in tasks:
+            end_ts = t["updated_at"] if t["status"] in ("completed", "failed", "cancelled") else now
+            items.append(
+                {
+                    **t,
+                    "elapsed_s": round(max(0.0, end_ts - float(t["created_at"])), 1),
+                }
+            )
+
+        # Sort active/pending first, then newest first
+        rank = {"in_progress": 0, "pending": 1, "completed": 2, "failed": 2, "cancelled": 2}
+        items.sort(key=lambda w: (rank.get(str(w.get("status")), 3), -float(w.get("created_at") or 0)))
+        return items[:36]
+
+    def push_activity(self) -> None:
+        self._broadcast_threadsafe(
+            {"type": "activity", "workers": self.get_activity_snapshot()}
+        )
+
+    def notify_tool_start(
+        self, task_id: str, tool_name: str, args_summary: str = ""
+    ) -> None:
+        now = time.time()
+        tid = str(task_id or f"tool-{int(now * 1000)}")
+        label = f"{tool_name}" + (f" · {args_summary[:64]}" if args_summary else "")
+        rec: dict[str, Any] = {
+            "id": tid,
+            "kind": "tool",
+            "title": label,
+            "goal": label,
+            "status": "in_progress",
+            "tools": [tool_name],
+            "nodes": map_tool_to_nodes(tool_name)[:3],
+            "steps": [{"step": 1, "action": tool_name, "result": args_summary[:180] or "Running…", "ts": now}],
+            "step_count": 1,
+            "max_steps": 1,
+            "result": None,
+            "error": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with self._lock:
+            self._tool_tasks[tid] = rec
+            if len(self._tool_tasks) > 32:
+                # Prune oldest finished entries first
+                finished = [
+                    k for k, v in self._tool_tasks.items()
+                    if v.get("status") in ("completed", "failed", "cancelled")
+                ]
+                for k in finished[:8]:
+                    self._tool_tasks.pop(k, None)
+        self.push_activity()
+
+    def notify_tool_finish(
+        self, task_id: str, result_summary: str = "", status: str = "completed"
+    ) -> None:
+        now = time.time()
+        with self._lock:
+            rec = self._tool_tasks.get(str(task_id))
+            if rec is None:
+                return
+            if str(task_id) in self._cancelled_task_ids:
+                rec["status"] = "cancelled"
+            else:
+                rec["status"] = status if status in ("completed", "failed", "cancelled") else "completed"
+            rec["updated_at"] = now
+            if rec["status"] == "failed":
+                rec["error"] = str(result_summary or "")[:300]
+            else:
+                rec["result"] = str(result_summary or "")[:300]
+            if rec.get("steps"):
+                rec["steps"][-1]["result"] = str(result_summary or "Done.")[:220]
+        self.push_activity()
+
+    def is_task_cancelled(self, task_id: str) -> bool:
+        with self._lock:
+            return str(task_id) in self._cancelled_task_ids
 
     def push_confirm(self, title: str, detail: str) -> None:
         obj = {"title": str(title)[:120], "detail": str(detail)[:300]}
@@ -775,6 +874,83 @@ class ApexHudBridge:
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "restored": restored, "brain": snap}
 
+        # ── 3D World View Worker Orbs & Activity Timeline actions ─────────────
+
+        if action == "activity_get":
+            return {"ok": True, "workers": self.get_activity_snapshot()}
+
+        if action == "spawn_worker":
+            goal = str(data.get("goal") or "").strip()
+            if not goal:
+                return {"ok": False, "error": "Worker goal is required."}
+            raw_tools = data.get("tools")
+            tools = [str(t) for t in raw_tools] if isinstance(raw_tools, list) else []
+            auto_start = bool(data.get("auto_start", True))
+            from core.subagents import get_subagent_manager
+            mgr = get_subagent_manager()
+            wid = mgr.spawn(goal=goal, tools=tools, max_steps=int(data.get("max_steps") or 10))
+            if auto_start:
+                mgr.start(wid)
+            self.push_log(f"SYS: Spawned worker {wid} — {goal[:72]}")
+            if tools:
+                self.push_tool_trace(tools)
+            return {"ok": True, "worker_id": wid, "workers": self.get_activity_snapshot()}
+
+        if action == "step_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            step_act = str(data.get("step_action") or "step").strip()
+            step_res = str(data.get("step_result") or "").strip()
+            from core.subagents import get_subagent_manager
+            ok = get_subagent_manager().add_step(wid, step_act, step_res)
+            return {"ok": ok, "workers": self.get_activity_snapshot()}
+
+        if action == "complete_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            res_txt = str(data.get("result") or "Completed.").strip()
+            from core.subagents import get_subagent_manager
+            ok = get_subagent_manager().complete(wid, res_txt)
+            return {"ok": ok, "workers": self.get_activity_snapshot()}
+
+        if action == "cancel_worker":
+            wid = str(data.get("worker_id") or "").strip()
+            cancelled = False
+            try:
+                from core.subagents import get_subagent_manager
+                cancelled = get_subagent_manager().cancel(wid)
+            except Exception:
+                pass
+            if not cancelled:
+                with self._lock:
+                    self._cancelled_task_ids.add(wid)
+                    rec = self._tool_tasks.get(wid)
+                    if rec and rec.get("status") in ("in_progress", "pending"):
+                        rec["status"] = "cancelled"
+                        rec["updated_at"] = time.time()
+                        cancelled = True
+                if cancelled:
+                    self.push_activity()
+            if cancelled:
+                self.push_log(f"SYS: Cancelled worker {wid}.")
+            return {"ok": cancelled, "workers": self.get_activity_snapshot()}
+
+        if action == "clear_completed_workers":
+            removed = 0
+            try:
+                from core.subagents import get_subagent_manager
+                removed += get_subagent_manager().clear_finished()
+            except Exception:
+                pass
+            with self._lock:
+                done_keys = [
+                    k for k, v in self._tool_tasks.items()
+                    if v.get("status") in ("completed", "failed", "cancelled")
+                ]
+                for k in done_keys:
+                    self._tool_tasks.pop(k, None)
+                    removed += 1
+            self.push_activity()
+            return {"ok": True, "removed": removed, "workers": self.get_activity_snapshot()}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -841,6 +1017,10 @@ class ApexHudBridge:
         async def _brain_export():
             exp = await asyncio.to_thread(timeline.export_brain_json)
             return JSONResponse(exp)
+
+        @app.get("/api/hud/activity")
+        async def _activity_get():
+            return JSONResponse({"ok": True, "workers": self.get_activity_snapshot()})
 
         @app.post("/api/hud/action")
         async def _action(req: Request):

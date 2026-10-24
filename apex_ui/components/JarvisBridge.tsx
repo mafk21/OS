@@ -65,6 +65,31 @@ export type BrainCounts = {
   timeline: number;
 };
 
+export type WorkerStep = {
+  step: number;
+  action: string;
+  result: string;
+  ts: number;
+};
+
+export type WorkerItem = {
+  id: string;
+  kind: "subagent" | "tool";
+  title: string;
+  goal: string;
+  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+  tools: string[];
+  nodes?: string[];
+  steps: WorkerStep[];
+  step_count: number;
+  max_steps: number;
+  result?: string | null;
+  error?: string | null;
+  created_at: number;
+  updated_at: number;
+  elapsed_s: number;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
@@ -72,6 +97,7 @@ export type JarvisContextValue = {
   integrations: IntegrationsSummary;
   privacy: PrivacySettings;
   brainCounts: BrainCounts;
+  workers: WorkerItem[];
   persona: PersonaMode;
   activePersona: PersonaMode;
   theme: PersonaTheme;
@@ -103,12 +129,14 @@ export type JarvisContextValue = {
   setupOpen: boolean;
   integrationsModalOpen: boolean;
   brainModalOpen: boolean;
+  activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setIntegrationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setBrainModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPreviewPersona: React.Dispatch<React.SetStateAction<PersonaMode | null>>;
   choosePersona: (p: PersonaMode, voiceName?: string) => Promise<void>;
@@ -120,6 +148,9 @@ export type JarvisContextValue = {
     clientSecret: string
   ) => Promise<{ ok: boolean; auth_url?: string; error?: string }>;
   updatePrivacy: (patch: Partial<PrivacySettings>) => Promise<void>;
+  spawnWorker: (goal: string, tools?: string[]) => Promise<void>;
+  cancelWorker: (workerId: string) => Promise<void>;
+  clearCompletedWorkers: () => Promise<void>;
   showContentCard: (card: ContentCard) => void;
   clearContent: () => void;
   sendText: (text: string, traceNode?: string) => void;
@@ -236,7 +267,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [setupOpen, setSetupOpen] = useState(false);
   const [integrationsModalOpen, setIntegrationsModalOpen] = useState(false);
   const [brainModalOpen, setBrainModalOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
+  const [workers, setWorkers] = useState<WorkerItem[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const seqRef = useRef(1);
@@ -329,6 +362,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       }
       if (d.brain_counts && typeof d.brain_counts === "object") {
         setBrainCounts(d.brain_counts as BrainCounts);
+      }
+      if (Array.isArray(d.workers)) {
+        setWorkers(d.workers as WorkerItem[]);
       }
 
       if (d.persona === "female" || d.persona === "male") {
@@ -477,6 +513,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
               break;
             case "content":
               setContent(msg.content || null);
+              break;
+            case "activity":
+              if (Array.isArray(msg.workers)) {
+                setWorkers(msg.workers as WorkerItem[]);
+              }
               break;
             case "reconfig":
               setReady(false);
@@ -847,6 +888,68 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
 
   const clearContent = useCallback(() => setContent(null), []);
 
+  const spawnWorker = useCallback(
+    async (goal: string, tools?: string[]) => {
+      if (!goal.trim()) return;
+      fireLocalTrace(["strategist", "chief_of_staff"]);
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "spawn_worker",
+            goal: goal.trim(),
+            tools: tools || [],
+            auto_start: true,
+          }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+        }
+      } catch {
+        sendAction({ action: "spawn_worker", goal: goal.trim(), tools: tools || [] });
+      }
+    },
+    [fireLocalTrace, sendAction]
+  );
+
+  const cancelWorker = useCallback(
+    async (workerId: string) => {
+      if (!workerId) return;
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel_worker", worker_id: workerId }),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+        }
+      } catch {
+        sendAction({ action: "cancel_worker", worker_id: workerId });
+      }
+    },
+    [sendAction]
+  );
+
+  const clearCompletedWorkers = useCallback(async () => {
+    try {
+      const r = await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "clear_completed_workers" }),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data.workers)) setWorkers(data.workers as WorkerItem[]);
+      }
+    } catch {
+      sendAction({ action: "clear_completed_workers" });
+    }
+  }, [sendAction]);
+
   const value = useMemo<JarvisContextValue>(
     () => ({
       connected,
@@ -855,6 +958,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrations,
       privacy,
       brainCounts,
+      workers,
       persona,
       activePersona,
       theme,
@@ -886,12 +990,14 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setupOpen,
       integrationsModalOpen,
       brainModalOpen,
+      activityOpen,
       personaModalOpen,
       setConsoleOpen,
       setSettingsOpen,
       setSetupOpen,
       setIntegrationsModalOpen,
       setBrainModalOpen,
+      setActivityOpen,
       setPersonaModalOpen,
       setPreviewPersona,
       choosePersona,
@@ -900,6 +1006,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       disconnectIntegration,
       startGoogleOAuth,
       updatePrivacy,
+      spawnWorker,
+      cancelWorker,
+      clearCompletedWorkers,
       showContentCard,
       clearContent,
       sendText,
@@ -925,6 +1034,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrations,
       privacy,
       brainCounts,
+      workers,
       persona,
       activePersona,
       theme,
@@ -957,6 +1067,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setupOpen,
       integrationsModalOpen,
       brainModalOpen,
+      activityOpen,
       personaModalOpen,
       choosePersona,
       saveIntegrations,
@@ -964,6 +1075,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       disconnectIntegration,
       startGoogleOAuth,
       updatePrivacy,
+      spawnWorker,
+      cancelWorker,
+      clearCompletedWorkers,
       showContentCard,
       clearContent,
       sendText,

@@ -6510,6 +6510,22 @@ class JarvisUI:
             except Exception:
                 pass
 
+    def notify_tool_start(self, task_id: str, tool_name: str, args_summary: str = "") -> None:
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.notify_tool_start(task_id, tool_name, args_summary)
+            except Exception:
+                pass
+
+    def notify_tool_finish(
+        self, task_id: str, result_summary: str = "", status: str = "completed"
+    ) -> None:
+        if self._apex_bridge is not None:
+            try:
+                self._apex_bridge.notify_tool_finish(task_id, result_summary, status)
+            except Exception:
+                pass
+
     def set_offline(self, offline: bool, detail: str = "") -> None:
         """Thread-safe: update offline indicator in both Qt and APEX-UI HUD."""
         try:

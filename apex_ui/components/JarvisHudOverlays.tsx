@@ -13,6 +13,7 @@ import {
   Scan,
   ShieldAlert,
   Brain,
+  ExternalLink,
   KeyRound,
   Link2,
   Sparkles,
@@ -23,6 +24,7 @@ import BrainModal from "./BrainModal";
 import IntegrationsModal from "./IntegrationsModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
+import { ActivityTimelineHud } from "./WorkerOrbsLayer";
 
 const RED = "#ff5b79";
 const GREEN = "#34d399";
@@ -97,7 +99,36 @@ export default function JarvisHudOverlays() {
   const [keyError, setKeyError] = useState("");
   const [draftPersona, setDraftPersona] = useState<PersonaMode>("male");
   const [activatingPersona, setActivatingPersona] = useState(false);
+  const [consoleWidth, setConsoleWidth] = useState<number>(390);
+  const resizingRef = useRef<boolean>(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem("jarvis_console_width"));
+      if (saved >= 320 && saved <= 860) setConsoleWidth(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const next = Math.max(320, Math.min(860, window.innerWidth - e.clientX - 16));
+      setConsoleWidth(next);
+      try {
+        window.localStorage.setItem("jarvis_console_width", String(next));
+      } catch {}
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   const activePersonaRef = useRef<PersonaMode>(activePersona);
   activePersonaRef.current = activePersona;
@@ -195,6 +226,7 @@ export default function JarvisHudOverlays() {
 
   return (
     <>
+      <ActivityTimelineHud />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -462,7 +494,7 @@ export default function JarvisHudOverlays() {
         </div>
       )}
 
-      {/* ── Collapsible Right-Side Live Console Drawer ── */}
+      {/* ── Collapsible & Resizable Right-Side Live Console Drawer ── */}
       {consoleOpen && (
         <aside
           aria-label="JARVIS live transcript console"
@@ -471,7 +503,7 @@ export default function JarvisHudOverlays() {
             top: 56,
             right: 16,
             bottom: 68,
-            width: "min(390px, 92vw)",
+            width: `min(${consoleWidth}px, 92vw)`,
             zIndex: 50,
             background: theme.drawerBg,
             border: `1px solid ${PRIMARY}33`,
@@ -483,10 +515,31 @@ export default function JarvisHudOverlays() {
             overflow: "hidden",
           }}
         >
+          {/* Left-edge drag resize grip */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize console"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              resizingRef.current = true;
+            }}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 6,
+              cursor: "ew-resize",
+              zIndex: 2,
+            }}
+          />
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
+              gap: 8,
               padding: "12px 16px",
               borderBottom: `1px solid ${PRIMARY}22`,
             }}
@@ -502,6 +555,34 @@ export default function JarvisHudOverlays() {
             >
               {assistantName.toUpperCase()} · LIVE STREAM
             </span>
+            <button
+              type="button"
+              onClick={() => {
+                window.open(
+                  "/?view=console",
+                  "jarvis_console",
+                  "width=580,height=880,noopener"
+                );
+              }}
+              title="Pop out console to secondary monitor"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 8px",
+                borderRadius: 999,
+                border: `1px solid ${PRIMARY}44`,
+                background: `${PRIMARY}14`,
+                color: PRIMARY,
+                fontFamily: "var(--font-mono)",
+                fontSize: 8.5,
+                letterSpacing: "0.1em",
+                cursor: "pointer",
+              }}
+            >
+              <ExternalLink size={10} />
+              POP OUT
+            </button>
             <button
               type="button"
               onClick={() => setConsoleOpen(false)}

@@ -56,6 +56,22 @@ class SubagentManager:
     def __init__(self):
         self._agents: dict[str, Subagent] = {}
         self._lock = __import__("threading").Lock()
+        self._listeners: list = []
+
+    def add_listener(self, cb) -> None:
+        if callable(cb) and cb not in self._listeners:
+            self._listeners.append(cb)
+
+    def remove_listener(self, cb) -> None:
+        if cb in self._listeners:
+            self._listeners.remove(cb)
+
+    def _notify(self) -> None:
+        for cb in list(self._listeners):
+            try:
+                cb()
+            except Exception:
+                pass
 
     def spawn(self, goal: str, tools: Optional[list[str]] = None,
               max_steps: int = 10) -> str:
@@ -69,6 +85,7 @@ class SubagentManager:
         )
         with self._lock:
             self._agents[agent_id] = agent
+        self._notify()
         return agent_id
 
     def get(self, agent_id: str) -> Optional[Subagent]:
@@ -89,6 +106,37 @@ class SubagentManager:
                 for a in self._agents.values()
             ]
 
+    def list_detailed(self) -> list[dict]:
+        """Rich worker records for the 3D World View & Activity Timeline."""
+        now = time.time()
+        with self._lock:
+            out = []
+            for a in self._agents.values():
+                end_ts = (
+                    a.updated_at
+                    if a.status in (SubagentStatus.COMPLETED, SubagentStatus.FAILED, SubagentStatus.CANCELLED)
+                    else now
+                )
+                out.append(
+                    {
+                        "id": a.agent_id,
+                        "kind": "subagent",
+                        "title": a.goal[:96] + ("…" if len(a.goal) > 96 else ""),
+                        "goal": a.goal,
+                        "status": a.status.value,
+                        "tools": list(a.tools),
+                        "steps": list(a.steps[-12:]),
+                        "step_count": len(a.steps),
+                        "max_steps": a.max_steps,
+                        "result": (a.result or "")[:400] if a.result else None,
+                        "error": (a.error or "")[:300] if a.error else None,
+                        "created_at": a.created_at,
+                        "updated_at": a.updated_at,
+                        "elapsed_s": round(max(0.0, end_ts - a.created_at), 1),
+                    }
+                )
+            return out
+
     def start(self, agent_id: str) -> bool:
         """Mark a subagent as in progress."""
         with self._lock:
@@ -97,7 +145,8 @@ class SubagentManager:
                 return False
             agent.status = SubagentStatus.IN_PROGRESS
             agent.updated_at = time.time()
-            return True
+        self._notify()
+        return True
 
     def add_step(self, agent_id: str, action: str, result: str) -> bool:
         """Record a step taken by the subagent."""
@@ -118,7 +167,8 @@ class SubagentManager:
             if len(agent.steps) >= agent.max_steps:
                 agent.status = SubagentStatus.COMPLETED
                 agent.result = f"Subagent reached max_steps ({agent.max_steps}) without completion."
-            return True
+        self._notify()
+        return True
 
     def complete(self, agent_id: str, result: str) -> bool:
         """Mark a subagent as completed with a result."""
@@ -130,7 +180,8 @@ class SubagentManager:
             agent.status = SubagentStatus.COMPLETED
             agent.result = result
             agent.updated_at = time.time()
-            return True
+        self._notify()
+        return True
 
     def fail(self, agent_id: str, error: str) -> bool:
         """Mark a subagent as failed."""
@@ -143,7 +194,8 @@ class SubagentManager:
             agent.status = SubagentStatus.FAILED
             agent.error = error
             agent.updated_at = time.time()
-            return True
+        self._notify()
+        return True
 
     def cancel(self, agent_id: str) -> bool:
         """Cancel a subagent."""
@@ -155,7 +207,8 @@ class SubagentManager:
                 return False
             agent.status = SubagentStatus.CANCELLED
             agent.updated_at = time.time()
-            return True
+        self._notify()
+        return True
 
     def remove(self, agent_id: str) -> bool:
         """Remove a subagent from the registry (completed/failed only)."""
@@ -166,7 +219,28 @@ class SubagentManager:
                     SubagentStatus.CANCELLED):
                 return False
             del self._agents[agent_id]
-            return True
+        self._notify()
+        return True
+
+    def clear_finished(self) -> int:
+        """Remove all completed/failed/cancelled subagents. Returns count removed."""
+        removed = 0
+        with self._lock:
+            done_ids = [
+                aid
+                for aid, a in self._agents.items()
+                if a.status in (
+                    SubagentStatus.COMPLETED,
+                    SubagentStatus.FAILED,
+                    SubagentStatus.CANCELLED,
+                )
+            ]
+            for aid in done_ids:
+                del self._agents[aid]
+                removed += 1
+        if removed:
+            self._notify()
+        return removed
 
     def count(self) -> int:
         with self._lock:
