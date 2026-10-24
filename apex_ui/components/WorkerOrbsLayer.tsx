@@ -294,6 +294,7 @@ export function WorkerOrbsLayer() {
 export function ActivityTimelineHud() {
   const {
     workers,
+    activePersona,
     theme,
     activityOpen,
     setActivityOpen,
@@ -341,52 +342,57 @@ export function ActivityTimelineHud() {
     await spawnWorker(g);
   };
 
+  const showFloatingActivityPill =
+    activePersona !== "male" || runningCount > 0 || queuedCount > 0 || activityOpen;
+
   return (
     <>
-      {/* Compact Top-Left Below-Header Activity Pill */}
-      <button
-        type="button"
-        onClick={() => setActivityOpen((o) => !o)}
-        style={{
-          position: "fixed",
-          top: 56,
-          left: 16,
-          zIndex: 42,
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          padding: "6px 12px",
-          borderRadius: 999,
-          border: `1px solid ${
-            runningCount > 0 ? `${PRIMARY}77` : "rgba(255,255,255,0.14)"
-          }`,
-          background: activityOpen ? `${PRIMARY}22` : theme.barBg,
-          backdropFilter: "blur(14px)",
-          color: runningCount > 0 || activityOpen ? PRIMARY : "rgba(240,237,232,0.8)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.14em",
-          cursor: "pointer",
-        }}
-      >
-        <Activity size={12} />
-        ACTIVITY
-        {runningCount > 0 ? (
-          <span style={{ color: GREEN }}>· {runningCount} RUNNING</span>
-        ) : workers.length > 0 ? (
-          <span style={{ opacity: 0.72 }}>· {workers.length}</span>
-        ) : null}
-      </button>
+      {/* Compact Top-Left Below-Clock Activity Pill */}
+      {showFloatingActivityPill && (
+        <button
+          type="button"
+          onClick={() => setActivityOpen((o) => !o)}
+          style={{
+            position: "fixed",
+            top: 124,
+            left: 26,
+            zIndex: 42,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "5px 11px",
+            borderRadius: 999,
+            border: `1px solid ${
+              runningCount > 0 ? `${PRIMARY}77` : "rgba(255,255,255,0.14)"
+            }`,
+            background: activityOpen ? `${PRIMARY}22` : theme.barBg,
+            backdropFilter: "blur(14px)",
+            color: runningCount > 0 || activityOpen ? PRIMARY : "rgba(240,237,232,0.8)",
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: "0.14em",
+            cursor: "pointer",
+          }}
+        >
+          <Activity size={12} />
+          ACTIVITY
+          {runningCount > 0 ? (
+            <span style={{ color: GREEN }}>· {runningCount} RUNNING</span>
+          ) : workers.length > 0 ? (
+            <span style={{ opacity: 0.72 }}>· {workers.length}</span>
+          ) : null}
+        </button>
+      )}
 
       {activityOpen && (
         <aside
           aria-label="Live worker activity timeline"
           style={{
             position: "fixed",
-            top: 94,
-            left: 16,
+            top: showFloatingActivityPill ? 160 : 62,
+            left: 24,
             width: "min(380px, 92vw)",
-            maxHeight: "calc(100vh - 175px)",
+            maxHeight: "calc(100vh - 230px)",
             zIndex: 49,
             background: theme.drawerBg,
             border: `1px solid ${PRIMARY}38`,

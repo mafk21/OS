@@ -36,7 +36,7 @@ const WCODE: Record<number, string> = {
   99: "Storm",
 };
 
-function Clock() {
+function Clock({ compact = false }: { compact?: boolean }) {
   const { assistantName, theme } = useJarvis();
   const ACCENT = theme.primary;
   const [now, setNow] = useState<Date | null>(null);
@@ -77,7 +77,7 @@ function Clock() {
     };
   }, [assistantName]);
 
-  if (!now) return <div style={{ height: 48 }} />;
+  if (!now) return <div style={{ height: compact ? 30 : 48 }} />;
   const time = now.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
@@ -87,6 +87,36 @@ function Clock() {
     month: "short",
     day: "numeric",
   });
+
+  if (compact) {
+    return (
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+        <span
+          style={{
+            fontSize: 18,
+            fontWeight: 300,
+            letterSpacing: "0.08em",
+            color: "rgba(240,237,232,0.82)",
+            lineHeight: 1,
+          }}
+        >
+          {time}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9,
+            letterSpacing: "0.22em",
+            color: "rgba(180,215,240,0.48)",
+            textTransform: "uppercase",
+          }}
+        >
+          {date}
+          {wx?.temp != null ? ` · ${Math.round(wx.temp)}°C` : ""}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 26, flexWrap: "wrap" }}>
@@ -175,98 +205,142 @@ export default function ApexOverviewPanel() {
     fontFamily: "inherit",
   };
 
+  const isMale = activePersona === "male";
+
   return (
     <div className="apex-overview" style={{ pointerEvents: "none" }}>
-      <div
-        style={{
-          position: "absolute",
-          top: 14,
-          left: 8,
-          width: "min(520px, 94vw)",
-          height: 240,
-          pointerEvents: "none",
-          background: `radial-gradient(ellipse 48% 70% at 46% 0%, ${ACCENT}${
-            open ? "55" : "28"
-          }, ${ACCENT}0a 46%, transparent 72%)`,
-          filter: "blur(10px)",
-          transition: "all .5s ease",
-        }}
-      />
-
-      <div
-        onClick={() => setOpen((o) => !o)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen((o) => !o);
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label="Toggle overview panel"
-        aria-expanded={open}
-        style={{
-          position: "relative",
-          height: 40,
-          cursor: "pointer",
-          pointerEvents: "auto",
-          userSelect: "none",
-        }}
-      >
+      {!isMale && (
         <div
           style={{
             position: "absolute",
             top: 14,
             left: 8,
-            width: `min(${FIL}px, ${FIL_CAP})`,
-            height: 2,
-            borderRadius: 2,
-            background: theme.filamentLine,
-            boxShadow: `0 0 10px ${ACCENT}, 0 0 26px ${ACCENT}${
-              open ? ", 0 0 54px " + ACCENT : ""
-            }`,
+            width: "min(520px, 94vw)",
+            height: 240,
+            pointerEvents: "none",
+            background: `radial-gradient(ellipse 48% 70% at 46% 0%, ${ACCENT}${
+              open ? "55" : "28"
+            }, ${ACCENT}0a 46%, transparent 72%)`,
+            filter: "blur(10px)",
             transition: "all .5s ease",
           }}
         />
+      )}
+
+      {isMale ? (
         <div
-          style={{
-            position: "absolute",
-            top: 11,
-            left: open ? `min(${FIL}px, ${FIL_CAP})` : 6,
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: theme.filamentDot,
-            boxShadow: `0 0 10px ${ACCENT}, 0 0 18px ${ACCENT}`,
-            transition: "left .5s ease, background .4s ease, box-shadow .4s ease",
-            pointerEvents: "none",
+          onClick={() => setOpen((o) => !o)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setOpen((o) => !o);
+            }
           }}
-        />
-        <span
+          role="button"
+          tabIndex={0}
+          aria-label="Toggle overview panel"
+          aria-expanded={open}
           style={{
-            position: "absolute",
-            top: 20,
-            left: 10,
-            fontFamily: "var(--font-mono)",
-            fontSize: 9,
-            letterSpacing: "0.34em",
-            color: `rgba(${theme.filamentTextRgb},${open ? 0.92 : 0.64})`,
-            transition: "color .4s",
+            marginLeft: 14,
+            marginTop: 10,
+            width: "fit-content",
+            cursor: "pointer",
+            pointerEvents: "auto",
+            userSelect: "none",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
           }}
         >
-          {assistantName.toUpperCase()} · {activePersona.toUpperCase()} · OVERVIEW
-        </span>
-      </div>
+          <span
+            style={{
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.32em",
+              color: open ? ACCENT : "rgba(180,222,248,0.52)",
+              transition: "color .3s",
+            }}
+          >
+            {assistantName.toUpperCase()}
+          </span>
+          <Clock compact />
+        </div>
+      ) : (
+        <div
+          onClick={() => setOpen((o) => !o)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setOpen((o) => !o);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Toggle overview panel"
+          aria-expanded={open}
+          style={{
+            position: "relative",
+            height: 40,
+            cursor: "pointer",
+            pointerEvents: "auto",
+            userSelect: "none",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: 14,
+              left: 8,
+              width: `min(${FIL}px, ${FIL_CAP})`,
+              height: 2,
+              borderRadius: 2,
+              background: theme.filamentLine,
+              boxShadow: `0 0 10px ${ACCENT}, 0 0 26px ${ACCENT}${
+                open ? ", 0 0 54px " + ACCENT : ""
+              }`,
+              transition: "all .5s ease",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: 11,
+              left: open ? `min(${FIL}px, ${FIL_CAP})` : 6,
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: theme.filamentDot,
+              boxShadow: `0 0 10px ${ACCENT}, 0 0 18px ${ACCENT}`,
+              transition: "left .5s ease, background .4s ease, box-shadow .4s ease",
+              pointerEvents: "none",
+            }}
+          />
+          <span
+            style={{
+              position: "absolute",
+              top: 20,
+              left: 10,
+              fontFamily: "var(--font-mono)",
+              fontSize: 9,
+              letterSpacing: "0.34em",
+              color: `rgba(${theme.filamentTextRgb},${open ? 0.92 : 0.64})`,
+              transition: "color .4s",
+            }}
+          >
+            {assistantName.toUpperCase()} · {activePersona.toUpperCase()} · OVERVIEW
+          </span>
+        </div>
+      )}
 
       <div
         style={{
           paddingLeft: 14,
-          paddingTop: 6,
+          paddingTop: isMale ? 0 : 6,
           width: "fit-content",
           pointerEvents: "auto",
         }}
       >
-        <Clock />
+        {!isMale && <Clock />}
 
         {open && (
           <div

@@ -554,7 +554,7 @@ export default function ApexWorld() {
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
   const [cam, setCam] = useState({ x: 0, y: 0, zoom: 1, tiltX: 0, tiltY: 0 });
-  const [maleWebVisible, setMaleWebVisible] = useState(true);
+  const [maleWebVisible, setMaleWebVisible] = useState(false);
   const [humanoidPulse, setHumanoidPulse] = useState(0);
 
   const isMale = activePersona === "male";
@@ -878,11 +878,13 @@ export default function ApexWorld() {
         </ul>
       </nav>
 
-      <OrbStatusBarComp
-        state={orbState}
-        rawState={rawState}
-        subtitle={lastSubtitle}
-      />
+      {!isMale && (
+        <OrbStatusBarComp
+          state={orbState}
+          rawState={rawState}
+          subtitle={lastSubtitle}
+        />
+      )}
 
       {selected && (
         <AgentOverview sel={selected} onClose={() => setSelected(null)} />
