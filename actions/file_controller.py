@@ -1,4 +1,6 @@
 import ctypes
+import fnmatch
+import hashlib
 import os
 import platform
 import re
@@ -561,11 +563,31 @@ def _move_single(src: Path, destination: str) -> tuple[bool, str, tuple[Path, Pa
     return True, f"{origin.name} → {final_dst.parent.name}/{final_dst.name}", (origin, final_dst.resolve())
 
 
+def _filter_folder_files(folder: Path, extension: str = "", pattern: str = "") -> list[Path]:
+    ext_norm = ""
+    if extension:
+        ext_norm = extension.lower() if extension.startswith(".") else f".{extension.lower()}"
+    pat = (pattern or "").strip()
+    matched: list[Path] = []
+    for item in sorted(folder.iterdir(), key=lambda p: p.name.lower()):
+        if not item.is_file() or item.name.startswith(".") or item.name.startswith("~$"):
+            continue
+        if ext_norm and item.suffix.lower() != ext_norm:
+            continue
+        if pat and not fnmatch.fnmatch(item.name.lower(), pat.lower()):
+            continue
+        matched.append(item)
+    return matched
+
+
 def move_file(
     path: str,
     name: str = "",
     destination: str = "",
     files: list[str] | None = None,
+    extension: str = "",
+    pattern: str = "",
+    dry_run: bool = False,
 ) -> str:
     try:
         if not path and not files:
@@ -573,8 +595,22 @@ def move_file(
         if not destination:
             return "No destination specified."
 
+        # Pattern / extension bulk move inside a folder (e.g. "move all PDFs in Downloads into Invoices")
+        if (extension or pattern) and not name and not files:
+            folder = _resolve_path(path)
+            if not _is_safe_path(folder):
+                return f"Access denied: {folder}"
+            if not folder.exists() or not folder.is_dir():
+                return f"Folder not found: {folder}"
+            targets = _filter_folder_files(folder, extension=extension, pattern=pattern)
+            if not targets:
+                return f"No matching files found in {folder} (extension='{extension}', pattern='{pattern}')."
+            files = [t.name for t in targets]
+
         if files:
             base = _resolve_path(path) if path else None
+            if dry_run:
+                return f"[DRY RUN] Would move {len(files)} file(s) from {base or path} to '{destination}':\n" + "\n".join(f"  • {f}" for f in files[:12])
             moved_msgs: list[str] = []
             errors: list[str] = []
             journal: list[tuple[Path, Path]] = []
@@ -595,6 +631,12 @@ def move_file(
                             orig.parent.mkdir(parents=True, exist_ok=True)
                             shutil.move(str(cur), str(orig))
                             restored += 1
+                    for d in {cur.parent for _o, cur in entries}:
+                        try:
+                            if d.exists() and d.is_dir() and not any(d.iterdir()):
+                                d.rmdir()
+                        except Exception:
+                            pass
                     return f"Restored {restored} moved file(s)."
                 push_undo(f"moved {len(journal)} file(s)", _undo_batch)
             summary = f"Moved {len(moved_msgs)} file(s)."
@@ -606,6 +648,8 @@ def move_file(
 
         base = _resolve_path(path)
         src = (base / name) if name else base
+        if dry_run:
+            return f"[DRY RUN] Would move '{src}' to '{destination}'."
         ok, msg, pair = _move_single(src, destination)
         if not ok:
             return msg
@@ -621,54 +665,117 @@ def move_file(
         return f"Could not move: {e}"
 
 
-def copy_file(path: str, name: str = "", destination: str = "") -> str:
+def copy_file(
+    path: str,
+    name: str = "",
+    destination: str = "",
+    files: list[str] | None = None,
+    extension: str = "",
+    pattern: str = "",
+    dry_run: bool = False,
+) -> str:
     try:
-        if not path:
-            return "Specify 'path' of the source file or folder."
+        if not path and not files:
+            return "Specify 'path' (or 'files') of the source file or folder."
         if not destination:
             return "No destination specified."
 
+        if not files and (extension or pattern):
+            if not path:
+                return "Specify the folder 'path' to filter files from."
+            folder = _resolve_path(path)
+            if not folder.exists() or not folder.is_dir():
+                return f"Folder not found: {folder}"
+            matched = _filter_folder_files(folder, extension=extension, pattern=pattern)
+            if not matched:
+                return f"No matching files found in {folder}."
+            files = [p.name for p in matched]
+
+        def _copy_single(src: Path) -> tuple[bool, str, Path | None]:
+            if not src.exists():
+                return False, f"Source not found: {src}", None
+            dst = _resolve_destination(src, destination)
+            if not _is_safe_path(src):
+                return False, f"Access denied (source): {src}", None
+            if not _is_safe_path(dst):
+                return False, f"Access denied (destination): {dst}", None
+            treat_as_dir = (
+                dst.is_dir()
+                or destination.strip().endswith(("/", "\\"))
+                or (not dst.exists() and dst.suffix == "")
+            )
+            if treat_as_dir:
+                dst.mkdir(parents=True, exist_ok=True)
+                final_dst = _unique_dest_path(dst / src.name)
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                final_dst = _unique_dest_path(dst)
+            if src.is_dir():
+                shutil.copytree(str(src), str(final_dst))
+            else:
+                shutil.copy2(str(src), str(final_dst))
+            return True, f"{src.name} → {final_dst.parent.name}/{final_dst.name}", final_dst.resolve()
+
+        if files:
+            base = _resolve_path(path) if path else None
+            if dry_run:
+                return f"[DRY RUN] Would copy {len(files)} file(s) from {base or path} to '{destination}':\n" + "\n".join(f"  • {f}" for f in files[:12])
+            copied_msgs: list[str] = []
+            errors: list[str] = []
+            created_copies: list[Path] = []
+            for f_item in files:
+                src = (base / f_item) if (base and not Path(f_item).is_absolute() and "/" not in f_item and "\\" not in f_item) else _resolve_path(f_item)
+                ok, msg, cpath = _copy_single(src)
+                if ok:
+                    copied_msgs.append(msg)
+                    if cpath:
+                        created_copies.append(cpath)
+                else:
+                    errors.append(msg)
+            if created_copies:
+                def _undo_batch_copy(entries=tuple(created_copies)):
+                    removed = 0
+                    for cp in entries:
+                        if cp.exists():
+                            if cp.is_dir():
+                                shutil.rmtree(cp)
+                            else:
+                                cp.unlink()
+                            removed += 1
+                    for d in {cp.parent for cp in entries}:
+                        try:
+                            if d.exists() and d.is_dir() and not any(d.iterdir()):
+                                d.rmdir()
+                        except Exception:
+                            pass
+                    return f"Removed {removed} copied file(s)."
+                push_undo(f"copied {len(created_copies)} file(s)", _undo_batch_copy)
+            summary = f"Copied {len(copied_msgs)} file(s)."
+            if copied_msgs:
+                summary += "\n" + "\n".join(copied_msgs[:10])
+            if errors:
+                summary += "\nErrors:\n" + "\n".join(errors[:5])
+            return summary
+
         base = _resolve_path(path)
         src = (base / name) if name else base
-        if not src.exists():
-            return f"Source not found: {src}"
-
-        dst = _resolve_destination(src, destination)
-        if not _is_safe_path(src):
-            return f"Access denied (source): {src}"
-        if not _is_safe_path(dst):
-            return f"Access denied (destination): {dst}"
-
-        treat_as_dir = (
-            dst.is_dir()
-            or destination.strip().endswith(("/", "\\"))
-            or (not dst.exists() and dst.suffix == "")
-        )
-        if treat_as_dir:
-            dst.mkdir(parents=True, exist_ok=True)
-            final_dst = _unique_dest_path(dst / src.name)
-        else:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            final_dst = _unique_dest_path(dst)
-
-        if src.is_dir():
-            shutil.copytree(str(src), str(final_dst))
-        else:
-            shutil.copy2(str(src), str(final_dst))
-
-        _copy = final_dst.resolve()
+        if dry_run:
+            return f"[DRY RUN] Would copy '{src}' to '{destination}'."
+        ok, msg, final_dst = _copy_single(src)
+        if not ok or final_dst is None:
+            return msg
 
         def _undo_copy():
-            if not _copy.exists():
-                return f"The copy '{_copy.name}' is already gone."
-            if _copy.is_dir():
-                shutil.rmtree(_copy)
+            if not final_dst.exists():
+                return f"The copy '{final_dst.name}' is already gone."
+            if final_dst.is_dir():
+                shutil.rmtree(final_dst)
             else:
-                _copy.unlink()
-            return f"Removed the copy in {_copy.parent.name}/."
+                final_dst.unlink()
+            return f"Removed the copy in {final_dst.parent.name}/."
 
         push_undo(f"copied {src.name} to {final_dst.parent.name}/", _undo_copy)
-        return f"Copied: {src.name} → {final_dst.parent.name}/{final_dst.name}"
+        return f"Copied: {msg}"
 
     except Exception as e:
         return f"Could not copy: {e}"
@@ -1001,6 +1108,222 @@ def organize_desktop(path: str = "desktop", mode: str = "by_type", dry_run: bool
     return organize_folder(path or "desktop", mode=mode, dry_run=dry_run)
 
 
+def batch_rename(
+    path: str,
+    pattern: str = "*",
+    extension: str = "",
+    prefix: str = "",
+    replace_from: str = "",
+    replace_to: str = "",
+    include_date: bool = False,
+    start_index: int = 1,
+    dry_run: bool = False,
+) -> str:
+    """Batch-rename matching files in `path` atomically with a single Undo entry."""
+    if not path or not str(path).strip():
+        return "Specify 'path' (e.g. 'downloads' or 'desktop') for batch_rename."
+    if not prefix and not replace_from and not include_date:
+        return "Specify 'prefix' (e.g. 'Screenshot'), 'replace_from'/'replace_to', or include_date=True."
+
+    try:
+        folder = _resolve_path(path)
+        if not _is_safe_path(folder):
+            return f"Access denied: {folder}"
+        if not folder.exists() or not folder.is_dir():
+            return f"Folder not found: {folder}"
+
+        targets = _filter_folder_files(folder, extension=extension, pattern=pattern or "*")
+        if not targets:
+            return f"No matching files found in {folder}."
+
+        plan: list[tuple[Path, Path]] = []
+        reserved: set[str] = {p.name.lower() for p in folder.iterdir()}
+        idx = max(1, int(start_index or 1))
+        width = max(2, len(str(idx + len(targets))))
+
+        for item in targets:
+            ext = item.suffix
+            stem = item.stem
+            if replace_from:
+                stem = stem.replace(replace_from, replace_to)
+
+            date_part = ""
+            if include_date:
+                date_part = datetime.fromtimestamp(item.stat().st_mtime).strftime("%Y-%m-%d")
+
+            if prefix:
+                parts = [prefix.rstrip("_- ")]
+                if date_part:
+                    parts.append(date_part)
+                parts.append(f"{idx:0{width}d}")
+                idx += 1
+                new_stem = "_".join(parts)
+            elif include_date and date_part and not stem.startswith(date_part):
+                new_stem = f"{date_part}_{stem}"
+            else:
+                new_stem = stem
+
+            candidate = folder / f"{new_stem}{ext}"
+            if candidate.resolve() == item.resolve():
+                continue
+
+            reserved.discard(item.name.lower())
+            counter = 2
+            while candidate.name.lower() in reserved or (candidate.exists() and candidate.resolve() != item.resolve()):
+                candidate = folder / f"{new_stem}_{counter}{ext}"
+                counter += 1
+            reserved.add(candidate.name.lower())
+            plan.append((item.resolve(), candidate))
+
+        if not plan:
+            return "No files needed renaming."
+
+        if dry_run:
+            lines = [f"  • {old.name} → {new.name}" for old, new in plan[:12]]
+            more = f"\n  ... and {len(plan) - 12} more." if len(plan) > 12 else ""
+            return f"[DRY RUN] Would rename {len(plan)} file(s) in {folder}:\n" + "\n".join(lines) + more
+
+        journal: list[tuple[Path, Path]] = []
+        for old_p, new_p in plan:
+            old_p.rename(new_p)
+            journal.append((old_p, new_p.resolve()))
+
+        def _undo_batch_rename(entries=tuple(reversed(journal))):
+            restored = 0
+            for orig, renamed in entries:
+                if renamed.exists() and not orig.exists():
+                    renamed.rename(orig)
+                    restored += 1
+            return f"Restored original names for {restored} file(s)."
+
+        push_undo(f"batch-renamed {len(journal)} file(s) in {folder.name}", _undo_batch_rename)
+        preview = "\n".join(f"{o.name} → {n.name}" for o, n in journal[:10])
+        more = f"\n... and {len(journal) - 10} more." if len(journal) > 10 else ""
+        return f"Renamed {len(journal)} file(s) in {folder}:\n{preview}{more}"
+    except Exception as e:
+        return f"Batch rename failed: {e}"
+
+
+def _sha256_file(path: Path, max_bytes: int = 512 * 1024 * 1024) -> str | None:
+    try:
+        st = path.stat()
+        if st.st_size == 0 or st.st_size > max_bytes:
+            return None
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
+def handle_duplicates(path: str, quarantine: bool = False, dry_run: bool = False) -> str:
+    """Detect exact byte-identical duplicate files (size + SHA-256) in `path`.
+
+    When `quarantine=True` (and `dry_run=False`), moves duplicate copies into
+    `<path>/_To_Review/Duplicates/` — NEVER permanently deleting user files —
+    and registers a single atomic Undo entry.
+    """
+    if not path or not str(path).strip():
+        return "Specify 'path' (e.g. 'downloads' or 'desktop') to scan for duplicates."
+
+    try:
+        folder = _resolve_path(path)
+        if not _is_safe_path(folder):
+            return f"Access denied: {folder}"
+        if not folder.exists() or not folder.is_dir():
+            return f"Folder not found: {folder}"
+
+        by_size: dict[int, list[Path]] = {}
+        for item in folder.iterdir():
+            if not item.is_file() or item.name.startswith(".") or item.name.startswith("~$"):
+                continue
+            if item.suffix.lower() in _ORGANIZE_SKIP_EXTS:
+                continue
+            try:
+                sz = item.stat().st_size
+                if sz > 0:
+                    by_size.setdefault(sz, []).append(item)
+            except Exception:
+                continue
+
+        dup_groups: list[tuple[Path, list[Path]]] = []
+        reclaim_bytes = 0
+        for sz, group in by_size.items():
+            if len(group) < 2:
+                continue
+            by_hash: dict[str, list[Path]] = {}
+            for p in group:
+                digest = _sha256_file(p)
+                if digest:
+                    by_hash.setdefault(digest, []).append(p)
+            for _digest, same in by_hash.items():
+                if len(same) >= 2:
+                    # Keep the shortest / earliest filename as the canonical original
+                    ordered = sorted(same, key=lambda x: (len(x.name), x.stat().st_mtime, x.name.lower()))
+                    keep, extras = ordered[0], ordered[1:]
+                    dup_groups.append((keep, extras))
+                    reclaim_bytes += sz * len(extras)
+
+        if not dup_groups:
+            return f"No exact duplicate files found in {folder}."
+
+        total_extras = sum(len(ex) for _, ex in dup_groups)
+        if not quarantine or dry_run:
+            prefix = "[DRY RUN] " if (quarantine and dry_run) else ""
+            lines = [
+                f"{prefix}Found {total_extras} exact duplicate file(s) across {len(dup_groups)} group(s) "
+                f"in {folder} ({_format_size(reclaim_bytes)} duplicated):"
+            ]
+            for keep, extras in dup_groups[:10]:
+                ex_names = ", ".join(e.name for e in extras)
+                lines.append(f"  • Keep '{keep.name}'  |  Duplicates: {ex_names}")
+            if not quarantine:
+                lines.append("Run with action='quarantine_duplicates' to move duplicates safely into _To_Review/Duplicates/.")
+            return "\n".join(lines)
+
+        quarantine_dir = folder / "_To_Review" / "Duplicates"
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+        journal: list[tuple[Path, Path]] = []
+        moved_lines: list[str] = []
+
+        for keep, extras in dup_groups:
+            for dup in extras:
+                origin = dup.resolve()
+                final_dst = _unique_dest_path(quarantine_dir / dup.name)
+                shutil.move(str(dup), str(final_dst))
+                journal.append((origin, final_dst.resolve()))
+                moved_lines.append(f"{dup.name} → _To_Review/Duplicates/ (kept {keep.name})")
+
+        def _undo_quarantine(entries=tuple(journal), qdir=quarantine_dir.resolve()):
+            restored = 0
+            for orig, moved_to in entries:
+                if moved_to.exists():
+                    orig.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(moved_to), str(orig))
+                    restored += 1
+            for d in (qdir, qdir.parent):
+                try:
+                    if d.exists() and d.is_dir() and not any(d.iterdir()):
+                        d.rmdir()
+                except Exception:
+                    pass
+            return f"Restored {restored} quarantined duplicate(s)."
+
+        push_undo(f"quarantined {len(journal)} duplicate(s) in {folder.name}", _undo_quarantine)
+        return (
+            f"Quarantined {len(journal)} exact duplicate(s) into {quarantine_dir} "
+            f"(kept originals untouched; {_format_size(reclaim_bytes)} isolated):\n"
+            + "\n".join(moved_lines[:10])
+        )
+    except Exception as e:
+        return f"Duplicate scan failed: {e}"
+
+
 def clean_empty_folders(path: str) -> str:
     """Remove empty top-level subdirectories in `path` (e.g. leftover empty folders on Desktop)."""
     if not path or not str(path).strip():
@@ -1115,13 +1438,48 @@ def file_controller(
             return delete_file(explicit_path, name=name)
 
         elif action == "move":
-            return move_file(explicit_path, name=name, destination=destination, files=files_arg)
+            return move_file(
+                explicit_path,
+                name=name,
+                destination=destination,
+                files=files_arg,
+                extension=str(params.get("extension") or ""),
+                pattern=str(params.get("pattern") or ""),
+                dry_run=dry_run,
+            )
 
         elif action == "copy":
-            return copy_file(explicit_path, name=name, destination=destination)
+            return copy_file(
+                explicit_path,
+                name=name,
+                destination=destination,
+                files=files_arg,
+                extension=str(params.get("extension") or ""),
+                pattern=str(params.get("pattern") or ""),
+                dry_run=dry_run,
+            )
 
         elif action == "rename":
             return rename_file(explicit_path, name=name, new_name=str(params.get("new_name") or ""))
+
+        elif action == "batch_rename":
+            return batch_rename(
+                explicit_path,
+                pattern=str(params.get("pattern") or "*"),
+                extension=str(params.get("extension") or ""),
+                prefix=str(params.get("prefix") or ""),
+                replace_from=str(params.get("replace_from") or ""),
+                replace_to=str(params.get("replace_to") or ""),
+                include_date=bool(params.get("include_date", False)),
+                start_index=int(params.get("start_index", 1) or 1),
+                dry_run=dry_run,
+            )
+
+        elif action in ("duplicates", "find_duplicates"):
+            return handle_duplicates(explicit_path, quarantine=False, dry_run=dry_run)
+
+        elif action == "quarantine_duplicates":
+            return handle_duplicates(explicit_path, quarantine=True, dry_run=dry_run)
 
         elif action == "read":
             return read_file(explicit_path, name=name)
@@ -1198,7 +1556,8 @@ TOOL = {
             "action": {
                 "type": "STRING",
                 "description": (
-                    "organize | organize_downloads | organize_desktop | clean_empty_folders | "
+                    "organize | organize_downloads | organize_desktop | batch_rename | "
+                    "duplicates | quarantine_duplicates | clean_empty_folders | "
                     "list | create_file | create_folder | delete | move | copy | rename | "
                     "read | write | find | largest | disk_usage | info | open"
                 ),
@@ -1208,7 +1567,7 @@ TOOL = {
                 "description": (
                     "Target folder or file path/shortcut: 'downloads', 'desktop', "
                     "'documents', 'pictures', 'videos', 'music', 'home', or a subpath "
-                    "like 'downloads/report.pdf'. REQUIRED for organize/create/move/delete."
+                    "like 'downloads/report.pdf'. REQUIRED for organize/create/move/delete/batch_rename/duplicates."
                 ),
             },
             "name": {
@@ -1217,12 +1576,36 @@ TOOL = {
             },
             "destination": {
                 "type": "STRING",
-                "description": "Destination folder or path for move/copy (e.g. 'downloads/Documents' or subfolder 'Images').",
+                "description": "Destination folder or path for move/copy (e.g. 'downloads/Invoices' or subfolder 'Invoices').",
             },
             "files": {
                 "type": "ARRAY",
                 "items": {"type": "STRING"},
                 "description": "Optional batch list of filenames inside 'path' to move together.",
+            },
+            "pattern": {
+                "type": "STRING",
+                "description": "Glob filename filter for move or batch_rename (e.g. 'Screenshot*', '*invoice*').",
+            },
+            "prefix": {
+                "type": "STRING",
+                "description": "Prefix for batch_rename (e.g. 'Screenshot' -> Screenshot_01.png, Screenshot_02.png).",
+            },
+            "replace_from": {
+                "type": "STRING",
+                "description": "Substring to replace in filenames during batch_rename.",
+            },
+            "replace_to": {
+                "type": "STRING",
+                "description": "Replacement substring for batch_rename.",
+            },
+            "include_date": {
+                "type": "BOOLEAN",
+                "description": "Include YYYY-MM-DD file modified date in batch_rename output.",
+            },
+            "start_index": {
+                "type": "INTEGER",
+                "description": "Starting number for batch_rename numbering (default 1).",
             },
             "mode": {
                 "type": "STRING",
@@ -1230,7 +1613,7 @@ TOOL = {
             },
             "dry_run": {
                 "type": "BOOLEAN",
-                "description": "If true on action='organize', previews counts & planned moves without moving files yet.",
+                "description": "If true on organize/move/batch_rename/quarantine_duplicates, previews changes without touching disk.",
             },
             "new_name": {
                 "type": "STRING",
@@ -1242,7 +1625,7 @@ TOOL = {
             },
             "extension": {
                 "type": "STRING",
-                "description": "File extension filter for action='find' (e.g. '.pdf').",
+                "description": "File extension filter for find, move, or batch_rename (e.g. '.pdf', '.png').",
             },
             "count": {
                 "type": "INTEGER",

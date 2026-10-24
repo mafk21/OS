@@ -154,3 +154,121 @@ def test_clean_empty_folders_removes_ghost_folders_safely(monkeypatch, tmp_path)
     assert not (desktop / "Images").exists()
     assert not (desktop / "Videos").exists()
     assert (keep / "main.py").exists()
+
+
+def test_whole_skill_batch_rename_with_atomic_undo_beyond_max_depth(monkeypatch, tmp_path):
+    _, _, downloads, _ = _isolate_user_dirs(monkeypatch, tmp_path)
+
+    # Create 15 screenshots (exceeds core.undo.MAX_DEPTH=10 if done one by one!)
+    for i in range(1, 16):
+        (downloads / f"Screenshot ({i}).png").write_text(f"img-{i}", encoding="utf-8")
+    (downloads / "keep_me.pdf").write_text("pdf", encoding="utf-8")
+
+    dry = fc.file_controller({
+        "action": "batch_rename",
+        "path": "downloads",
+        "pattern": "Screenshot*",
+        "prefix": "Trip",
+        "dry_run": True,
+    })
+    assert "[DRY RUN]" in dry
+    assert (downloads / "Screenshot (1).png").exists()
+
+    res = fc.file_controller({
+        "action": "batch_rename",
+        "path": "downloads",
+        "pattern": "Screenshot*",
+        "prefix": "Trip",
+    })
+    assert "Renamed 15 file(s)" in res
+    assert (downloads / "Trip_01.png").exists()
+    assert (downloads / "Trip_15.png").exists()
+    assert (downloads / "keep_me.pdf").exists()
+
+    # ONE single undo restores ALL 15 renamed files!
+    undo_res = undo_stack.undo_last()
+    assert "15 file(s)" in undo_res
+    assert (downloads / "Screenshot (1).png").exists()
+    assert (downloads / "Screenshot (15).png").exists()
+
+
+def test_whole_skill_duplicates_and_quarantine_with_atomic_undo(monkeypatch, tmp_path):
+    _, _, downloads, _ = _isolate_user_dirs(monkeypatch, tmp_path)
+
+    (downloads / "contract.pdf").write_bytes(b"EXACT_SAME_BYTES_12345")
+    (downloads / "contract (1).pdf").write_bytes(b"EXACT_SAME_BYTES_12345")
+    (downloads / "contract_copy.pdf").write_bytes(b"EXACT_SAME_BYTES_12345")
+    (downloads / "unique.pdf").write_bytes(b"DIFFERENT_BYTES_99999")
+
+    scan = fc.file_controller({"action": "duplicates", "path": "downloads"})
+    assert "Found 2 exact duplicate file(s)" in scan
+    assert "Keep 'contract.pdf'" in scan
+
+    quar = fc.file_controller({"action": "quarantine_duplicates", "path": "downloads"})
+    assert "Quarantined 2 exact duplicate(s)" in quar
+    assert (downloads / "contract.pdf").exists()
+    assert (downloads / "unique.pdf").exists()
+    assert (downloads / "_To_Review" / "Duplicates" / "contract (1).pdf").exists()
+    assert (downloads / "_To_Review" / "Duplicates" / "contract_copy.pdf").exists()
+
+    # Single-step undo puts duplicates back and cleans _To_Review/Duplicates
+    undo_res = undo_stack.undo_last()
+    assert "Restored 2 quarantined duplicate(s)" in undo_res
+    assert (downloads / "contract (1).pdf").exists()
+    assert (downloads / "contract_copy.pdf").exists()
+    assert not (downloads / "_To_Review").exists()
+
+
+def test_whole_skill_extension_bulk_move_and_file_processor_shortcuts(monkeypatch, tmp_path):
+    import zipfile
+    import actions.file_processor as fp
+
+    _, _, downloads, _ = _isolate_user_dirs(monkeypatch, tmp_path)
+
+    for i in range(1, 5):
+        (downloads / f"bill_{i}.pdf").write_text(f"pdf-{i}", encoding="utf-8")
+    (downloads / "photo.png").write_text("png", encoding="utf-8")
+
+    # Bulk move all .pdf files in Downloads -> Downloads/Invoices in 1 call
+    mv = fc.file_controller({
+        "action": "move",
+        "path": "downloads",
+        "extension": ".pdf",
+        "destination": "Invoices",
+    })
+    assert "Moved 4 file(s)" in mv
+    assert (downloads / "Invoices" / "bill_1.pdf").exists()
+    assert (downloads / "Invoices" / "bill_4.pdf").exists()
+    assert (downloads / "photo.png").exists()
+
+    # Undo restores all 4 PDFs and removes empty Invoices/ folder
+    undo_stack.undo_last()
+    assert (downloads / "bill_1.pdf").exists()
+    assert not (downloads / "Invoices").exists()
+
+    # file_processor resolves 'downloads/bundle.zip' and extracts safely inside Downloads
+    zpath = downloads / "bundle.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("hello.txt", "world")
+
+    ext_out = fp.file_processor({
+        "file_path": "downloads/bundle.zip",
+        "action": "extract",
+        "destination": "Unpacked",
+    })
+    assert "Extracted to:" in ext_out
+    assert (downloads / "Unpacked" / "hello.txt").read_text(encoding="utf-8") == "world"
+
+    # Bulk copy by extension + atomic undo
+    cp_out = fc.file_controller({
+        "action": "copy",
+        "path": "downloads",
+        "extension": ".pdf",
+        "destination": "PDF_Backup",
+    })
+    assert "Copied 4 file(s)" in cp_out
+    assert (downloads / "PDF_Backup" / "bill_1.pdf").exists()
+    undo_stack.undo_last()
+    assert not (downloads / "PDF_Backup").exists()
+
+
