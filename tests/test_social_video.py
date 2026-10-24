@@ -291,3 +291,78 @@ def test_summarize_media_and_action_discovery_all_valid():
     overlays = (REPO_ROOT / "apex_ui" / "components" / "JarvisHudOverlays.tsx").read_text(encoding="utf-8")
     assert 'data-testid="hud-video-player"' in hud_modal
     assert "<HudVideoModal />" in overlays
+
+
+def test_watch_media_extracts_real_visual_frames_and_watches_active_hud_video(tmp_path):
+    import subprocess
+    from PIL import Image
+
+    ff = me.resolve_ffmpeg_path()
+    assert ff is not None
+
+    # Generate a real 2-second MP4 video (red scene -> blue scene) using bundled ffmpeg
+    real_mp4 = tmp_path / "two_scenes.mp4"
+    subprocess.run(
+        [
+            ff,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=320x240:d=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=320x240:d=1",
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+            "-map",
+            "[v]",
+            "-pix_fmt",
+            "yuv420p",
+            str(real_mp4),
+        ],
+        check=True,
+        timeout=20,
+    )
+    assert real_mp4.is_file() and real_mp4.stat().st_size > 500
+
+    frames = me.extract_video_frames(real_mp4, max_frames=4, max_dim=320, duration_hint=2.0)
+    assert len(frames) >= 2
+    assert all(isinstance(im, Image.Image) for _, im in frames)
+    # First frame center pixel should be predominantly red, last frame predominantly blue
+    r0, _g0, b0 = frames[0][1].getpixel((160, 120))
+    rn, _gn, bn = frames[-1][1].getpixel((160, 120))
+    assert r0 > b0
+    assert bn > rn
+
+    captured_contents: list[object] = []
+
+    def _fake_vision_call(contents, **_kwargs):
+        captured_contents.extend(contents if isinstance(contents, list) else [contents])
+        return SimpleNamespace(
+            text="At 00:00 the screen is bright red, then at 00:01 it transitions to deep blue."
+        )
+
+    # Also verify active HUD video fallback when user asks "can you see it?" with no URL
+    dummy_player = SimpleNamespace(
+        write_log=lambda _m: None,
+        show_content=lambda _t, _b: None,
+        current_video_source=lambda: str(real_mp4),
+    )
+
+    with patch("core.gemini.call", side_effect=_fake_vision_call):
+        out = social_video(
+            {"action": "watch", "focus": "What colors appear in the video?"},
+            player=dummy_player,
+        )
+
+    assert "keyframes inspected" in out
+    assert "bright red" in out and "deep blue" in out
+    # Confirm real PIL.Image frames were passed to the multimodal model!
+    pil_passed = [x for x in captured_contents if isinstance(x, Image.Image)]
+    assert len(pil_passed) >= 2
+

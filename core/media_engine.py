@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -757,10 +758,67 @@ def _fetch_subtitles_from_info(info: dict[str, Any]) -> str:
     return ""
 
 
-def _transcribe_short_video_audio(url: str, *, cookies_browser: str = "") -> str:
-    """Download lightweight audio stream (<24 MB) and transcribe via OpenAI Whisper or Gemini multimodal."""
+def _transcribe_audio_file(audio_file: Path) -> str:
+    """Transcribe a local audio/video file (<24 MB) via OpenAI Whisper or Gemini multimodal."""
     from memory import config_manager as cfg
 
+    if not audio_file.exists() or audio_file.stat().st_size == 0:
+        return ""
+    if audio_file.stat().st_size > 24 * 1024 * 1024:
+        return ""
+
+    # 1. Try OpenAI Audio Transcriptions if an OpenAI key is configured
+    ocfg = cfg.get_openai_cfg()
+    oai_key = (ocfg.get("api_key") or "").strip()
+    if oai_key and len(oai_key) > 15:
+        base_url = (ocfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
+        mime = mimetypes.guess_type(audio_file.name)[0] or "audio/mp4"
+        raw_bytes = audio_file.read_bytes()
+        for model_name in ("gpt-4o-mini-transcribe", "whisper-1"):
+            try:
+                with httpx.Client(timeout=45.0) as client:
+                    resp = client.post(
+                        f"{base_url}/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {oai_key}"},
+                        data={"model": model_name},
+                        files={"file": (audio_file.name, raw_bytes, mime)},
+                    )
+                if resp.status_code == 200:
+                    txt = str(resp.json().get("text") or "").strip()
+                    if txt:
+                        return txt
+            except Exception:
+                continue
+
+    # 2. Try Gemini multimodal audio understanding if a Gemini key is configured
+    gkey = (cfg.get_gemini_key() or "").strip()
+    if gkey and len(gkey) > 15:
+        try:
+            from google.genai import types
+            from core import gemini
+
+            mime = mimetypes.guess_type(audio_file.name)[0] or "audio/mp4"
+            part = types.Part.from_bytes(
+                data=audio_file.read_bytes(), mime_type=mime
+            )
+            resp = gemini.call(
+                [
+                    part,
+                    "Transcribe everything spoken in this video audio accurately, "
+                    "and note any key sound/music cues if there is no speech.",
+                ],
+                tier=gemini.FAST,
+                timeout_ms=45_000,
+            )
+            if resp and getattr(resp, "text", None):
+                return resp.text.strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _transcribe_short_video_audio(url: str, *, cookies_browser: str = "") -> str:
+    """Download lightweight audio stream (<24 MB) and transcribe via OpenAI Whisper or Gemini multimodal."""
     tmp_dir = Path(tempfile.mkdtemp(prefix=".jarvis_vid_stt_"))
     try:
         opts: dict[str, Any] = {
@@ -778,62 +836,322 @@ def _transcribe_short_video_audio(url: str, *, cookies_browser: str = "") -> str
         files = [p for p in tmp_dir.iterdir() if p.is_file() and p.stat().st_size > 0]
         if not files:
             return ""
-        audio_file = files[0]
-        if audio_file.stat().st_size > 24 * 1024 * 1024:
-            return ""
-
-        # 1. Try OpenAI Audio Transcriptions if an OpenAI key is configured
-        ocfg = cfg.get_openai_cfg()
-        oai_key = (ocfg.get("api_key") or "").strip()
-        if oai_key and len(oai_key) > 15:
-            base_url = (ocfg.get("base_url") or "https://api.openai.com/v1").rstrip("/")
-            mime = mimetypes.guess_type(audio_file.name)[0] or "audio/mp4"
-            raw_bytes = audio_file.read_bytes()
-            for model_name in ("gpt-4o-mini-transcribe", "whisper-1"):
-                try:
-                    with httpx.Client(timeout=45.0) as client:
-                        resp = client.post(
-                            f"{base_url}/audio/transcriptions",
-                            headers={"Authorization": f"Bearer {oai_key}"},
-                            data={"model": model_name},
-                            files={"file": (audio_file.name, raw_bytes, mime)},
-                        )
-                    if resp.status_code == 200:
-                        txt = str(resp.json().get("text") or "").strip()
-                        if txt:
-                            return txt
-                except Exception:
-                    continue
-
-        # 2. Try Gemini multimodal audio understanding if a Gemini key is configured
-        gkey = (cfg.get_gemini_key() or "").strip()
-        if gkey and len(gkey) > 15:
-            try:
-                from google.genai import types
-                from core import gemini
-
-                mime = mimetypes.guess_type(audio_file.name)[0] or "audio/mp4"
-                part = types.Part.from_bytes(
-                    data=audio_file.read_bytes(), mime_type=mime
-                )
-                resp = gemini.call(
-                    [
-                        part,
-                        "Transcribe everything spoken in this video audio accurately, "
-                        "and note any key sound/music cues if there is no speech.",
-                    ],
-                    tier=gemini.FAST,
-                    timeout_ms=45_000,
-                )
-                if resp and getattr(resp, "text", None):
-                    return resp.text.strip()
-            except Exception:
-                pass
-        return ""
+        return _transcribe_audio_file(files[0])
     except Exception:
         return ""
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+# ── 4. Visual Keyframe Extraction & True Multimodal Video Vision ("Seeing") ──
+
+
+def _stamp_frame_timestamp(img: Any, sec: float) -> Any:
+    """Stamp a compact [MM:SS] badge onto a PIL.Image frame so Vision models know exact timing."""
+    try:
+        from PIL import ImageDraw
+
+        out = img.convert("RGB")
+        draw = ImageDraw.Draw(out, "RGBA")
+        m, s = divmod(max(0, int(round(sec))), 60)
+        label = f"{m:02d}:{s:02d}"
+        draw.rounded_rectangle((8, 8, 66, 30), radius=6, fill=(5, 12, 22, 205))
+        draw.text((15, 13), label, fill=(110, 240, 255, 255))
+        return out
+    except Exception:
+        return img
+
+
+def _probe_duration_via_ffmpeg(ffmpeg_bin: str, video_path: Path) -> float:
+    try:
+        proc = subprocess.run(
+            [ffmpeg_bin, "-hide_banner", "-i", str(video_path)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", proc.stderr or "")
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    except Exception:
+        pass
+    return 0.0
+
+
+def extract_video_frames(
+    video_path: str | Path,
+    *,
+    max_frames: int = 8,
+    max_dim: int = 720,
+    duration_hint: float = 0.0,
+) -> list[tuple[float, Any]]:
+    """Extract evenly spaced visual keyframes `[(timestamp_sec, PIL.Image), ...]` from any video file."""
+    from PIL import Image
+
+    vp = Path(video_path)
+    if not vp.is_file() or vp.stat().st_size == 0:
+        return []
+
+    target_n = max(1, min(12, int(max_frames)))
+    frames: list[tuple[float, Any]] = []
+
+    # Path A: Fast OpenCV random-access seek if cv2 is available
+    try:
+        import cv2
+
+        cap = cv2.VideoCapture(str(vp))
+        if cap.isOpened():
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            if total_frames > 0 and fps > 0:
+                count = min(target_n, total_frames)
+                for idx in range(count):
+                    frac = (idx + 0.5) / count
+                    f_pos = min(total_frames - 1, max(0, int(frac * total_frames)))
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, f_pos)
+                    ok, bgr = cap.read()
+                    if not ok or bgr is None:
+                        continue
+                    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+                    pil_img = Image.fromarray(rgb)
+                    if max(pil_img.size) > max_dim:
+                        pil_img.thumbnail((max_dim, max_dim))
+                    t_sec = f_pos / fps
+                    frames.append((t_sec, _stamp_frame_timestamp(pil_img, t_sec)))
+            cap.release()
+            if frames:
+                return frames
+    except Exception:
+        pass
+
+    # Path B: Universal ffmpeg keyframe sampler (handles AV1, VP9, HEVC, H.264, WebM, MOV, MP4)
+    ffmpeg_bin = resolve_ffmpeg_path()
+    if not ffmpeg_bin:
+        return []
+
+    dur = float(duration_hint or 0.0)
+    if dur <= 0.0:
+        dur = _probe_duration_via_ffmpeg(ffmpeg_bin, vp)
+
+    out_dir = Path(tempfile.mkdtemp(prefix=".jarvis_frames_"))
+    try:
+        fps_val = max(0.05, target_n / max(dur, 1.5)) if dur > 0 else 1.0
+        vf = f"fps={fps_val:.5f},scale='min({max_dim},iw)':-2"
+        cmd = [
+            ffmpeg_bin,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(vp),
+            "-vf",
+            vf,
+            "-frames:v",
+            str(target_n),
+            "-q:v",
+            "3",
+            str(out_dir / "frame_%03d.jpg"),
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=35, check=False)
+        jpgs = sorted(out_dir.glob("frame_*.jpg"))
+        for i, jp in enumerate(jpgs):
+            with Image.open(jp) as im:
+                loaded = im.convert("RGB")
+            t_sec = ((i + 0.5) * (dur / len(jpgs))) if dur > 0 and jpgs else float(i)
+            frames.append((t_sec, _stamp_frame_timestamp(loaded, t_sec)))
+        return frames
+    except Exception:
+        return []
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+
+def _extract_audio_from_local_video(video_path: Path, out_audio_path: Path) -> bool:
+    ffmpeg_bin = resolve_ffmpeg_path()
+    if not ffmpeg_bin or not video_path.is_file():
+        return False
+    try:
+        subprocess.run(
+            [
+                ffmpeg_bin,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(video_path),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-b:a",
+                "48k",
+                str(out_audio_path),
+            ],
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        return out_audio_path.is_file() and out_audio_path.stat().st_size > 0
+    except Exception:
+        return False
+
+
+def _stage_video_for_vision(
+    url: str,
+    stage_dir: Path,
+    *,
+    cookies_browser: str = "",
+) -> tuple[Path | None, dict[str, Any]]:
+    """Download a compact <=480p MP4 into `stage_dir` so JARVIS can visually inspect its frames + audio."""
+    ffmpeg_bin = resolve_ffmpeg_path()
+    if ffmpeg_bin:
+        fmt = (
+            "b[height<=480][ext=mp4]/"
+            "bv*[height<=480][ext=mp4]+ba[ext=m4a]/"
+            "b[filesize<40M][ext=mp4]/"
+            "bv*[height<=480]+ba/"
+            "worst[ext=mp4]/b"
+        )
+    else:
+        fmt = "b[height<=480][ext=mp4]/b[ext=mp4]/worst/b"
+
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "format": fmt,
+        "outtmpl": str(stage_dir / "vision_clip.%(ext)s"),
+    }
+    if ffmpeg_bin:
+        opts["ffmpeg_location"] = ffmpeg_bin
+        opts["merge_output_format"] = "mp4"
+
+    info = _extract_with_ytdlp(
+        url, opts, download=True, cookies_browser=cookies_browser
+    )
+    candidates = sorted(
+        [
+            p
+            for p in stage_dir.iterdir()
+            if p.is_file() and not p.name.endswith((".part", ".ytdl")) and p.stat().st_size > 0
+        ],
+        key=lambda p: p.stat().st_size,
+        reverse=True,
+    )
+    return (candidates[0] if candidates else None), info
+
+
+def watch_media(
+    url_or_path: str,
+    *,
+    question: str = "",
+    max_frames: int = 8,
+    cookies_browser: str = "",
+) -> dict[str, Any]:
+    """Visually watch AND listen to any video (Instagram, Snapchat, YouTube, TikTok, X, Reddit, or local file)."""
+    raw = (url_or_path or "").strip().strip('"').strip("'")
+    if not raw:
+        return {"ok": False, "error": "No video URL or file path provided."}
+
+    local_p = Path(raw).expanduser()
+    is_local = not raw.lower().startswith(("http://", "https://")) and local_p.is_file()
+
+    stage_dir = Path(tempfile.mkdtemp(prefix=".jarvis_watch_"))
+    try:
+        if is_local:
+            video_file: Path | None = local_p
+            platform = "Local"
+            title = local_p.stem
+            uploader = ""
+            description = ""
+            duration = 0
+            webpage_url = str(local_p)
+            transcript = ""
+        else:
+            target = raw if raw.lower().startswith(("http://", "https://")) else f"ytsearch1:{raw}"
+            try:
+                video_file, info = _stage_video_for_vision(
+                    target, stage_dir, cookies_browser=cookies_browser
+                )
+            except Exception as exc:
+                return {"ok": False, "platform": detect_platform(raw), "error": str(exc)}
+
+            webpage_url = str(info.get("webpage_url") or raw)
+            platform = detect_platform(webpage_url)
+            title = str(info.get("title") or "").strip()
+            uploader = str(info.get("uploader") or info.get("channel") or "").strip()
+            description = str(info.get("description") or "").strip()[:2500]
+            duration = int(info.get("duration") or 0)
+            transcript = _fetch_subtitles_from_info(info)
+
+        frames: list[tuple[float, Any]] = []
+        if video_file is not None and video_file.is_file():
+            frames = extract_video_frames(
+                video_file, max_frames=max_frames, max_dim=720, duration_hint=duration
+            )
+            if not transcript and (duration == 0 or duration <= 1200):
+                aud_file = stage_dir / "extracted_audio.m4a"
+                if _extract_audio_from_local_video(video_file, aud_file):
+                    transcript = _transcribe_audio_file(aud_file)
+                elif video_file.stat().st_size <= 24 * 1024 * 1024:
+                    transcript = _transcribe_audio_file(video_file)
+
+        if not frames and not transcript and not description:
+            return {
+                "ok": False,
+                "platform": platform,
+                "error": "Could not extract visual frames or audio from that video.",
+            }
+
+        from core import gemini
+
+        ts_list = ", ".join(
+            f"{int(t) // 60:02d}:{int(t) % 60:02d}" for t, _ in frames
+        )
+        q_block = (
+            f"Specific user question to answer directly: {question}\n"
+            if question
+            else "Describe clearly what visually happens scene-by-scene, any on-screen text/captions/objects, and what is said.\n"
+        )
+        prompt = (
+            f"You are watching a {platform} video ({len(frames)} timestamped keyframes attached: [{ts_list}]).\n"
+            f"Title: {title or 'Untitled'}\n"
+            + (f"Creator: {uploader}\n" if uploader else "")
+            + (f"Duration: {duration}s\n" if duration else "")
+            + f"Caption / Description: {description[:1200] or '(none)'}\n"
+            f"Spoken Audio Transcript: {(transcript or '(no speech / music or visual-only clip)')[:35000]}\n\n"
+            f"{q_block}"
+            "Combine what you SEE in the visual frames (actions, people, objects, setting, burned-in text, UI/code) "
+            "with what you HEAR in the transcript. Reference timestamps where helpful."
+        )
+
+        contents: list[Any] = [im for _, im in frames] + [prompt]
+        resp = gemini.call(contents, tier=gemini.SMART, timeout_ms=65_000)
+        analysis = (getattr(resp, "text", "") or "").strip() if resp else ""
+        if not analysis:
+            analysis = (
+                f"Extracted {len(frames)} visual frames"
+                + (f" ({ts_list})" if ts_list else "")
+                + (f" and transcript: {transcript[:500]}" if transcript else f" — {title or description[:400]}")
+            )
+
+        return {
+            "ok": True,
+            "platform": platform,
+            "title": title,
+            "uploader": uploader,
+            "duration": duration,
+            "webpage_url": webpage_url,
+            "frames_analyzed": len(frames),
+            "has_transcript": bool(transcript),
+            "summary": analysis,
+            "analysis": analysis,
+        }
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
 
 
 def summarize_media(
@@ -841,11 +1159,18 @@ def summarize_media(
     *,
     focus: str = "",
     cookies_browser: str = "",
+    include_visuals: bool = True,
 ) -> dict[str, Any]:
-    """Universal video summarizer for Instagram, Snapchat, YouTube, TikTok, X, Reddit & any web video."""
+    """Universal multimodal video summarizer (visual frames + audio/captions) for Instagram, Snapchat, YouTube, TikTok, X & local files."""
     raw = (url or "").strip()
     if not raw:
         return {"ok": False, "error": "No video URL provided."}
+
+    local_p = Path(raw).expanduser()
+    if not raw.lower().startswith(("http://", "https://")) and local_p.is_file():
+        return watch_media(
+            str(local_p), question=focus, max_frames=8, cookies_browser=cookies_browser
+        )
 
     try:
         info = _extract_with_ytdlp(
@@ -864,6 +1189,19 @@ def summarize_media(
     description = str(info.get("description") or "").strip()[:3000]
     duration = int(info.get("duration") or 0)
 
+    # For short/medium social & web videos (<= 15 min) when include_visuals=True,
+    # watch the actual visual keyframes AND audio together so silent/visual Instagram
+    # Reels, Snapchat Spotlights, TikToks & demos are genuinely SEEN!
+    if include_visuals and (0 <= duration <= 900):
+        watched = watch_media(
+            webpage_url,
+            question=focus,
+            max_frames=8,
+            cookies_browser=cookies_browser,
+        )
+        if watched.get("ok") and watched.get("frames_analyzed", 0) > 0:
+            return watched
+
     transcript = _fetch_subtitles_from_info(info)
     if not transcript and duration <= 1200:
         transcript = _transcribe_short_video_audio(
@@ -874,7 +1212,7 @@ def summarize_media(
         return {
             "ok": False,
             "platform": platform,
-            "error": "Could not extract captions, audio speech, or description from that video.",
+            "error": "Could not extract visual frames, captions, audio speech, or description from that video.",
         }
 
     from core import gemini
@@ -893,7 +1231,6 @@ def summarize_media(
     resp = gemini.call(prompt, tier=gemini.SMART, timeout_ms=55_000)
     summary_text = (getattr(resp, "text", "") or "").strip() if resp else ""
     if not summary_text:
-        # Clean deterministic fallback if offline / no cloud model reachable
         summary_text = (
             f"{title or platform + ' video'}"
             + (f" by {uploader}" if uploader else "")
@@ -907,6 +1244,7 @@ def summarize_media(
         "uploader": uploader,
         "duration": duration,
         "webpage_url": webpage_url,
+        "frames_analyzed": 0,
         "has_transcript": bool(transcript),
         "summary": summary_text,
     }

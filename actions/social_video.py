@@ -29,6 +29,7 @@ from core.media_engine import (
     is_direct_media_url,
     resolve_playable_stream,
     summarize_media,
+    watch_media,
 )
 
 
@@ -76,17 +77,29 @@ def social_video(
     raw_url = str(params.get("url") or params.get("query") or "").strip()
     cookies_browser = str(params.get("cookies_browser") or "").strip()
 
-    # Resolve URL from explicit argument or system clipboard
+    # Resolve URL from explicit argument, currently playing HUD video, or system clipboard
     resolved_url = extract_url_from_text_or_clipboard(
         raw_url,
-        allow_clipboard=(not raw_url or "clipboard" in raw_url.lower()),
+        allow_clipboard=False,
     )
     target = resolved_url or raw_url
+    if not target or target.lower() in ("current", "playing", "this", "it"):
+        if player is not None and hasattr(player, "current_video_source"):
+            try:
+                cur_vid = (player.current_video_source() or "").strip()
+                if cur_vid:
+                    target = cur_vid
+            except Exception:
+                pass
+    if not target or "clipboard" in target.lower():
+        clip_u = extract_url_from_text_or_clipboard(raw_url, allow_clipboard=True)
+        if clip_u:
+            target = clip_u
 
     if not target:
         return (
-            "Please share the video link (from Instagram, YouTube, Snapchat, TikTok, "
-            "X, Reddit, or any other site) or copy it to your clipboard first."
+            "Please share the video link or file path (from Instagram, YouTube, Snapchat, TikTok, "
+            "X, Reddit, or any other site), play it on the HUD, or copy it to your clipboard first."
         )
 
     platform = detect_platform(target)
@@ -152,7 +165,7 @@ def social_video(
         )
 
     # ── 2. PLAY VIDEO IN HUD OR BROWSER ───────────────────────────────────────
-    if action in ("play", "watch", "open"):
+    if action in ("play", "open"):
         if bool(params.get("open_in_browser", False)):
             if target.lower().startswith(("http://", "https://")):
                 webbrowser.open(target)
@@ -205,7 +218,39 @@ def social_video(
             return f"Opened {platform} video in your browser."
         return "No display is attached to play the video."
 
-    # ── 3. SUMMARIZE / TRANSCRIBE VIDEO ───────────────────────────────────────
+    # ── 3. VISUALLY WATCH / SEE FRAMES + AUDIO ────────────────────────────────
+    if action in ("watch", "see", "look", "describe", "inspect_visuals"):
+        if player is not None and hasattr(player, "write_log"):
+            player.write_log(f"[Video] Watching {platform} video frames & audio…")
+
+        focus = str(params.get("focus") or params.get("question") or "").strip()
+        max_frames = int(params.get("max_frames") or 8)
+        res_watch = watch_media(
+            target,
+            question=focus,
+            max_frames=max_frames,
+            cookies_browser=cookies_browser,
+        )
+        if not res_watch.get("ok"):
+            return f"Could not visually inspect that {platform} video: {res_watch.get('error')}"
+
+        title = res_watch.get("title") or f"{res_watch.get('platform')} Video"
+        frames_n = int(res_watch.get("frames_analyzed") or 0)
+        body = str(res_watch.get("analysis") or res_watch.get("summary") or "").strip()
+        if player is not None and hasattr(player, "show_content"):
+            try:
+                player.show_content(
+                    f"{res_watch.get('platform')} Visual Analysis ({frames_n} frames) — {title[:26]}",
+                    body,
+                )
+            except Exception:
+                pass
+        return (
+            f"{res_watch.get('platform')} Visual & Audio Analysis "
+            f"({frames_n} keyframes inspected — {title}):\n{body}"
+        )
+
+    # ── 4. SUMMARIZE / TRANSCRIBE VIDEO ───────────────────────────────────────
     if action in ("summarize", "summary", "transcribe", "analyze"):
         if player is not None and hasattr(player, "write_log"):
             player.write_log(f"[Video] Analyzing {platform} video…")
@@ -254,32 +299,34 @@ def social_video(
 
     return (
         f"Unknown action '{action}'. Supported actions: "
-        "download, play, summarize, info."
+        "download, play, watch, summarize, info."
     )
 
 
 TOOL = {
     "name": "social_video",
     "description": (
-        "Universal video & audio tool for Instagram (Reels, Posts, Stories, IGTV), "
+        "Universal multimodal video & audio tool for Instagram (Reels, Posts, Stories, IGTV), "
         "YouTube (Videos, Shorts, Music), Snapchat (Spotlight, Public Stories), "
         "TikTok, X / Twitter, Facebook, Reddit, Twitch, Vimeo, SoundCloud, Pinterest, "
-        "LinkedIn, and 1,800+ other sites. Use to DOWNLOAD videos (.mp4) or audio (.mp3), "
-        "PLAY social/web videos on the HUD, SUMMARIZE spoken/captioned content from "
-        "any video or reel, or get video INFO. If the user says 'download this video' "
-        "without giving a URL, leave `url` empty to automatically use the link on their clipboard."
+        "LinkedIn, local video files, and 1,800+ other sites. "
+        "JARVIS CAN VISUALLY SEE VIDEOS: use action='watch' to extract real timestamped "
+        "visual frames + spoken audio so you literally see scenes, objects, actions, "
+        "and on-screen text/captions inside any reel/video (including whatever video "
+        "is currently playing on the HUD if `url` is omitted). Also use to DOWNLOAD "
+        "videos (.mp4) or audio (.mp3), PLAY videos on the HUD, SUMMARIZE, or get INFO."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "'download' (save MP4/MP3), 'play' (watch on HUD), 'summarize' (transcribe & summarize), or 'info' (metadata).",
-                "enum": ["download", "play", "summarize", "info"],
+                "description": "'watch' (visually see frames + hear audio), 'download' (save MP4/MP3), 'play' (display on HUD), 'summarize' (multimodal summary), or 'info' (metadata).",
+                "enum": ["watch", "download", "play", "summarize", "info"],
             },
             "url": {
                 "type": "STRING",
-                "description": "Video URL from Instagram, YouTube, Snapchat, TikTok, X, Reddit, etc. (or search phrase). Omit to auto-read copied URL from clipboard.",
+                "description": "Video URL (Instagram, YouTube, Snapchat, TikTok, X, Reddit, etc.) or local file path. Omit to inspect the video currently playing on the HUD or a link on the clipboard.",
             },
             "audio_only": {
                 "type": "BOOLEAN",
@@ -307,7 +354,11 @@ TOOL = {
             },
             "focus": {
                 "type": "STRING",
-                "description": "Optional specific question or angle when summarizing a video.",
+                "description": "Specific visual/audio question when watching or summarizing (e.g. 'what car is in this reel?', 'read the text on screen', 'what happens at the end?').",
+            },
+            "max_frames": {
+                "type": "INTEGER",
+                "description": "Number of evenly spaced visual keyframes (1–12, default 8) to inspect when watching a video.",
             },
             "cookies_browser": {
                 "type": "STRING",

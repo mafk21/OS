@@ -6959,6 +6959,13 @@ class JarvisUI:
             return True
         return bool(self._win.video_is_playing())
 
+    def current_video_source(self) -> str:
+        if self._apex_bridge is not None and hasattr(self._apex_bridge, "current_video_target"):
+            src = self._apex_bridge.current_video_target()
+            if src:
+                return src
+        return ""
+
     def start_camera_stream(self) -> None:
         """Thread-safe: start live camera feed in the full HUD area."""
         self._win.start_camera_stream()

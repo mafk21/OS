@@ -388,7 +388,14 @@ class ApexHudBridge:
         }
         with self._lock:
             self._video = rec
+            self._last_video_target = (webpage_url or raw).strip()
         self._broadcast_threadsafe({"type": "video", "video": dict(rec)})
+
+    def current_video_target(self) -> str:
+        with self._lock:
+            if self._video is not None:
+                return str(getattr(self, "_last_video_target", "") or self._video.get("webpage_url") or "")
+            return ""
 
     def stop_video(self) -> None:
         with self._lock:
