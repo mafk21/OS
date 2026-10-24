@@ -38,10 +38,32 @@ def load_api_keys() -> dict:
     if not CONFIG_FILE.exists():
         return {}
     try:
-        return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return {}
+        try:
+            from core.security_vault import decrypt_dict_secrets
+            return decrypt_dict_secrets(raw)
+        except Exception:
+            return raw
     except Exception as e:
         print(f"❌ Failed to load api_keys.json: {e}")
         return {}
+
+
+def set_strict_config_encryption(enabled: bool) -> bool:
+    """Encrypt or decrypt secret keys inside config/api_keys.json on disk."""
+    if not CONFIG_FILE.exists():
+        return False
+    plain = load_api_keys()
+    plain["strict_vault_config"] = bool(enabled)
+    if enabled:
+        from core.security_vault import encrypt_dict_secrets
+        disk_obj = encrypt_dict_secrets(plain)
+    else:
+        disk_obj = plain
+    CONFIG_FILE.write_text(json.dumps(disk_obj, indent=2), encoding="utf-8")
+    return True
 
 def get_gemini_key() -> str | None:
     return load_api_keys().get("gemini_api_key")

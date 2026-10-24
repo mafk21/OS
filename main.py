@@ -2174,6 +2174,18 @@ class JarvisLive:
             _st = "failed" if str(result).startswith(f"Tool '{name}' failed:") else "completed"
             _nf(_task_id, str(result)[:220], _st)
 
+        try:
+            from core.security_vault import log_audit_event
+            log_audit_event(
+                actor=self._asst_name.lower(),
+                action=name,
+                args=args,
+                result_summary=str(result)[:220],
+                status="error" if str(result).startswith(f"Tool '{name}' failed:") else "ok",
+            )
+        except Exception:
+            pass
+
         print(f"[JARVIS] 📤 {name} → {str(result)[:80]}")
 
         # A tool that declared itself NON_BLOCKING also says when its answer may

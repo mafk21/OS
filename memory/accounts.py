@@ -77,14 +77,19 @@ def _load() -> dict:
         return {"accounts": {}}
     try:
         d = json.loads(ACCOUNTS_FILE.read_text(encoding="utf-8"))
-        return d if isinstance(d, dict) else {"accounts": {}}
+        if not isinstance(d, dict):
+            return {"accounts": {}}
+        from core.security_vault import decrypt_dict_secrets
+        return decrypt_dict_secrets(d)
     except Exception:
         return {"accounts": {}}
 
 
 def _save(data: dict) -> None:
     ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    ACCOUNTS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    from core.security_vault import encrypt_dict_secrets
+    encrypted = encrypt_dict_secrets(data)
+    ACCOUNTS_FILE.write_text(json.dumps(encrypted, indent=2), encoding="utf-8")
 
 
 def _is_rec_connected(rec: dict) -> bool:

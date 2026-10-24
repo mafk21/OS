@@ -12,6 +12,7 @@ import {
   Terminal,
   Scan,
   ShieldAlert,
+  ShieldCheck,
   Brain,
   Code2,
   ExternalLink,
@@ -26,6 +27,7 @@ import AutomationsModal from "./AutomationsModal";
 import BrainModal from "./BrainModal";
 import DevWorkspaceModal from "./DevWorkspaceModal";
 import IntegrationsModal from "./IntegrationsModal";
+import SecurityModal from "./SecurityModal";
 import StudioModal from "./StudioModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
@@ -73,6 +75,7 @@ export default function JarvisHudOverlays() {
     studioModalOpen,
     automationsModalOpen,
     devModalOpen,
+    securityModalOpen,
     personaModalOpen,
     setConsoleOpen,
     setSettingsOpen,
@@ -82,6 +85,7 @@ export default function JarvisHudOverlays() {
     setStudioModalOpen,
     setAutomationsModalOpen,
     setDevModalOpen,
+    setSecurityModalOpen,
     setPersonaModalOpen,
     setPreviewPersona,
     choosePersona,
@@ -241,6 +245,7 @@ export default function JarvisHudOverlays() {
       <StudioModal />
       <AutomationsModal />
       <DevWorkspaceModal />
+      <SecurityModal />
       {/* ── Top-Right HUD Controls ── */}
       <div
         style={{
@@ -334,6 +339,22 @@ export default function JarvisHudOverlays() {
         >
           <Code2 size={12} />
           CODE
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSecurityModalOpen(true)}
+          title="Open Encrypted Vault, Tamper-Evident Audit Log & Scoped Guest Portals"
+          style={{
+            ...pillBase,
+            borderColor: securityModalOpen
+              ? `${PRIMARY}88`
+              : "rgba(240,237,232,0.22)",
+            color: securityModalOpen ? PRIMARY : "rgba(240,237,232,0.88)",
+          }}
+        >
+          <ShieldCheck size={12} />
+          SHIELD
         </button>
 
         <button

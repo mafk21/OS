@@ -31,7 +31,14 @@ try:
 except ImportError:  # pragma: no cover
     FastAPI = Request = WebSocket = WebSocketDisconnect = None  # type: ignore[assignment,misc]
     FileResponse = HTMLResponse = JSONResponse = StaticFiles = None  # type: ignore[assignment,misc]
-from core import audio_devices, automations, companions, dev_workspace, mcp_adapter
+from core import (
+    audio_devices,
+    automations,
+    companions,
+    dev_workspace,
+    mcp_adapter,
+    security_vault,
+)
 from core import confirm as confirm_gate
 from memory import accounts
 from memory import config_manager as cfg
@@ -1167,6 +1174,71 @@ class ApexHudBridge:
             rdir = str(data.get("root_dir") or "").strip()
             return {"ok": True, "diffs": dev_workspace.get_workspace_diffs(rdir)}
 
+        # ── Encrypted Vault, Hash-Chained Audit Log & Guest Portals ───────────
+
+        def _sec_snap() -> dict[str, Any]:
+            return security_vault.get_security_snapshot(
+                accounts.ACCOUNTS_FILE, cfg.CONFIG_FILE
+            )
+
+        if action == "security_get":
+            return {"ok": True, "security": _sec_snap()}
+
+        if action == "vault_rotate_key":
+            res = security_vault.rotate_vault_master_key(
+                accounts.ACCOUNTS_FILE, cfg.CONFIG_FILE
+            )
+            return {**res, "security": _sec_snap()}
+
+        if action == "vault_encrypt_config":
+            enabled = bool(data.get("enabled", True))
+            ok = cfg.set_strict_config_encryption(enabled)
+            security_vault.log_audit_event(
+                "hud",
+                "vault_encrypt_config",
+                {"enabled": enabled},
+                f"Strict api_keys.json encryption={'ON' if enabled else 'OFF'}",
+            )
+            return {"ok": ok, "security": _sec_snap()}
+
+        if action == "audit_verify":
+            return {"ok": True, "chain": security_vault.verify_audit_chain(), "security": _sec_snap()}
+
+        if action == "audit_search":
+            q = str(data.get("query") or "")
+            return {"ok": True, "audit_logs": security_vault.list_audit_events(q, limit=80)}
+
+        if action == "portal_create":
+            title = str(data.get("title") or "").strip()
+            body = str(data.get("content_body") or "").strip()
+            oid = data.get("output_id")
+            if not body and oid:
+                for o in timeline.list_outputs(limit=100):
+                    if int(o["id"]) == int(oid):
+                        title = title or o["title"]
+                        body = o["body"]
+                        break
+            try:
+                created = security_vault.create_portal(
+                    title=title or "Shared Deliverable",
+                    content_body=body,
+                    scope_type=str(data.get("scope_type") or "output"),
+                    expires_hours=float(data.get("expires_hours") or 24.0),
+                    max_views=int(data.get("max_views") or 50),
+                )
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "portal": created, "security": _sec_snap()}
+
+        if action == "portal_revoke":
+            pid = str(data.get("portal_id") or "").strip()
+            ok = security_vault.revoke_portal(pid)
+            return {"ok": ok, "security": _sec_snap()}
+
+        if action == "portal_revoke_all":
+            cnt = security_vault.revoke_all_portals()
+            return {"ok": True, "revoked_count": cnt, "security": _sec_snap()}
+
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _invoke_qt(self, fn: Callable[[], Any]) -> None:
@@ -1270,6 +1342,24 @@ class ApexHudBridge:
                     "diffs": diffs,
                 }
             )
+
+        @app.get("/api/hud/security")
+        async def _security_get():
+            sec = await asyncio.to_thread(
+                security_vault.get_security_snapshot,
+                accounts.ACCOUNTS_FILE,
+                cfg.CONFIG_FILE,
+            )
+            return JSONResponse({"ok": True, "security": sec})
+
+        @app.get("/portal/{token}")
+        async def _guest_portal(token: str, req: Request):
+            ip = (req.client.host if req.client else "127.0.0.1") or "127.0.0.1"
+            ua = req.headers.get("user-agent", "")
+            status_code, html_doc = await asyncio.to_thread(
+                security_vault.access_portal_by_token, token, ip, ua
+            )
+            return HTMLResponse(content=html_doc, status_code=status_code)
 
         @app.post("/api/hud/action")
         async def _action(req: Request):

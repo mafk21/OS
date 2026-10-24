@@ -173,6 +173,7 @@ export type JarvisContextValue = {
   studioModalOpen: boolean;
   automationsModalOpen: boolean;
   devModalOpen: boolean;
+  securityModalOpen: boolean;
   activityOpen: boolean;
   personaModalOpen: boolean;
   setConsoleOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -183,6 +184,7 @@ export type JarvisContextValue = {
   setStudioModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setAutomationsModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setDevModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setSecurityModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setTerminalSessions: React.Dispatch<React.SetStateAction<TerminalSession[]>>;
   setActivityOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPersonaModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -319,6 +321,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [studioModalOpen, setStudioModalOpen] = useState(false);
   const [automationsModalOpen, setAutomationsModalOpen] = useState(false);
   const [devModalOpen, setDevModalOpen] = useState(false);
+  const [securityModalOpen, setSecurityModalOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [personaModalOpen, setPersonaModalOpen] = useState(false);
   const [workers, setWorkers] = useState<WorkerItem[]>([]);
@@ -1099,6 +1102,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       studioModalOpen,
       automationsModalOpen,
       devModalOpen,
+      securityModalOpen,
       activityOpen,
       personaModalOpen,
       setConsoleOpen,
@@ -1109,6 +1113,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       setStudioModalOpen,
       setAutomationsModalOpen,
       setDevModalOpen,
+      setSecurityModalOpen,
       setTerminalSessions,
       setActivityOpen,
       setPersonaModalOpen,
@@ -1187,6 +1192,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       studioModalOpen,
       automationsModalOpen,
       devModalOpen,
+      securityModalOpen,
       activityOpen,
       personaModalOpen,
       choosePersona,
