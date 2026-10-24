@@ -519,11 +519,19 @@ class ApexHudBridge:
             os_name = platform.system()
             cfg.ensure_config_dir()
             existing = cfg.load_api_keys()
-            existing["gemini_api_key"] = key
+            if existing.get("vault_encrypt_api_keys"):
+                existing["gemini_api_key"] = security_vault.encrypt_secret(key)
+            else:
+                existing["gemini_api_key"] = key
             existing.setdefault("os_system", os_name)
             cfg.CONFIG_FILE.write_text(
                 json.dumps(existing, indent=4), encoding="utf-8"
             )
+            try:
+                from core import gemini as _gem_mod
+                _gem_mod.api_key(refresh=True)
+            except Exception:
+                pass
             if win is not None:
                 win._ready = True
                 self._invoke_qt(lambda: win._on_setup_done(key, os_name))
@@ -605,6 +613,12 @@ class ApexHudBridge:
                 cb = getattr(ui, "on_text_command", None) if ui else None
                 if callable(cb):
                     threading.Thread(target=cb, args=(txt,), daemon=True).start()
+                elif ui is not None and hasattr(ui, "_pending_text_commands"):
+                    ui._pending_text_commands.append(txt)
+                    if not self._is_persona_chosen():
+                        self.push_log(
+                            "SYS: Select Male or Female edition to start — your message is queued."
+                        )
                 else:
                     try:
                         timeline.append_turn("user", txt, speaker="You", channel="text")

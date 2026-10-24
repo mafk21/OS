@@ -10,7 +10,7 @@
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Mail & Automations** | **17 Native SaaS & Mail Connectors** (**Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **258 automated `pytest` tests across 30 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **265 automated `pytest` tests across 31 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -199,7 +199,7 @@ After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_J
 python main.py --male                # Boot directly into Male Edition (Electric Cyan/Gold · Charon)
 python main.py --female              # Boot directly into Female Edition (Rose-Magenta/Amethyst · Aoede)
 JARVIS_CLASSIC_UI=1 python main.py   # Launch Classic PyQt6 3D face-mesh HUD instead of APEX 3D Orb HUD
-pytest tests/ -q                     # Run all 258 automated unit & integration tests
+pytest tests/ -q                     # Run all 265 automated unit & integration tests
 ```
 
 > 💡 **Optional Add-ons:**
@@ -364,7 +364,7 @@ OS/
 ├── plugins/                       # Drop-in user plugins (`_template.py` starter included)
 ├── config/                        # Local runtime keys, `.vault.key` & self-signed TLS certs (git-ignored)
 ├── LICENSE                        # MIT License
-└── tests/                         # 258 automated `pytest` unit & integration tests across 30 test suites
+└── tests/                         # 265 automated `pytest` unit & integration tests across 31 test suites
 ```
 
 ---

@@ -121,6 +121,44 @@ def _call_handler(fn: Callable, parameters: dict, ctx: dict) -> str:
     return fn(parameters=parameters, **kwargs)
 
 
+def sanitize_tool_parameters(schema: dict, *, is_root: bool = True) -> dict:
+    """Ensure a Gemini FunctionDeclaration parameter schema never triggers a
+    1007 INVALID_ARGUMENT setup rejection (e.g. nested OBJECT with empty/missing
+    properties, ARRAY missing items, or required keys absent from properties)."""
+    if not isinstance(schema, dict):
+        return dict(_DEFAULT_PARAMS) if is_root else {"type": "STRING"}
+
+    out = dict(schema)
+    stype = str(out.get("type") or ("OBJECT" if is_root else "STRING")).upper()
+    out["type"] = stype
+
+    if stype == "OBJECT":
+        raw_props = out.get("properties")
+        props = dict(raw_props) if isinstance(raw_props, dict) else {}
+        if not is_root and len(props) == 0:
+            # Gemini Live rejects nested OBJECT properties with empty properties.
+            desc = str(out.get("description") or "").strip()
+            suffix = " (JSON object string)"
+            return {
+                "type": "STRING",
+                "description": (desc + suffix) if desc and "json" not in desc.lower() else (desc or "JSON object string"),
+            }
+        clean_props = {
+            str(k): sanitize_tool_parameters(v, is_root=False)
+            for k, v in props.items()
+        }
+        out["properties"] = clean_props
+        if "required" in out and isinstance(out["required"], list):
+            out["required"] = [r for r in out["required"] if r in clean_props]
+    elif stype == "ARRAY":
+        items = out.get("items")
+        out["items"] = sanitize_tool_parameters(
+            items if isinstance(items, dict) else {"type": "STRING"},
+            is_root=False,
+        )
+    return out
+
+
 def _validate(module, filename: str) -> ActionRecord:
     """Returns an ActionRecord; .valid=False + .error set on any problem. Never raises."""
     tool = getattr(module, "TOOL", None)
@@ -142,6 +180,7 @@ def _validate(module, filename: str) -> ActionRecord:
     if not isinstance(parameters, dict) or parameters.get("type") != "OBJECT":
         return ActionRecord(name=name, file=filename,
                             error="TOOL['parameters'] must be a dict with \"type\": \"OBJECT\".")
+    parameters = sanitize_tool_parameters(parameters, is_root=True)
 
     handler = tool.get("handler")
     if not callable(handler):

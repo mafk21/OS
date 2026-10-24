@@ -42,6 +42,7 @@ for _stream in ("stdout", "stderr"):
 # ─────────────────────────────────────────────────────────────────────────────
 
 import asyncio
+import os
 import re
 import threading
 import time
@@ -98,7 +99,7 @@ from core.plugin_loader        import discover_plugins
 from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
 from core                      import audio_devices
-from core.action_loader        import discover_actions
+from core.action_loader        import discover_actions, sanitize_tool_parameters
 from core.echo                 import EchoGuard, is_voiced_speech, speech_band_level
 from core.viseme               import VisemeStream
 from core.wake_word            import (
@@ -317,8 +318,19 @@ def _render_prompt(template: str, values: dict) -> str:
 
 
 def _get_api_key() -> str:
+    try:
+        from memory.config_manager import get_api_key
+        key = get_api_key()
+        if key:
+            return key
+    except Exception:
+        pass
     with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
+        raw = str(json.load(f).get("gemini_api_key") or "")
+    if raw.startswith("enc:v1:"):
+        from core.security_vault import decrypt_secret
+        return decrypt_secret(raw)
+    return raw
 
 
 def _load_system_prompt() -> str:
@@ -888,7 +900,7 @@ def _leaf_errors(exc: BaseException):
 class JarvisLive:
     def __init__(self, ui: JarvisUI):
         self.ui             = ui
-        self._asst_name     = "JARVI    S"   # updated each session from config
+        self._asst_name     = "JARVIS"       # updated each session from config
         self.session              = None
         self.audio_in_queue       = None
         self.out_queue            = None
@@ -975,6 +987,7 @@ class JarvisLive:
 
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
+        self._strip_tool_behavior = False  # strip behavior field if a fallback Live model rejects it
 
         _base_dir = Path(__file__).resolve().parent
         _inline_names = {t["name"] for t in TOOL_DECLARATIONS}
@@ -1474,33 +1487,49 @@ class JarvisLive:
         except Exception:
             pass
 
+    def _answer_text_fallback(self, text: str) -> None:
+        """Guaranteed reply path when Live WebSocket is still reconnecting or
+        unavailable: answers via core.gemini / core.provider REST ladder so a
+        typed command never hangs or goes unanswered."""
+        reply = ""
+        sys_hint = (
+            f"You are {self._asst_name}, a sharp, concise AI operating companion. "
+            "Answer the user's message directly and helpfully."
+        )
+        try:
+            reply = (_gemini.text(text, _gemini.FAST, system=sys_hint, timeout_ms=20_000) or "").strip()
+        except Exception as e1:
+            print(f"[TextFallback] Gemini REST fallback failed: {e1}")
+        if not reply:
+            try:
+                from core.provider import generate as _prov_gen
+                reply = (_prov_gen(text, system=sys_hint) or "").strip()
+            except Exception as e2:
+                print(f"[TextFallback] Provider fallback failed: {e2}")
+        if reply:
+            self.ui.write_log(f"{self._asst_name}: {reply}")
+            self._session_log.append(f"{self._asst_name}: {reply}")
+            try:
+                from memory.timeline import append_turn
+                append_turn("jarvis", reply, speaker=self._asst_name, channel="text")
+            except Exception:
+                pass
+        else:
+            self.ui.write_log(
+                "SYS: Live connection is reconnecting — please check your network or API key in Settings."
+            )
+        if not self.ui.muted and not self._paused:
+            self.ui.set_state("LISTENING")
+
     def _on_text_command(self, text: str):
-        # Offline mode: queue for local LLM
-        if getattr(self, '_offline_mode', False):
-            try:
-                if self._loop and hasattr(self, '_offline_q'):
-                    asyncio.run_coroutine_threadsafe(self._offline_q.put(text), self._loop)
-                self.ui.write_log(f"You (offline): {text}")
-                self._try_lecture_append(text)
-                return
-            except Exception:
-                pass
-        if not self._loop or not self.session:
-            # No Live session and not offline — maybe we can still try offline LLM
-            try:
-                from memory.config_manager import get_offline_fallback_enabled
-                if get_offline_fallback_enabled():
-                    # stash and trigger offline entry on next loop iteration
-                    self.ui.write_log("SYS: Not connected — message queued for offline LLM (reconnecting…)")
-            except Exception:
-                pass
+        text = (text or "").strip()
+        if not text:
             return
-        # Respect wake-word sleep: a typed command must not be answered while
-        # asleep either (the sleep gate is not just for the mic). Wake first with
-        # "Hey Jarvis" or the WAKE NOW button.
+        # Explicitly typing to JARVIS wakes it if wake-word sleep was active
         if self._wake_enabled and not self._awake:
-            self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
-            return
+            self.wake(reason="typed command")
+        self._last_user_speech = time.monotonic()
+        self._session_log.append(f"User: {text}")
         try:
             from memory.timeline import append_turn
             append_turn("user", text, speaker="You", channel="text")
@@ -1511,14 +1540,40 @@ class JarvisLive:
             detect_and_record_correction(text)
         except Exception:
             pass
-        asyncio.run_coroutine_threadsafe(
-            self.session.send_client_content(
-                turns={"role": "user", "parts": [{"text": text}]},
-                turn_complete=True
-            ),
-            self._loop
-        )
         self._try_lecture_append(text)
+
+        # Offline mode: queue for local LLM
+        if getattr(self, '_offline_mode', False):
+            try:
+                if self._loop and hasattr(self, '_offline_q') and self._offline_q is not None:
+                    asyncio.run_coroutine_threadsafe(self._offline_q.put(text), self._loop)
+                    return
+            except Exception:
+                pass
+
+        # Wait briefly (up to 6s) if the Live WebSocket is mid-connect / recycling
+        if not self._loop or not self.session:
+            for _ in range(30):
+                if self._loop and self.session:
+                    break
+                time.sleep(0.2)
+
+        if self._loop and self.session:
+            try:
+                fut = asyncio.run_coroutine_threadsafe(
+                    self.session.send_client_content(
+                        turns={"role": "user", "parts": [{"text": text}]},
+                        turn_complete=True
+                    ),
+                    self._loop
+                )
+                fut.result(timeout=8.0)
+                return
+            except Exception as exc:
+                print(f"[JARVIS] Live text send failed ({exc}) — using direct fallback")
+
+        # Live session unreachable: answer immediately via REST/Provider fallback
+        self._answer_text_fallback(text)
 
     def _tail_active(self) -> bool:
         """True while the speakers may still be finishing our last sentence."""
@@ -1678,9 +1733,11 @@ class JarvisLive:
 
         # Load customization from config
         try:
-            _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
+            from memory.config_manager import load_api_keys
+            _cfg = load_api_keys()
             self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
-            _user_name = (_cfg.get("user_name") or "").strip()
+            selfuser_name = (_cfg.get("user_name") or "").strip()
+            _user_name = selfuser_name
         except Exception:
             self._asst_name = "JARVIS"
             _user_name = ""
@@ -1728,9 +1785,19 @@ class JarvisLive:
         # the host, the capability list from the registries that were just
         # discovered. Rename the assistant, add a plugin or move to another OS
         # and this follows without anyone editing a prompt.
-        _all_decls = (TOOL_DECLARATIONS
+        _raw_decls = (TOOL_DECLARATIONS
                       + self._action_registry.get_tool_declarations()
                       + self._plugin_registry.get_tool_declarations())
+        _all_decls = [
+            ({
+                **d,
+                "parameters": sanitize_tool_parameters(
+                    d.get("parameters") or {"type": "OBJECT", "properties": {}},
+                    is_root=True,
+                ),
+            } if isinstance(d, dict) else d)
+            for d in _raw_decls
+        ]
         _names = {(d.get("name") if isinstance(d, dict) else getattr(d, "name", ""))
                   for d in _all_decls}
         sys_prompt = _render_prompt(sys_prompt, {
@@ -1773,8 +1840,14 @@ class JarvisLive:
         # gemini-3.8-live defaults tool calls to ASYNC (NON_BLOCKING); this
         # app's flow executes the tool and answers with its result, which is
         # the legacy blocking contract. Pin it there per Google's migration
-        # guide — only on 3.8, older models reject the field.
-        if "gemini-3.8" in LIVE_MODEL:
+        # guide — only on 3.8, older models reject the field on v1beta.
+        if self._strip_tool_behavior or ("gemini-3.8" not in LIVE_MODEL and not self._enhanced_live):
+            _all_decls = [
+                ({k: v for k, v in d.items() if k != "behavior"}
+                 if isinstance(d, dict) else d)
+                for d in _all_decls
+            ]
+        elif "gemini-3.8" in LIVE_MODEL:
             _all_decls = [
                 ({**d, "behavior": d.get("behavior") or "BLOCKING"}
                  if isinstance(d, dict) else d)
@@ -2548,7 +2621,7 @@ class JarvisLive:
 
     async def _receive_audio(self):
         print("[JARVIS] 👂 Recv started")
-        out_buf, in_buf = [], []
+        out_buf, in_buf, model_txt_buf = [], [], []
 
         try:
             while True:
@@ -2617,7 +2690,19 @@ class JarvisLive:
                             self._interrupted = False
                             in_buf = []
                             out_buf = []
+                            model_txt_buf = []
                             self._visemes.reset()
+
+                        _mt = getattr(sc, "model_turn", None)
+                        if _mt and getattr(_mt, "parts", None) and not self._interrupted:
+                            for _part in _mt.parts:
+                                if getattr(_part, "thought", False):
+                                    continue
+                                _ptxt = getattr(_part, "text", None)
+                                if _ptxt:
+                                    _cleaned_ptxt = _clean_transcript(_ptxt)
+                                    if _cleaned_ptxt and not _is_repeat_chunk(_cleaned_ptxt, model_txt_buf):
+                                        model_txt_buf.append(_cleaned_ptxt)
 
                         if sc.output_transcription and sc.output_transcription.text:
                             if not self._interrupted:
@@ -2659,6 +2744,7 @@ class JarvisLive:
                                 self._interrupted = False
                                 in_buf  = []
                                 out_buf = []
+                                model_txt_buf = []
                                 self._visemes.reset()
                                 continue
 
@@ -2685,7 +2771,7 @@ class JarvisLive:
                                     }))
                             in_buf = []
 
-                            full_out = " ".join(out_buf).strip()
+                            full_out = " ".join(out_buf).strip() or " ".join(model_txt_buf).strip()
                             # Second line of defence: even if a repeat slips
                             # into a *fresh* buffer after a flush, never log the
                             # same answer (or a tail of it) twice in a row.
@@ -2708,6 +2794,14 @@ class JarvisLive:
                                         "ts": datetime.now().isoformat(),
                                     }))
                             out_buf = []
+                            model_txt_buf = []
+                            if (
+                                not self._is_speaking
+                                and (self.audio_in_queue is None or self.audio_in_queue.empty())
+                                and not self.ui.muted
+                                and not self._paused
+                            ):
+                                self.ui.set_state("LISTENING")
 
                             if self._vision_close_pending:
                                 # This turn_complete IS the vision answer — close camera + release busy flag
@@ -3641,9 +3735,13 @@ class JarvisLive:
                 # limit always arrives mid-conversation.
                 if _gemini.note_live_failure(live_model, err_str):
                     nxt = _gemini.live_model()
+                    if nxt != live_model:
+                        self._tuned_live = True
+                        self._enhanced_live = True
+                        self._strip_tool_behavior = False
                     self.ui.write_log(
                         f"SYS: Switching to {nxt.split('/')[-1]} — the previous "
-                        f"model is out of quota."
+                        f"model is unavailable or out of quota."
                         if nxt != live_model else
                         "SYS: Every live model is rate-limited — retrying.")
                     self._conn_backoff = 0 if nxt != live_model else 15
@@ -3651,17 +3749,39 @@ class JarvisLive:
                         await asyncio.sleep(self._conn_backoff)
                     continue
 
+                err_low = err_str.lower()
+                is_bad_api_key = any(
+                    k in err_low
+                    for k in (
+                        "api key not valid",
+                        "api_key_invalid",
+                        "api key expired",
+                        "invalid api key",
+                    )
+                )
+
+                # Invalid API key — stop hammering the API, prompt re-configuration
+                if is_bad_api_key:
+                    self.ui.write_log("ERR: API key invalid — please re-enter your key.")
+                    self.ui.set_state("SLEEPING")
+                    self.ui.prompt_reconfig()
+                    while not self.ui._win._ready:
+                        await asyncio.sleep(1)
+                    print("[JARVIS] New API key saved — reconnecting...")
+                    self._conn_backoff = 1
+                    continue
+
                 # Turn-taking / media / thinking knobs rejected by the server
                 # (preview API drift) — drop them first, because they are the
-                # newest fields and the cheapest to lose. Proactive audio is
-                # tried again on the next pass if the error persists.
+                # newest fields and the cheapest to lose.
                 if self._tuned_live and (
                     "INVALID_ARGUMENT" in err_str
+                    or "1007" in err_str
                     or "Unknown name" in err_str
                     or "unexpected keyword" in err_str
-                    or "realtime_input" in err_str.lower()
-                    or "media_resolution" in err_str.lower()
-                    or "thinking" in err_str.lower()
+                    or "realtime_input" in err_low
+                    or "media_resolution" in err_low
+                    or "thinking" in err_low
                 ):
                     self._tuned_live = False
                     print("[JARVIS] Live tuning rejected — reconnecting without it.")
@@ -3671,7 +3791,8 @@ class JarvisLive:
                 # drop it and reconnect with the plain config.
                 if self._enhanced_live and (
                     "INVALID_ARGUMENT" in err_str
-                    or "proactiv" in err_str.lower()
+                    or "1007" in err_str
+                    or "proactiv" in err_low
                     or "Unknown name" in err_str
                     or "unexpected keyword" in err_str
                 ):
@@ -3681,16 +3802,39 @@ class JarvisLive:
                     )
                     continue
 
-                # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str or "1007" in err_str:
-                    self.ui.write_log("ERR: API key invalid — please re-enter your key.")
-                    self.ui.set_state("SLEEPING")
-                    self.ui.prompt_reconfig()
-                    while not self.ui._win._ready:
-                        await asyncio.sleep(1)
-                    print("[JARVIS] New API key saved — reconnecting...")
-                    _conn_backoff = 3
+                # Tool `behavior` or unsupported voice rejected on a fallback model
+                if not self._strip_tool_behavior and (
+                    "INVALID_ARGUMENT" in err_str
+                    or "1007" in err_str
+                    or "behavior" in err_low
+                    or "voice" in err_low
+                    or "Unknown name" in err_str
+                ):
+                    self._strip_tool_behavior = True
+                    if "voice" in err_low:
+                        try:
+                            from memory.config_manager import save_voice
+                            save_voice("Aoede" if get_persona() == "female" else "Charon")
+                        except Exception:
+                            pass
+                    print("[JARVIS] Stripping tool behavior / resetting voice — reconnecting.")
                     continue
+
+                # Persistent handshake rejection (1007 / 1008 / INVALID_ARGUMENT)
+                # even on stripped config: step down to the next Live model rung
+                # instead of falsely blaming the user's API key!
+                if "1007" in err_str or "1008" in err_str or "INVALID_ARGUMENT" in err_str:
+                    _gemini._cool(live_model, 1800)
+                    nxt = _gemini.live_model()
+                    if nxt != live_model:
+                        self._tuned_live = True
+                        self._enhanced_live = True
+                        self._strip_tool_behavior = False
+                        self.ui.write_log(
+                            f"SYS: Switching Live model to {nxt.split('/')[-1]}..."
+                        )
+                        self._conn_backoff = 0
+                        continue
 
                 # Network / timeout errors — log clearly and back off
                 is_net_err = any(k in err_str for k in (

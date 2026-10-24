@@ -6244,6 +6244,7 @@ class JarvisUI:
         self._win = MainWindow(face_path)
         self.root = _RootShim(self._app)
         self._apex_bridge = None
+        self._pending_text_commands: list[str] = []
         from memory.config_manager import is_integrations_onboarding_done
         self._integrations_ready = (
             os.environ.get("JARVIS_SKIP_INTEGRATIONS_PROMPT", "").strip().lower()
@@ -6353,6 +6354,16 @@ class JarvisUI:
     @on_text_command.setter
     def on_text_command(self, cb):
         self._win.on_text_command = cb
+        pending = list(getattr(self, "_pending_text_commands", None) or [])
+        if callable(cb) and pending:
+            self._pending_text_commands.clear()
+            def _flush():
+                for msg in pending:
+                    try:
+                        cb(msg)
+                    except Exception:
+                        pass
+            threading.Thread(target=_flush, daemon=True).start()
 
     @property
     def on_remote_clicked(self):
