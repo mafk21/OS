@@ -1,90 +1,143 @@
-# ⚡ OS
+# ⚡ OS — Full-Duplex 3D AI Operating Companion
 
-**A full-duplex desktop AI operating layer with real-time voice, a 3D software-rendered holographic avatar, Set-of-Mark visual computer use, FTS5 screen memory, self-writing procedural skills, scoped subagents, an omnichannel messaging gateway, and seamless offline fallback.**
+**A local-first desktop AI operating layer combining real-time bidirectional voice (`Male` & `Female` 3D HUD Editions), a Zero-Reset Forever Brain Timeline, orbiting 3D Worker Orbs, Specialist Companions, 17 native SaaS & Mail connectors, a Custom REST/Webhook & MCP Builder, recurring Automations, a live streaming Dev Workspace, Set-of-Mark visual computer use, FTS5 screen memory, an `AES-256-GCM` credential vault with `SHA-256` hash-chained audit logs, revocable Guest Portals, and 100% offline local voice fallback.**
 
-| Metric | Scale |
+| Metric | Verified Scale |
 | :--- | :--- |
-| **Codebase** | **40,000+ lines** across **95+ Python & Next.js HUD modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **50 self-describing OS & cloud actions** + **15 live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP Builder** |
-| **Live Voice Engine** | **Gemini 3.8 Live** bidirectional audio + **Male (`Charon`) & Female (`Aoede`) Editions** + **9-rung model ladder** + **97-language** mid-turn switching |
-| **Brain & Forever Timeline** | **Zero-Reset Continuous Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
-| **Cloud, Mail & Automations** | **14 Native SaaS Connectors** (**Email IMAP/SMTP & Gmail**, **Google Drive**, **Google Calendar**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Center** |
-| **Security & Dev Workspace** | **Live Streaming Dev Terminal + Codebase Map & Colorized Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Installer (`install_jarvis.py`)** |
-| **Verification** | **255+ automated `pytest` tests** covering Forever Timeline, Brain CRUD, 3D Worker Orbs, Specialist Companions, REST/MCP Builder, Automations, Streaming Dev Terminal, Vault Encryption, Audit Hash-Chain & Guest Portals |
+| **Codebase** | **61,700+ lines** across **154 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
+| **Execution Surface** | **49 OS, cloud & companion action modules** + **15 built-in live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Live Voice & 3D World** | **Gemini 3.8 Live** full-duplex audio + **Male (`Charon`) & Female (`Aoede`) 3D HUD Editions** + **Orbiting 3D Worker Orbs** + **Dual-Monitor Pop-Out Console** + **Custom Hex Theme Studio** + **97-language** live switching |
+| **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
+| **Cloud, Mail & Automations** | **17 Native SaaS & Mail Connectors** (**Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
+| **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
+| **Verification** | **258 automated `pytest` tests across 30 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
 ## 🧠 System Architecture
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                        INPUT & PRESENCE SURFACES                                     │
-│  🎙️ Full-Duplex Mic (EchoGuard + Barge-In + Wake Word + Ctrl+Space PTT + Grace Win)  │
-│  👁️ Vision (Full Screen · Rubberband Region · Live Webcam · Event-Driven OCR/a11y)   │
-│  🌍 Omnichannel Inbound (Webhook Gateway · Telegram Bot · TLS Phone QR Dashboard)    │
-│  🌐 APEX-UI Desktop HUD (3D Cyan Particle Orb · 18-Node Reasoning Web · Live WS)    │
-│  🧑‍🎤 Classic PyQt6 Fallback (`JARVIS_CLASSIC_UI=1` · 3D Avatar · 50Hz Visemes)       │
-└──────────────────────────────────────────┬───────────────────────────────────────────┘
-                                           ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                     REAL-TIME ORCHESTRATION & PROVIDER KERNEL                        │
-│  • Gemini 3.8 Live WebSocket  ──► SessionResumption + Compression + 15m Auto-Recycle │
-│  • Per-Tool Scheduling        ──► NON_BLOCKING + WHEN_IDLE speech-gap delivery       │
-│  • 9-Rung Gemini Ladder       ──► Auto-failover on quota / timeout / deprecation     │
-│  • Universal Provider Ladder  ──► Anthropic · OpenAI · xAI · DeepSeek · Groq · Ollama│
-│  • Offline Local Voice Loop   ──► Local LLM + Whisper STT + Local TTS (zero cloud)   │
-└──────────────────────────────────────────┬───────────────────────────────────────────┘
-                                           ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                       AUTONOMOUS COGNITIVE LAYER                                     │
-│  • Agent Skills (SKILL.md)    ──► 3-level progressive disclosure (agentskills.io)    │
-│  • Self-Writing Learning Loop ──► skill_manage creates/patches skills from experience│
-│  • Scoped Subagents           ──► Goal tracking, tool whitelists & result isolation  │
-│  • Heartbeat Autonomy         ──► observe / suggest / act + HEARTBEAT_OK quiet mode  │
-│  • Two-Tier Memory + Hygiene  ──► Core prompt identity + unlimited local search      │
-└──────────────────────────────────────────┬───────────────────────────────────────────┘
-                                           ▼
-┌──────────────────────────────────────────────────────────────────────────────────────┐
-│                  VISUAL GROUNDING, OS CONTROL & SAFETY KERNEL                        │
-│  • Set-of-Mark Computer Use   ──► Numbered UI bounding boxes → click/type by ID      │
-│  • Native Accessibility Tree  ──► Windows UI Automation / Linux AT-SPI element press │
-│  • Screen Memory (SQLite FTS5)──► Searchable OCR + window/a11y timeline              │
-│  • GWS Pack (Zero-API/OAuth)  ──► Gmail · Docs · Drive · Calendar via computer_use   │
-│  • 46 Bundled Actions         ──► Deep Research · Tasks/Notes · Dev/Shell · IoT      │
-│  • Unforgeable Safety Kernel  ──► UI-issued Confirm Tokens + Shared Reversible Undo  │
-└──────────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                    INPUT, 3D WORLD & MULTI-MONITOR PRESENCE                            │
+│  🎙️ Full-Duplex Mic (EchoGuard + Barge-In + Wake Word + Ctrl+Space PTT + Grace Win)    │
+│  👁️ Vision (Full Screen · Rubberband Region · Live Webcam · Event-Driven OCR/a11y)     │
+│  🌍 Omnichannel Inbound (Webhook Gateway · Telegram Bot · TLS Phone QR Dashboard)      │
+│  🪐 APEX-UI 3D World (Male/Female Core · Worker Orbs · 18-Node Graph · Pop-Out Console)│
+│  🧑‍🎤 Classic PyQt6 Fallback (`JARVIS_CLASSIC_UI=1` · 3D Face Mesh · 50Hz Visemes)       │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                   REAL-TIME ORCHESTRATION & MULTI-PROVIDER KERNEL                      │
+│  • Gemini 3.8 Live WebSocket  ──► SessionResumption + Compression + 15m Auto-Recycle   │
+│  • Per-Tool Scheduling        ──► NON_BLOCKING + WHEN_IDLE speech-gap delivery         │
+│  • 9-Rung Gemini Ladder       ──► Auto-failover on quota / timeout / deprecation       │
+│  • Universal Provider Ladder  ──► Anthropic · OpenAI · xAI · DeepSeek · Groq · Ollama  │
+│  • Offline Local Voice Loop   ──► Local LLM + Whisper STT + Local TTS (zero cloud)     │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               BRAIN, COMPANIONS, SKILLS & AUTONOMOUS COGNITIVE LAYER                   │
+│  • Forever Timeline & Brain   ──► Voice + Text + Telegram WAL · Epochs · Docs · Outputs│
+│  • Companions & Personalize   ──► Behavior Interview · Adaptive Style · Scoped Personas│
+│  • Agent Skills (SKILL.md)    ──► 3-level progressive disclosure + self-writing loop   │
+│  • Scoped Subagents & Crons   ──► Parallel worker orbs + interval/daily Automations    │
+│  • Heartbeat Autonomy         ──► observe / suggest / act + HEARTBEAT_OK quiet mode    │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│              CONNECTORS, STREAMING DEV WORKSPACE & VISUAL OS EXECUTION                 │
+│  • 17 Native SaaS Connectors  ──► Mail · Google · GitHub · Linear · Outlook · HubSpot  │
+│  • Custom REST & MCP Builder  ──► Point-and-click Webhooks + HTTP/stdio JSON-RPC 2.0   │
+│  • Streaming Dev Workspace    ──► Live stdout/stderr + stdin · File Tree · Git Diffs   │
+│  • Visual & Semantic Grounding──► Set-of-Mark boxes · Win UIA / Linux AT-SPI · FTS5    │
+│  • Zero-API GWS + 49 Actions  ──► Research · Tasks/Notes · Verified Terminals · IoT    │
+└───────────────────────────────────────────┬────────────────────────────────────────────┘
+                                            ▼
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                   CRYPTOGRAPHIC VAULT, AUDIT CHAIN & SAFETY KERNEL                     │
+│  • AES-256-GCM Secret Vault   ──► Authenticated `enc:v1:` at-rest secrets + key rotate │
+│  • SHA-256 Action Audit Chain ──► Tamper-evident hash-linked tool & portal ledger      │
+│  • Revocable Guest Portals    ──► Read-only `/portal/<token>` links + 1-click shutoff  │
+│  • Unforgeable Safety Kernel  ──► UI-issued Confirm Tokens + Shared Reversible Undo    │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔥 The 7 Pillars
+## 🎛️ 3D HUD Command Deck & Voice Parity
 
-### 1. Real-Time Voice, Barge-In & 3D Holographic Presence
-Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`) that feels alive rather than turn-locked:
+Every subsystem in the Operating Companion can be driven visually from the **APEX-UI 3D HUD** or hands-free by natural voice/text:
 
-| Capability | Engineering |
-| :--- | :--- |
-| 🌐 **APEX-UI 3D Desktop HUD (Male & Female Editions)** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, based on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**. On launch (`python main.py`), choose between the **Male Edition** (Electric Cyan & Stark Gold 3D core · `Charon` deep baritone voice) and **Female Edition** (Luminous Rose-Magenta & Orchid-Amethyst 3D core · `Aoede` natural female voice), with live hover-preview and 1-click hot-swapping anytime from the HUD (`--male` / `--female` CLI flags also supported). Set `JARVIS_CLASSIC_UI=1` to use the classic PyQt6 avatar window instead. |
-| 🔗 **First-Run Optional Integrations & Direct Cloud/Mail APIs** | On first boot, right after entering your Gemini API key, JARVIS walks you through **Optional Integrations Setup** (**Email IMAP/SMTP App Password**, **Google Workspace OAuth for Gmail/Drive/Calendar**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**). Every service has an explicit **`IGNORE`** toggle plus **`IGNORE ALL / SKIP FOR NOW`** so nothing is ever forced — and connected accounts execute silently in the background via `cloud_integrations` across both **Male** and **Female** editions (manageable anytime via **`LINKS`**). |
-| 🧠 **The Brain & Forever Timeline (`BRAIN`)** | Unified local SQLite WAL timeline (`memory/timeline.py`, `actions/brain_control.py`) persisting spoken voice, desktop text, and Telegram turns into one continuous stream that reloads automatically on launch and compresses older stretches into searchable epochs — paired with visual **Memories** (edit / 1-click Forget / JSON Export & Import), **Drag-and-Drop Knowledge Docs**, **Outputs Archive**, and per-tier **Privacy Governance** switches. |
-| 🪐 **Living 3D Worker Orbs & Dual-Monitor Console (`ACTIVITY` / `POP OUT`)** | Parallel subagents and `NON_BLOCKING` tools spawn orbiting 3D satellite worker orbs around the core (`WorkerOrbsLayer.tsx`), paired with a live **Activity Timeline** (`Running · Queued · Done` + 1-click Cancel), **WASD/Arrow 3D World Camera Navigation**, drag-resizable console, and a standalone **Dual-Monitor Pop-Out Console** (`/?view=console`). |
-| 🧬 **Companions, Behavior Interview & Skills/Themes Studio (`STUDIO`)** | Guided 5-step **Behavior Interview**, automatic conversational **Adaptive Style Learning**, persistent **Specialist Companions** with scoped tool whitelists (`core/companions.py`), visual **`SKILL.md` Playbook Studio**, and live **HUD Theme Presets**. |
-| ⚡ **Custom REST/MCP Builder & Recurring Automations (`AUTOMATE`)** | Point-and-click **Custom REST/Webhook Connector Builder**, full **MCP JSON-RPC 2.0 Client** (HTTP & stdio tool discovery/invocation via `core/mcp_adapter.py`), and a **Recurring Automations Scheduler** (`core/automations.py`) with interval/daily triggers, 1-click Run Now, Pause/Resume, and execution history. |
-| 💻 **Live Streaming Dev Workspace (`CODE`)** | Real-time streaming stdout/stderr terminal with bidirectional `stdin` & 1-click Stop, safe **Codebase File-Tree Explorer**, and **Colorized Unified Git Diffs** (`core/dev_workspace.py`). |
-| 🛡️ **Encrypted Vault, Audit Chain, Portals & 1-Click Installer (`SHIELD`)** | Authenticated at-rest credential encryption (`AES-256-GCM` / `enc:v1:...` + 256-bit key rotation in `core/security_vault.py`), **SHA-256 Hash-Chained Action Audit Log** with tamper verification, **Revocable Guest Portals** (`/portal/<token>`) with visitor auditing & 1-click shutoff, and **`install_jarvis.py` / `Start_JARVIS.bat` / `Start_JARVIS.command`** 1-click native launchers. |
-| 🧑‍🎤 **Classic Software 3D Avatar** | Optional classic PyQt6 HUD (`JARVIS_CLASSIC_UI=1`) rendering the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, dynamic lighting, and live hue/hex theming purely in `QPainter`. |
-| 👄 **50 Hz Formant + Transcript Lip-Sync** | `core/viseme.py` fuses real-time audio formants with incoming transcript phonemes for accurate bilabial closures, spreads, and rounded vowels across Latin, Cyrillic, and Greek scripts via Unicode reduction. |
-| 🙂 **State-Driven Facial Acting** | Phrase-tracking eyebrows, saccadic eye fixations, stressed-syllable nods, thinking gaze-away, eye contact while listening, closed lids while sleeping, and downward glances when HUD content updates. |
-| 🔇 **Calibrated Barge-In & EchoGuard** | `core/echo.py` separates speaker bleed from real user speech so you can **interrupt JARVIS mid-sentence** (50 ms playback slicing + instant queue drain) without triggering on its own voice. |
-| 🎙️ **Wake Word, Grace Window & PTT** | Local offline `"Hey Jarvis"` wake word (`core/wake_word.py`), **8-second wake-free follow-up grace window**, **Pause vs. Stop** controls, and global **Ctrl+Space** Push-to-Talk (`core/hotkey.py`). |
-| ⚡ **Non-Blocking `WHEN_IDLE` Tools** | Slow network/UI tools (`web_search`, `deep_research`, `file_processor`, `browser_control`, `send_message`, `computer_use`, `multi_channel`, `gws_pack`) execute `NON_BLOCKING` and inject results during natural speech gaps — never freezing conversation. |
-| 🌐 **97-Language Live Switching** | Native mid-turn detection and response across **97 languages** on `gemini-3.8-live`, backed by `set_language` persistent preference storage and `WhisperSTT.set_language()` hints. |
-| 🔗 **Resilient Bounded Streaming** | Drop-oldest mic ring buffer (`out_put_drop_oldest`, 64-block / ~4s ceiling) prevents WebSocket ping-timeouts under backpressure; `SessionResumptionConfig` + `ContextWindowCompressionConfig` preserve context across reconnects and multi-hour sessions. |
-| ♻️ **Proactive 15-Min Session Recycle** | `core/session_recycle.py` beats Gemini Live's ~15-minute WebSocket hard cutoff (and server `GoAway` notices) by waiting for an idle speech gap with zero active audio, tools, or vision frames and silently rebuilding a resumed connection before Google severs the socket mid-sentence. |
+| HUD Control / Shortcut | What It Opens or Controls | Matching Voice / Live Tool |
+| :--- | :--- | :--- |
+| **`BRAIN`** | Continuous Forever Timeline (Voice + Text + Telegram), Memories CRUD + JSON Export/Import, Drag-and-Drop Knowledge Docs, Outputs Vault, and Privacy Governance toggles | `brain_control` (`recall_memory`, `save_memory`, `forget_memory`) |
+| **`STUDIO`** | 5-Step Guided Behavior Interview, Specialist Companions (scoped tool whitelists + voices), Visual `SKILL.md` Playbook Builder, 6 Theme Presets + Custom Primary/Secondary Hex Color Pickers | `companion_os`, `skill_manage`, `skill_read` |
+| **`LINKS`** | 17 Native SaaS & Mail Connectors (`Ask` / `Full` / `ReadOnly` / `Paused` policies), Custom REST/Webhook Builder, and MCP Server Registry (`HTTP` & `stdio`) | `manage_accounts`, `cloud_integrations`, `custom_connector` |
+| **`AUTOMATE`** | Recurring Interval & Daily Automations Scheduler with 1-click Run Now, Pause/Resume, and execution history | `companion_os` (`automation_save`, `automation_run`, `automation_list`) |
+| **`CODE`** | Live Streaming Dev Terminal (`stdout`/`stderr` + interactive `stdin` + Stop), Codebase File-Tree Explorer, and Colorized Unified Git Diffs | `dev_agent`, `shell_agent`, `code_helper`, `github_automation` |
+| **`SHIELD`** | `AES-256-GCM` Vault status & 256-bit key rotation, `SHA-256` Hash-Chained Action Audit Log verifier, and Revocable Read-Only Guest Portals (`/portal/<token>`) | `companion_os` (`portal_create`, `portal_revoke_all`, `audit_verify`) |
+| **`ACTIVITY` / `POP OUT`** | Live `Running · Queued · Done` worker drawer with 1-click Cancel, drag-resizable bottom console, and Dual-Monitor Pop-Out Console (`/?view=console`) | `subagent` (`spawn`, `list`, `status`, `cancel`) |
+| **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
 
 ---
 
-### 2. Multi-Provider Ladder & 100% Offline Local Mode
+## 🔥 The 9 Architectural Pillars
+
+### 1. Real-Time Voice, Male/Female Editions & 3D World Presence
+Built around an ultra-low-latency full-duplex audio pipeline (`main.py`, `ui.py`, `core/apex_bridge.py`) that feels alive rather than turn-locked:
+
+| Capability | Engineering |
+| :--- | :--- |
+| 🌐 **APEX-UI 3D Desktop HUD (Male & Female Editions)** | Primary desktop interface (`apex_ui/`, `core/apex_bridge.py`, built on MIT-licensed `RubenM1990/APEX-UI` by Ruben Mouradian / `@reznikov_engineering`) served locally with **zero Node.js required at runtime**. On launch (`python main.py`), choose between the **Male Edition** (Electric Cyan & Stark Gold 3D core · `Charon` deep baritone voice) and **Female Edition** (Luminous Rose-Magenta & Orchid-Amethyst 3D core · `Aoede` natural female voice), with live hover-preview and 1-click hot-swapping anytime (`--male` / `--female` CLI flags also supported). |
+| 🪐 **Orbiting 3D Worker Orbs & Dual-Monitor Console** | Parallel subagents and `NON_BLOCKING` tools spawn orbiting 3D satellite worker orbs around the core (`WorkerOrbsLayer.tsx`) connected by energy tethers, paired with a live **Activity Drawer** (`Running · Queued · Done` + 1-click Cancel), **WASD/Arrow 3D Camera Navigation**, drag-resizable console, and a synced **Dual-Monitor Pop-Out Console** (`DualMonitorConsole.tsx`). |
+| 🧑‍🎤 **Classic Software 3D Avatar (`JARVIS_CLASSIC_UI=1`)** | Optional classic PyQt6 HUD rendering the 468-vertex MediaPipe canonical face mesh (`core/face_model.obj`) with procedural skull/neck/eye rigs, 50 Hz formant + Unicode transcript lip-sync (`core/viseme.py`), phrase-tracking eyebrows, saccadic eye fixations, and live hex theming purely in `QPainter` (no GPU required). |
+| 🔇 **Calibrated Barge-In & EchoGuard** | `core/echo.py` separates speaker bleed and non-speech mic noise (breathing/sighs) from real user speech so you can **interrupt JARVIS mid-sentence** at normal speaking volume (50 ms playback slicing + instant queue drain) without false self-triggers. |
+| 🎙️ **Wake Word, Grace Window & PTT** | Local offline `"Hey Jarvis"` wake word (`core/wake_word.py`), **8-second wake-free follow-up grace window**, **Pause vs. Stop** controls, and global **Ctrl+Space** Push-to-Talk (`core/hotkey.py`). |
+| ⚡ **Non-Blocking `WHEN_IDLE` Tool Router** | Long-running network, research, Companion OS, and UI tools execute `NON_BLOCKING` and inject results during natural speech gaps — never freezing live conversation. |
+| 🌐 **97-Language Live Switching & 15-Min Auto-Recycle** | Native mid-turn response across **97 languages** (`set_language` + `WhisperSTT.set_language()`), drop-oldest mic ring buffer (`core/loop_safety.py`), and proactive **15-minute idle-gap WebSocket recycling** (`core/session_recycle.py`) so multi-hour sessions never cut out mid-sentence. |
+
+---
+
+### 2. The Brain & Zero-Reset Forever Timeline
+JARVIS never starts from amnesia on reboot (`memory/timeline.py`, `actions/brain_control.py`, `apex_ui/components/BrainModal.tsx`):
+
+- **Unified Cross-Channel Stream**: Every spoken voice turn, desktop text message, and inbound/outbound Telegram message writes to a single local SQLite WAL timeline (`memory/brain.db`) that reloads automatically on startup.
+- **Automatic Epoch Compression**: As history grows, older stretches compress into searchable executive epoch summaries while preserving full raw transcripts for instant keyword/date search.
+- **Plain-Language Memories & Portability**: Inspect, edit, or **1-click Forget** any learned fact from the `BRAIN` panel (or by voice), plus full **1-click JSON Export & Import**.
+- **Drag-and-Drop Knowledge Docs & Outputs Vault**: Drop `.pdf`, `.md`, `.txt`, `.csv`, `.json`, or `.py` files into the Brain for chunked lexical/semantic retrieval during live voice & chat, and pin/search/copy every generated research brief, code artifact, or plan in the **Outputs Vault**.
+- **Granular Privacy Governance**: Independent live toggles for **Timeline Persistence**, **Personalization**, and **Adaptive Style Learning** (`memory/config_manager.py`).
+
+---
+
+### 3. Behavior Interviews, Specialist Companions & Studio
+Shape how JARVIS thinks, speaks, and delegates (`core/companions.py`, `apex_ui/components/StudioModal.tsx`):
+
+- **5-Step Guided Behavior Interview**: Interactive Q&A capturing your role, verbosity preference, tone, autonomy comfort, and focus priorities — compiled directly into live system instructions.
+- **Automatic Adaptive Style Learning**: Passively learns explicit conversational preferences (*"keep answers concise"*, *"always show commands first"*) without manual prompt engineering when Adaptive Learning is enabled.
+- **Persistent Specialist Companions**: Switch between built-in specialists (**Chief of Staff**, **Senior Code Architect**, **Deep Research Analyst**, **Executive Comms**) or create custom companions with dedicated **Male/Female personas, voices (`Charon`, `Aoede`, `Puck`, `Fenrir`, `Kore`), instructions, and scoped tool whitelists**.
+- **Visual Abilities (`SKILL.md`) & Custom Hex Theme Studio**: Create/edit custom Markdown skills visually and switch between **6 signature HUD theme presets** or pick **any custom Primary & Secondary hex colors** live.
+
+---
+
+### 4. 17 SaaS Connectors, Custom REST/MCP Builder & Recurring Automations
+Connect external tools cleanly on first boot or anytime later (`memory/accounts.py`, `core/mcp_adapter.py`, `core/automations.py`):
+
+- **Optional First-Run Integrations Onboarding**: Right after entering your Gemini API key on first launch, configure any of **17 native connectors** (**Email IMAP/SMTP App Password**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) — with per-service **`IGNORE`** toggles and **`IGNORE ALL / SKIP FOR NOW`** across both Male and Female editions.
+- **Visual Custom REST/Webhook & MCP JSON-RPC 2.0 Builder**: Turn any HTTP endpoint + Bearer/Header secret into a live LLM tool with zero code, or register **Model Context Protocol (`MCP`)** servers over **HTTP (`POST` JSON-RPC 2.0)** or **local `stdio` subprocesses** with 1-click `tools/list` discovery and live `tools/call` invocation (`actions/custom_tools_runner.py`).
+- **Recurring Automations Center**: Schedule interval (`every N minutes`) or daily (`HH:MM`) background workflows targeting any built-in, cloud, or custom tool — active in **both** the 3D APEX HUD and Classic PyQt6 mode (`main.py`), with 1-click **Run Now**, **Pause/Resume**, and run logs.
+
+---
+
+### 5. Live Streaming Dev Workspace & Autonomous Engineering
+A real-time engineering cockpit built directly into the HUD (`core/dev_workspace.py`, `apex_ui/components/DevWorkspaceModal.tsx`):
+
+- **Streaming Dev Terminal**: Spawns background shell, Python, npm, pytest, or git processes with real-time WebSocket `stdout`/`stderr` streaming, interactive **`stdin` input**, exit-code badges, and **1-click process tree termination**.
+- **Codebase File-Tree Explorer & Colorized Git Diffs**: Browse repository files safely (path-traversal jailed with secret-file redaction) and inspect live `git status` + colorized unified diffs (`+` / `-` / `@@` hunks) side-by-side.
+- **Full Developer Action Suite**: Backed by `actions/dev_agent.py`, `actions/code_helper.py`, `actions/shell_agent.py`, `core/background_agent.py`, `actions/github_automation.py`, and `actions/web_studio.py` (local dev server, live preview, SEO auditor, and 9 theme presets).
+
+---
+
+### 6. Multi-Provider Ladder & 100% Offline Local Mode
 JARVIS never bricks when an API key hits quota or Wi-Fi drops:
 
 - **9-Rung Gemini Model Ladder (`core/gemini.py`)**: Every Live and one-shot call walks a measured fallback ladder with automatic per-model cooldowns on quota (`429`), timeout, or preview deprecation.
@@ -93,70 +146,34 @@ JARVIS never bricks when an API key hits quota or Wi-Fi drops:
 
 ---
 
-### 3. Autonomous Cognition: Self-Writing Skills, Subagents, Heartbeat & Memory
-Instead of a static system prompt, JARVIS learns procedures, delegates work, and manages its own attention:
-
-- **Open Agent Skills Standard (`skills/*/SKILL.md`, `core/skill_loader.py`)**: Full implementation of the [agentskills.io](https://agentskills.io) specification — compatible out of the box with skills written for **Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, skills.sh, and ClawHub**:
-  - *Level 1*: Only `name` + `description` frontmatter enter `[SKILLS]` at startup (tiny token footprint).
-  - *Level 2*: Full `SKILL.md` SOP body loads on demand via `skill_read`.
-  - *Level 3*: Bundled `references/` and `scripts/` load only when referenced.
-- **Self-Writing Learning Loop (`skill_manage`)**: When JARVIS solves a non-trivial workflow, hits a platform quirk, or gets corrected by the user, it calls `skill_manage` (`create | edit | patch | delete`) to write or refine reusable `SKILL.md` skills — hardened against path traversal and prompt-injection payloads.
-- **Subagent Task Decomposition (`core/subagents.py`)**: Complex 5+ step missions can spawn isolated subagents (`spawn | list | status | result | cancel | remove`) with explicit goals, **scoped tool whitelists**, step-by-step audit logs, `max_steps` runaway caps, and isolated result handoff.
-- **Heartbeat Autonomy (`core/heartbeat.py`, `actions/proactive.py`, `actions/background_monitor.py`)**: Configurable `observe` / `suggest` / `act` autonomy levels, `heartbeat_ok` quiet-mode suppression, **never-nag-twice** topic deduplication, Morning Briefings, context-aware Proactive 2.0 check-ins, and daily background topic monitors.
-- **Two-Tier Recallable Memory & Hygiene (`memory/memory_manager.py`)**: Keeps core identity lean inside the system prompt while storing unlimited personal facts, project context, and next-morning session summaries locally — searchable on demand via `recall_memory`, automatically deduplicated/cleaned, and editable in one click from the HUD **Memory Panel**.
+### 7. Autonomous Cognition: Open Agent Skills, Subagents & Heartbeat
+- **Open Agent Skills Standard (`skills/*/SKILL.md`, `core/skill_loader.py`)**: Full [agentskills.io](https://agentskills.io) progressive-disclosure implementation (*Level 1* frontmatter at boot → *Level 2* SOP via `skill_read` → *Level 3* `references/` & `scripts/`) — compatible out of the box with skills written for **Claude Code, Codex, Cursor, GitHub Copilot, and Gemini CLI**.
+- **Self-Writing Learning Loop (`skill_manage`)**: Creates, patches, and refines reusable `SKILL.md` playbooks from experience — hardened against path traversal and prompt injection.
+- **Scoped Subagents (`core/subagents.py`)**: Spawns isolated multi-step workers (`spawn | list | status | result | cancel | remove`) with explicit goals, tool whitelists, `max_steps` caps, and live 3D Worker Orb telemetry.
+- **Heartbeat Autonomy (`core/heartbeat.py`, `actions/proactive.py`, `actions/background_monitor.py`)**: Configurable `observe` / `suggest` / `act` autonomy levels, `HEARTBEAT_OK` quiet suppression, never-nag-twice deduplication, Morning Briefings, and daily topic watchers.
 
 ---
 
-### 4. Visual Grounding, Screen Memory & Zero-API Workspace Automation
+### 8. Visual Grounding, Screen Memory & 49-Module OS Execution Core
 JARVIS sees and operates any application on screen — even apps with no API:
 
 | Subsystem | What It Does |
 | :--- | :--- |
-| 🖱️ **Set-of-Mark Computer Use** (`actions/computer_use.py`) | UI-TARS / Agent-S visual grounding: `som_capture` snapshots the screen, detects interactive elements, draws numbered red bounding boxes mirrored live to the HUD, and executes `click_by_id`, `type_by_id`, and `hover_by_id` with coordinate fallback. |
+| 🖱️ **Set-of-Mark Computer Use** (`actions/computer_use.py`) | UI-TARS / Agent-S visual grounding: `som_capture` snapshots the screen, numbers interactive elements with red bounding boxes mirrored to the HUD, and executes `click_by_id`, `type_by_id`, and `hover_by_id`. |
 | 🌲 **Accessibility Tree Engine** (`actions/accessibility.py`) | Queries native OS accessibility APIs (**Windows UI Automation** / **Linux AT-SPI**) to inspect windows and press buttons by semantic name inside Discord, VS Code, Electron, and native apps. |
-| 🧠 **Event-Driven Screen Memory** (`core/screen_memory.py`) | Local Rewind-style recall: background screen capture with change detection, OCR + accessibility text extraction, **SQLite FTS5** full-text indexing (`screen_memory_search`), per-app blocklists, and local privacy permissions. |
-| 📦 **GWS Pack** (`core/gws_pack.py`) | **Zero-API, zero-OAuth Google Workspace automation** (`gmail_send`, `gmail_search`, `docs_create`, `docs_write`, `drive_upload`, `calendar_add`, `gws_open`, plus multi-step `workflow`s like `send_meeting_notes` and `schedule_meeting`) driven via `computer_use` on your already signed-in browser, with human-readable SOP fallbacks. |
-| 📷 **Multi-Angle Live Vision** (`actions/screen_processor.py`) | Pipes full-screen captures, interactive rubberband **region captures**, or live webcam frames directly into the active Gemini Live conversation. |
+| 🧠 **Event-Driven Screen Memory** (`core/screen_memory.py`) | Local Rewind-style recall: change-detected screen capture, OCR + accessibility extraction, **SQLite FTS5** search (`screen_memory_search`), and per-app privacy blocklists. |
+| 📦 **Zero-API GWS Pack** (`core/gws_pack.py`) | Zero-OAuth browser automation for Gmail, Docs, Drive, and Calendar via `computer_use` on your signed-in browser (`send_meeting_notes`, `schedule_meeting`, etc.). |
+| 🖥️ **Verified Device, Window & Terminal Control** (`core/os_control.py`, `actions/device_manager.py`, `actions/open_app.py`) | Launches interactive PowerShell/CMD/Windows Terminal/macOS/Linux terminals in real visible foreground windows, verifies launched PIDs/window handles before reporting success, snaps/focuses/closes windows, inspects CPU/RAM/ports, and manages volume, brightness, Wi-Fi, battery, and power. |
+| 🔬 **Deep Research, SQLite Productivity & Media** (`actions/deep_research.py`, `memory/productivity.py`, `actions/rag_docs.py`) | Multi-wave cited synthesis, SQLite Tasks & isolated Notes DBs, continuous Lecture Notes + homework extraction, undo-backed Safe File Organizer, Obsidian/RAG indexing, HUD YouTube/video playback, image generation, Spotify control, and flight/weather tracking. |
 
 ---
 
-### 5. Deep Research, Productivity Core, Developer & Creative Studio
-46 self-describing action modules in `actions/` give JARVIS deep domain execution out of the box:
-
-- **Deep Research & Multi-Mode Search (`actions/deep_research.py`, `actions/web_search.py`)**: Multi-wave parallel research that decomposes questions into sub-queries, cross-verifies sources via Gemini Grounding + DuckDuckGo, and delivers bottom-line-first reports with inline citations — alongside specialized `news`, `price`, `compare`, and `search` modes rendered in the HUD Content Panel.
-- **SQLite Productivity Suite (`memory/productivity.py`, `actions/productivity_*.py`, `actions/lecture_notes.py`)**:
-  - **Tasks DB**: Priorities, due dates, search, complete/reopen, archive, 20/page pagination.
-  - **Notes DB**: Dedicated searchable notes isolated from conversational auto-memory.
-  - **Live Lecture Notes**: Continuous mic capture + live transcription → structured summary, key takeaways, and homework extraction on `"stop the notes"`.
-  - **Voice Routines & Checkpoints**: Single-phrase multi-action routines (`memory/routines.json`, e.g. *"study mode"*) and encrypted workspace state checkpoints with reviewable restore.
-- **Developer, Shell & Web Studio (`actions/dev_agent.py`, `actions/code_helper.py`, `actions/shell_agent.py`, `core/background_agent.py`, `actions/github_automation.py`, `actions/web_studio.py`)**: Code generation/analysis, background shell & long-running job execution while you keep chatting, GitHub PR/commit/issue automation, and a local Web Studio with live dev server, Chrome preview, SEO auditor, and 9 theme presets.
-- **Browser, RAG, Media & Desktop Control**:
-  - **Goal-Driven Browser (`actions/browser_control.py`, `actions/browser_agent.py`)**: Playwright automation with low/medium/high risk permission gating and safe messaging review.
-  - **RAG & Universal File Processor (`actions/rag_docs.py`, `actions/file_processor.py`, `actions/file_controller.py`)**: Obsidian vault sync, local RAG indexing, document generation, PDF/Doc/code reading, and undo-backed file management.
-  - **Verified Device, Window, Process & Terminal Control (`actions/device_manager.py`, `actions/open_app.py`, `core/os_control.py`, `actions/computer_settings.py`, `actions/computer_control.py`, `actions/desktop.py`)**: Opens interactive PowerShell/CMD/Windows Terminal/macOS/Linux terminals in real visible foreground windows (bypassing background `CREATE_NO_WINDOW`), verifies launched apps against live OS window handles and PIDs before reporting success, manages windows by name (`list_windows`, `focus_window`, `close_window`, `snap_left`/`snap_right`), inspects/stops top CPU/RAM processes and TCP/UDP port owners with HUD confirmation gates, and controls volume, brightness, deep `ms-settings:` pages, Wi-Fi, battery, storage, and power.
-  - **HUD Video, Music, Creative & Utilities**: Plays YouTube/local video directly in the HUD avatar slot (`actions/video_player.py`, `actions/youtube_video.py`), generates images (`actions/image_generation.py`), controls Spotify & translates/summarizes text selections (`actions/music_selection.py`), tracks flights (`actions/flight_finder.py`), updates games (`actions/game_updater.py`), assists with LinkedIn/sysadmin workflows (`actions/career_helpers.py`), schedules OS-native reminders (`actions/reminder.py`), and monitors CPU/RAM/GPU/temps (`actions/system_monitor.py`).
-
----
-
-### 6. Omnichannel Gateway, Mobile Remote & Smart Home
-Talk to and control the same live JARVIS instance from your desk, phone, or chat apps:
-
-- **Multi-Channel Gateway (`core/multi_channel.py`)**: Zero-dependency inbound HTTP webhook server (`127.0.0.1:8766/webhook`) + outbound channel registry (`desktop`, `telegram`, `whatsapp`, `discord`, `slack`, `imessage`). Inbound messages inject directly into the active Gemini Live session via `run_coroutine_threadsafe`; outbound replies dispatch or broadcast non-blockingly (`send | channels | webhook | broadcast`).
-- **QR-Paired HTTPS Mobile Dashboard (`dashboard/server.py`)**: Generates a local self-signed TLS certificate (`config/certs/`) and one-tap QR code so your phone can stream mic audio, send commands, and monitor live status over LAN.
-- **Telegram Remote & Relay (`core/telegram_bot.py`, `actions/remote_relay.py`)**: Pairing-code authenticated Telegram bot with `/stop` instant task cancellation, plus optional opt-in internet relay.
-- **Account Center & Calendar Heads-Ups (`memory/accounts.py`, `actions/accounts_center.py`, `actions/calendar_monitor.py`)**: Per-service permission policies (`Ask` / `Full` / `ReadOnly` / `Paused`) and proactive heads-ups 10 minutes before Calendar events or 24h/2h before Classroom deadlines.
-- **Smart Home IoT (`smart_home/mqtt.py`, `smart_home/tuya.py`, `actions/smart_home_control.py`)**: Local Tuya and MQTT device control by voice.
-
----
-
-### 7. Defense-in-Depth Safety & 3-Layer Extensibility
-- **Unforgeable Confirmation Gate (`core/confirm.py`)**: Destructive or irreversible operations (shutdown, restart, Wi-Fi toggles, high-risk actions) require a cryptographic/UI token minted **only** when you click Confirm on the HUD — the LLM cannot synthesize or bypass confirmation on its own.
-- **Shared Reversible Undo Stack (`core/undo.py`)**: File moves, renames, writes, creations, and system setting changes register inverse operations on one unified stack — say *"undo that"* to roll back.
-- **Diagnostics Health Center (`actions/diagnostics.py`)**: Built-in hardware, audio device, API key, and connectivity self-test with actionable fix instructions.
-- **Three Clean Ways to Extend JARVIS**:
-  1. **`skills/<name>/SKILL.md`** — Drop in any Markdown skill (or let JARVIS write its own via `skill_manage`).
-  2. **`plugins/<name>.py`** — Drop a single Python file into `plugins/` (isolated validation & crash containment via `core/plugin_loader.py`) or install versioned plugins via `marketplace/marketplace.py`.
-  3. **MCP Servers (`core/mcp_adapter.py`)** — Expose any Model Context Protocol server as native JARVIS tools.
+### 9. Encrypted Vault, Audit Chain, Guest Portals, Omnichannel & Safety
+- **Authenticated Credential Vault (`core/security_vault.py`)**: Encrypts all connector tokens and secrets in `memory/accounts.json` at rest using **`AES-256-GCM`** (`cryptography`, PBKDF2-HMAC-SHA256 fallback) with `0600` local key permissions (`config/.vault.key`), live **256-bit key rotation**, and opt-in Strict API-Key Encryption (`config/api_keys.json`).
+- **Tamper-Evident `SHA-256` Action Audit Chain**: Every tool execution, vault rotation, and portal access appends to a local SQLite ledger where each row hashes `prev_hash + timestamp + actor + action + redacted_params + status`, verifiable anytime in 1 click or via `companion_os(action="audit_verify")`.
+- **Revocable Guest Portals (`/portal/<token>`)**: Share any generated brief, code output, or custom report externally via a standalone read-only link with configurable expiration, max-view limits, visitor IP/User-Agent logs, and **1-click Shut Off All Portals**.
+- **Omnichannel Gateway, QR Mobile Dashboard & Smart Home**: Zero-dependency inbound/outbound webhook router (`core/multi_channel.py`), self-signed HTTPS QR phone mic/control dashboard (`dashboard/server.py`), paired Telegram bot with `/stop` (`core/telegram_bot.py`), and local **Tuya + MQTT** smart-home control (`smart_home/`).
+- **Unforgeable Confirmation Gate & Shared Undo (`core/confirm.py`, `core/undo.py`)**: Destructive OS actions require a UI-minted cryptographic confirmation token that the LLM cannot forge, and file/setting mutations push inverse operations onto a unified `"undo that"` stack.
 
 ---
 
@@ -172,20 +189,22 @@ python install_jarvis.py --install --launch
 # Option B — OS-aware installer + direct launch
 python setup.py        # installs deps for YOUR OS + Playwright browser engine
 python main.py         # launches 3D APEX-UI HUD -> API key -> optional Integrations -> Male/Female chooser
-# Optional direct CLI preset: python main.py --female   or   python main.py --male
 ```
 
-After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_JARVIS.command`** (macOS) anytime — zero Node.js required (`apex_ui/static_hud` ships pre-compiled).
+After first install, double-click **`Start_JARVIS.bat`** (Windows) or **`Start_JARVIS.command`** (macOS) anytime — **zero Node.js required** (`apex_ui/static_hud/` ships pre-compiled).
 
-### Running the Test Suite
+### Useful Launch Flags & Environment Modes
 
 ```bash
-pytest tests/ -q
+python main.py --male                # Boot directly into Male Edition (Electric Cyan/Gold · Charon)
+python main.py --female              # Boot directly into Female Edition (Rose-Magenta/Amethyst · Aoede)
+JARVIS_CLASSIC_UI=1 python main.py   # Launch Classic PyQt6 3D face-mesh HUD instead of APEX 3D Orb HUD
+pytest tests/ -q                     # Run all 258 automated unit & integration tests
 ```
 
 > 💡 **Optional Add-ons:**
 > - **Wake Word (`"Hey Jarvis"`)**: One-click install inside the HUD under **⚙ → WAKE WORD** (`openwakeword`, runs 100% locally).
-> - **Offline Mode**: Install [Ollama](https://ollama.com) or LM Studio locally —   detects and falls back to it automatically if cloud Live is unavailable.
+> - **Offline Mode**: Install [Ollama](https://ollama.com) or LM Studio locally — JARVIS detects and falls back to it automatically if cloud Live connectivity is unavailable.
 
 ---
 
@@ -197,7 +216,7 @@ pytest tests/ -q
 | **Python** | **3.11 – 3.15** (uses `asyncio.TaskGroup` & `BaseExceptionGroup`) |
 | **Audio** | Microphone + speakers/headphones (enumerated, measured & selectable live in HUD) |
 | **API Key** | Free Gemini API key (prompted on first launch → saved locally to git-ignored `config/api_keys.json`; optional multi-provider keys or Hosted Auth OTP supported) |
-| **GPU** | **Not required** — 3D avatar, visemes, and HUD video all render in software |
+| **Node.js / GPU** | **Neither required at runtime** — `apex_ui/static_hud/` is pre-exported and Classic 3D avatar renders in software |
 
 ---
 
@@ -205,29 +224,45 @@ pytest tests/ -q
 
 ```text
 OS/
-├── main.py                        # Core runtime — Gemini 3.8 Live loop, duplex audio, visemes, tool router
-├── ui.py                          # Desktop bridge + Classic PyQt6 HUD fallback (`JARVIS_CLASSIC_UI=1`)
-├── install_jarvis.py              # 1-click isolated `.venv` installer & native `.bat` / `.command` launcher generator
-├── setup.py                       # Cross-platform OS-aware dependency & browser installer
-├── apex_ui/                       # 3D Particle Orb HUD (`static_hud/` prebuilt: Brain, Worker Orbs, Studio, Automate, Code, Shield)
+├── main.py                        # Core runtime — Gemini 3.8 Live loop, duplex audio, visemes, tool & scheduler router
+├── ui.py                          # Desktop bridge + Classic PyQt6 3D Avatar HUD fallback (`JARVIS_CLASSIC_UI=1`)
+├── install_jarvis.py              # 1-click isolated `.venv` installer & native launcher generator
+├── Start_JARVIS.bat               # Double-click native Windows launcher
+├── Start_JARVIS.command           # Double-click native macOS launcher
+├── setup.py                       # Cross-platform OS-aware dependency & Playwright installer
+├── requirements.txt               # Core Python runtime & cryptography/HUD dependencies
 ├── ROADMAP.md                     # Architectural phase roadmap & design milestones
 │
-├── core/                          # Engine, cognition, safety & gateway internals
-│   ├── apex_bridge.py             # FastAPI + `/ws/hud` real-time bridge, Guest Portals & HUD action router
+├── apex_ui/                       # 3D Particle Orb & Operating Companion HUD (Next.js + Three.js)
+│   ├── static_hud/                # Pre-compiled zero-Node.js production HUD served by `core/apex_bridge.py`
+│   └── components/                # 13 modular 3D & HUD interfaces:
+│       ├── ApexWorld.tsx          # Interactive 3D scene + WASD/Arrow camera navigation
+│       ├── ApexHeroOrb.tsx        # Audio-reactive Male/Female 3D particle core & 18-node reasoning web
+│       ├── WorkerOrbsLayer.tsx    # Orbiting 3D worker satellites for active subagents & background tools
+│       ├── JarvisHudOverlays.tsx  # Onboarding wizard, Male/Female chooser, Command Dock & resizable console
+│       ├── DualMonitorConsole.tsx # Synced standalone secondary-display console (`/?view=console`)
+│       ├── BrainModal.tsx         # Forever Timeline, Memories CRUD/Export, Knowledge Docs, Outputs & Privacy
+│       ├── StudioModal.tsx        # Behavior Interview, Specialist Companions, SKILL.md Studio & Hex Themes
+│       ├── IntegrationsModal.tsx  # 17 SaaS Connectors, Custom REST/Webhook Builder & MCP Server Registry
+│       ├── AutomationsModal.tsx   # Recurring interval & daily Automations scheduler + run logs
+│       ├── DevWorkspaceModal.tsx  # Live streaming Dev Terminal, Codebase File-Tree & Colorized Git Diffs
+│       └── SecurityModal.tsx      # AES-256-GCM Vault, SHA-256 Audit Chain verifier & Guest Portals
+│
+├── core/                          # Engine, cognition, vault security & gateway internals (35 modules)
+│   ├── apex_bridge.py             # FastAPI + `/ws/hud` real-time bridge, `/portal/<token>` & HUD action router
 │   ├── companions.py              # Behavior Interviews, Adaptive Style Learning, Specialist Companions & Themes
 │   ├── automations.py             # Recurring interval & daily Automations scheduler + run history
-│   ├── mcp_adapter.py             # Custom REST/Webhook Builder + MCP JSON-RPC 2.0 (HTTP & stdio) client
+│   ├── mcp_adapter.py             # Custom REST/Webhook Builder + MCP JSON-RPC 2.0 (`HTTP` & `stdio`) client
 │   ├── dev_workspace.py           # Live streaming Dev Terminal, Codebase File-Tree Map & Git Diffs
 │   ├── security_vault.py          # AES-256-GCM Credential Vault, SHA-256 Audit Chain & Revocable Guest Portals
-│   ├── gemini.py                  # 9-rung Gemini model ladder, cooldowns & timeout management
+│   ├── gemini.py                  # 9-rung Gemini model ladder, cooldowns, transparent vault decrypt & timeouts
 │   ├── provider.py                # Universal multi-provider ladder (Anthropic/OpenAI/xAI/DeepSeek/Groq/Ollama)
 │   ├── llm_client.py              # Local LLM client (Ollama / LM Studio)
 │   ├── local_voice.py             # Offline voice loop + Flow/Dictate hotkey pipeline
 │   ├── stt.py                     # Local Whisper STT with 97-language switching hints
 │   ├── tts.py                     # Multi-backend TTS (Piper, Kokoro, Edge, pyttsx3)
 │   ├── avatar.py                  # Software 3D head renderer — lighting, pose, gaze, expressions (QPainter)
-│   ├── avatar_mesh.py             # 3D mesh loader + procedural skull, neck & eye rigs
-│   ├── face_model.obj             # MediaPipe canonical 468-vertex face mesh (Apache-2.0)
+│   ├── avatar_mesh.py             # 3D mesh loader + procedural skull, neck & eye rigs (`face_model.obj`)
 │   ├── viseme.py                  # ~50 Hz audio formant + Unicode transcript mouth-shape fusion
 │   ├── echo.py                    # Self-calibrating EchoGuard for mid-speech voice barge-in
 │   ├── wake_word.py               # Offline "Hey Jarvis" wake-word detector thread
@@ -235,37 +270,37 @@ OS/
 │   ├── audio_devices.py           # Filtered, measured microphone & speaker enumeration
 │   ├── loop_safety.py             # Drop-oldest bounded audio queues & throttled asyncio loop guards
 │   ├── session_recycle.py         # Proactive 15-min WebSocket recycler + GoAway speech-gap handoff
-│   ├── skill_loader.py            # Open Agent Skills (SKILL.md) loader + self-writing skill_manage
+│   ├── skill_loader.py            # Open Agent Skills (`SKILL.md`) loader + self-writing `skill_manage`
 │   ├── subagents.py               # Scoped subagent manager (spawn/list/status/result/cancel/remove)
 │   ├── heartbeat.py               # Observe/suggest/act autonomy, HEARTBEAT_OK & never-nag-twice
 │   ├── screen_memory.py           # Event-driven screen capture, OCR/a11y & SQLite FTS5 search
 │   ├── multi_channel.py           # Omnichannel HTTP webhook server & outbound channel router
-│   ├── gws_pack.py                # Zero-API Google Workspace automation via computer_use
+│   ├── gws_pack.py                # Zero-API Google Workspace automation via `computer_use`
 │   ├── background_agent.py        # Asynchronous background job runner
-│   ├── telegram_bot.py            # Paired Telegram remote control bot with /stop support
+│   ├── telegram_bot.py            # Paired Telegram remote control bot with `/stop` + Forever Timeline sync
 │   ├── os_control.py              # Verified app/terminal launcher + live window/PID/port/hardware engine
-│   ├── action_loader.py           # Auto-discovery, schema validation & crash isolation for actions/
-│   ├── plugin_loader.py           # Hot-discovery & collision protection for drop-in plugins/
-│   ├── mcp_adapter.py             # Model Context Protocol (MCP) server-to-tool bridge
+│   ├── action_loader.py           # Auto-discovery, schema validation & crash isolation for `actions/`
+│   ├── plugin_loader.py           # Hot-discovery & collision protection for drop-in `plugins/`
 │   ├── confirm.py                 # Unforgeable UI-issued confirmation gate for destructive actions
 │   ├── undo.py                    # Shared reversible undo stack across file & system operations
 │   ├── installer.py               # On-demand optional package installer
 │   └── prompt.txt                 # Dynamic system prompt template hydrated from live runtime state
 │
-├── actions/                       # 51 self-describing OS, cloud, research, productivity & creative actions
-│   ├── brain_control.py           # Unified Brain & Forever Timeline tool (search, remember, forget, ingest_file, outputs)
-│   ├── companion_os.py            # Voice/text control for Automations, Specialist Companions, Portals & Audit Chain
-│   ├── custom_tools_runner.py     # Runtime dispatcher for user-created Custom REST/Webhooks & MCP servers
-│   ├── cloud_integrations.py      # Direct APIs (Email, Gmail, Drive, Calendar, Notion, Slack, Discord, Trello, Linear, Outlook, Dropbox, HubSpot, Calendly)
+├── actions/                       # 49 self-describing OS, cloud, companion, research & creative modules
+│   ├── brain_control.py           # Voice/text Brain & Forever Timeline tool (search, remember, forget, docs, outputs)
+│   ├── companion_os.py            # Voice/text Automations, Specialist Companions, Guest Portals & Audit verifier
+│   ├── custom_tools_runner.py     # Runtime dispatcher for user-created Custom REST/Webhooks & MCP tools
+│   ├── cloud_integrations.py      # Direct APIs across 17 SaaS & Mail services (IMAP/SMTP, Google, Linear, Outlook, etc.)
+│   ├── accounts_center.py         # Per-account Ask / Full / ReadOnly / Paused permission control (17 services)
 │   ├── device_manager.py          # Verified window, terminal, process, port, disk, battery & network manager
-│   ├── computer_use.py            # Set-of-Mark visual grounding (som_capture, click/type/hover_by_id)
+│   ├── computer_use.py            # Set-of-Mark visual grounding (`som_capture`, `click/type/hover_by_id`)
 │   ├── accessibility.py           # Native UI Automation (Win) / AT-SPI (Linux) semantic element control
-│   ├── computer_control.py        # Mouse, keyboard, smart_type, screen_find & window control
+│   ├── computer_control.py        # Mouse, keyboard, `smart_type`, `screen_find` & window control
 │   ├── computer_settings.py       # Cross-platform volume, brightness, Wi-Fi & power management
 │   ├── desktop.py                 # Taskbar, virtual desktop & window orchestration
 │   ├── open_app.py                # Verified app, PowerShell/terminal, folder & deep settings launcher
 │   ├── screen_processor.py        # Full-screen, rubberband region & webcam vision capture
-│   ├── deep_research.py           # Multi-wave cited research synthesis (NON_BLOCKING / WHEN_IDLE)
+│   ├── deep_research.py           # Multi-wave cited research synthesis (`NON_BLOCKING` / `WHEN_IDLE`)
 │   ├── web_search.py              # Grounded Gemini + DuckDuckGo search (news/research/price/compare)
 │   ├── browser_control.py         # Voice-driven Playwright browser automation
 │   ├── browser_agent.py           # Risk-tiered goal-driven browser agent
@@ -275,7 +310,7 @@ OS/
 │   ├── productivity_checkpoints.py# Encrypted workspace checkpoints & restore
 │   ├── lecture_notes.py           # Continuous lecture recorder, transcriber & homework extractor
 │   ├── file_processor.py          # Universal document/PDF/code reader & Q&A
-│   ├── file_controller.py         # Undo-backed file & directory operations
+│   ├── file_controller.py         # Undo-backed safe file & directory organizer
 │   ├── rag_docs.py                # Obsidian vault sync, RAG indexing & document generator
 │   ├── dev_agent.py               # Autonomous multi-step software engineering helper
 │   ├── code_helper.py             # Code review, refactoring & explanation tool
@@ -289,7 +324,6 @@ OS/
 │   ├── send_message.py            # Cross-app desktop messaging automation
 │   ├── reminder.py                # OS-native scheduled notifications (Task Scheduler/LaunchAgent/systemd)
 │   ├── calendar_monitor.py        # Proactive Calendar & Classroom deadline heads-ups
-│   ├── accounts_center.py         # Per-account Ask / Full / ReadOnly / Paused permission control
 │   ├── remote_relay.py            # Opt-in remote relay connector
 │   ├── proactive.py               # Time- and project-aware Proactive 2.0 check-in engine
 │   ├── background_monitor.py      # Daily topic headline watcher
@@ -303,35 +337,34 @@ OS/
 │   ├── marketplace_action.py      # Voice/tool interface to the plugin marketplace
 │   └── hosted_auth_action.py      # Opt-in email OTP hosted auth management
 │
-├── skills/                        # 10 default Open Agent Skills (SKILL.md progressive-disclosure SOPs)
-│   ├── README.md                  # Spec & authoring guide
-│   ├── _template/                 # Starter template for new skills
-│   ├── code-ship/                 # Bugfix, feature build, test verification & Git/PR shipping (+ checklist)
+├── skills/                        # 10 default Open Agent Skills (`SKILL.md` progressive-disclosure SOPs)
+│   ├── code-ship/                 # Bugfix, feature build, test verification & Git/PR shipping
 │   ├── daily-briefing/            # Executive briefing (calendar, tasks, live weather, news & memory)
 │   ├── deep-research/             # Multi-wave cited synthesis (+ source reliability rubric)
 │   ├── focus-mode/                # Deep-work orchestrator (checkpoints, heartbeat quiet, routines & timer)
-│   ├── gui-autopilot/             # Tiered GUI automation (accessibility tree → SoM computer_use → coords)
+│   ├── gui-autopilot/             # Tiered GUI automation (accessibility tree → SoM `computer_use` → coords)
 │   ├── meeting-copilot/           # Live lecture/meeting capture → summary, tasks & deadline reminders
 │   ├── safe-file-organizer/       # Dry-run folder triage, quarantine & undo-backed cleanup
-│   ├── second-brain/              # Unified recall across memory, notes, RAG vault & FTS5 screen history
+│   ├── second-brain/              # Unified recall across Brain timeline, notes, RAG vault & screen FTS5
 │   ├── system-doctor/             # Hardware, audio, network, storage & subsystem diagnostics
 │   └── workspace-comms/           # Gmail, Docs, Drive, Calendar & omnichannel messaging SOP
 │
-├── memory/                        # Persistent local state & SQLite stores
-│   ├── memory_manager.py          # Two-tier long-term memory, search, hygiene & session summaries
-│   ├── config_manager.py          # Thread-safe config/api_keys.json preferences & toggles
+├── memory/                        # Persistent local state, SQLite WAL stores & encrypted vault files
+│   ├── timeline.py                # Zero-Reset Forever Timeline, epoch compression, Knowledge Docs & Outputs Vault
+│   ├── memory_manager.py          # Two-tier long-term memory, search, hygiene, JSON export/import & summaries
+│   ├── config_manager.py          # Thread-safe preferences, Male/Female persona & Privacy Governance toggles
 │   ├── productivity.py            # SQLite backend for tasks, notes & productivity state
-│   ├── accounts.py                # Connected service registry, OAuth/IMAP/SMTP/REST clients & permission tiers
+│   ├── accounts.py                # 17-service connector registry (`AES-256-GCM` encrypted at rest) & API clients
 │   └── routines.json              # Saved multi-step voice routines
 │
 ├── dashboard/                     # Local HTTPS mobile companion server (QR pairing + phone mic relay)
 ├── smart_home/                    # Tuya & MQTT IoT protocol adapters
 ├── marketplace/                   # Versioned, isolated plugin marketplace installer
 ├── auth/                          # Opt-in email OTP + quota hosted authentication client
-├── plugins/                       # Drop-in user plugins (_template.py starter included)
-├── config/                        # Local runtime keys & self-signed TLS certs (git-ignored)
+├── plugins/                       # Drop-in user plugins (`_template.py` starter included)
+├── config/                        # Local runtime keys, `.vault.key` & self-signed TLS certs (git-ignored)
 ├── LICENSE                        # MIT License
-└── tests/                         # 235+ pytest unit & integration tests across all phases
+└── tests/                         # 258 automated `pytest` unit & integration tests across 30 test suites
 ```
 
 ---
@@ -339,4 +372,3 @@ OS/
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).
-
