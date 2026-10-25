@@ -172,6 +172,37 @@ def open_app(
     if player and hasattr(player, "write_log"):
         player.write_log(f"[open_app] {cleaned}")
 
+    # Personal social platforms ("open insta", "open instagram reels", "open snapchat", "open tiktok", "open x")
+    # launch directly in the persistent signed-in Socials Hub window!
+    cleaned_low = cleaned.strip().lower()
+    _social_open_map = {
+        "instagram": ("instagram", "open_feed"),
+        "insta": ("instagram", "open_feed"),
+        "ig": ("instagram", "open_feed"),
+        "instagram reels": ("instagram", "open_reels"),
+        "insta reels": ("instagram", "open_reels"),
+        "reels": ("instagram", "open_reels"),
+        "instagram dms": ("instagram", "open_inbox"),
+        "insta dms": ("instagram", "open_inbox"),
+        "snapchat": ("snapchat", "open_feed"),
+        "snap": ("snapchat", "open_feed"),
+        "tiktok": ("tiktok", "open_feed"),
+        "tik tok": ("tiktok", "open_feed"),
+        "twitter": ("x", "open_feed"),
+        "x": ("x", "open_feed"),
+        "reddit": ("reddit", "open_feed"),
+    }
+    if cleaned_low in _social_open_map and not command and not admin:
+        plat_id, feed_cmd = _social_open_map[cleaned_low]
+        try:
+            from core.social_hub import control_social_feed
+
+            soc_res = control_social_feed(plat_id, feed_cmd)
+            if soc_res.get("ok"):
+                return str(soc_res.get("message") or f"Opened {cleaned}.")
+        except Exception:
+            pass
+
     try:
         res = launch_application(
             app_name=cleaned,
@@ -181,6 +212,16 @@ def open_app(
             command=command,
             admin=admin,
         )
+        # If WhatsApp Desktop isn't installed locally, fall back seamlessly to WhatsApp Web in Socials Hub!
+        if not res.get("ok", True) and cleaned_low in ("whatsapp", "whats app"):
+            try:
+                from core.social_hub import control_social_feed
+
+                soc_res = control_social_feed("whatsapp", "open_feed")
+                if soc_res.get("ok"):
+                    return str(soc_res.get("message"))
+            except Exception:
+                pass
         return res["message"]
     except Exception as e:
         print(f"[open_app] Error: {e}")

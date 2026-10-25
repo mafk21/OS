@@ -187,31 +187,15 @@ def _send_discord(receiver: str, message: str) -> str:
 
 
 def _send_instagram(receiver: str, message: str) -> str:
-    _require_pyautogui()
+    from core.social_hub import stage_or_send_social_message
 
-    if not _open_browser_url("https://www.instagram.com/direct/new/"):
-        return "Could not open Instagram in browser."
+    return stage_or_send_social_message("instagram", receiver, message)
 
-    _paste_text(receiver)
-    time.sleep(1.5)
 
-    pyautogui.press("down")
-    time.sleep(0.3)
-    pyautogui.press("enter")   
-    time.sleep(0.4)
+def _send_social_hub(plat: str, receiver: str, message: str) -> str:
+    from core.social_hub import stage_or_send_social_message
 
-    for _ in range(4):
-        pyautogui.press("tab")
-        time.sleep(0.15)
-    pyautogui.press("enter")
-    time.sleep(2.0)
-
-    _paste_text(message)
-    time.sleep(0.2)
-    pyautogui.press("enter")
-    time.sleep(0.3)
-
-    return f"Message sent to {receiver} via Instagram."
+    return stage_or_send_social_message(plat, receiver, message)
 
 
 def _send_messenger(receiver: str, message: str) -> str:
@@ -239,6 +223,10 @@ _PLATFORM_MAP = [
     ({"whatsapp", "wp", "wapp"},              _send_whatsapp),
     ({"telegram", "tg"},                      _send_telegram),
     ({"instagram", "ig", "insta"},            _send_instagram),
+    ({"snapchat", "snap"},                    lambda r, m: _send_social_hub("snapchat", r, m)),
+    ({"tiktok", "tik tok"},                   lambda r, m: _send_social_hub("tiktok", r, m)),
+    ({"twitter", "x"},                        lambda r, m: _send_social_hub("x", r, m)),
+    ({"reddit"},                              lambda r, m: _send_social_hub("reddit", r, m)),
     ({"signal"},                               _send_signal),
     ({"discord"},                              _send_discord),
     ({"messenger", "facebook", "fb"},         _send_messenger),
@@ -268,6 +256,17 @@ def send_message(
         return "Please specify a recipient."
     if not message_text:
         return "Please specify the message content."
+
+    # Route personal social platforms directly through Socials Hub (no PyAutoGUI required!)
+    from core.social_hub import normalize_social_platform
+    from memory import accounts
+
+    soc_plat = normalize_social_platform(platform)
+    if soc_plat in ("instagram", "snapchat", "tiktok", "x", "reddit") or (
+        soc_plat == "whatsapp" and accounts.is_service_connected("whatsapp")
+    ):
+        return _send_social_hub(soc_plat, receiver, message_text)
+
     if not _PYAUTOGUI:
         return "PyAutoGUI is not installed — cannot control the desktop."
 

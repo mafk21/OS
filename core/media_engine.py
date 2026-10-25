@@ -81,6 +81,8 @@ _AUTH_ERROR_HINTS = (
     "cookies",
     "rate-limit",
     "not available for registered users",
+    "not granting access",
+    "checkpoint",
     "private",
     "http error 401",
     "http error 403",
@@ -378,6 +380,51 @@ def _needs_cookie_retry(err_msg: str) -> bool:
     return any(h in low for h in _AUTH_ERROR_HINTS)
 
 
+def _build_social_vault_cookiefile(url: str) -> str | None:
+    """Export encrypted Socials Hub session cookies (`~/.jarvis_socials/cookies_<plat>.enc`) to a temporary Netscape cookiefile for `yt-dlp`."""
+    plat_label = detect_platform(url).lower()
+    plat_map = {
+        "instagram": "instagram",
+        "snapchat": "snapchat",
+        "tiktok": "tiktok",
+        "x": "x",
+        "reddit": "reddit",
+    }
+    plat = plat_map.get(plat_label)
+    if not plat:
+        return None
+    try:
+        from core.social_hub import _CDP, load_encrypted_cookies
+
+        cookies = list(load_encrypted_cookies(plat))
+        if not cookies and _CDP._endpoint_alive():
+            cookies = list(_CDP.get_all_cookies())
+    except Exception:
+        cookies = []
+    if not cookies:
+        return None
+
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in cookies:
+        dom = str(c.get("domain") or "").strip()
+        name = str(c.get("name") or "").strip()
+        val = str(c.get("value") or "").strip()
+        if not dom or not name or not val:
+            continue
+        include_sub = "TRUE" if dom.startswith(".") else "FALSE"
+        path_s = str(c.get("path") or "/")
+        sec = "TRUE" if c.get("secure", True) else "FALSE"
+        exp = int(float(c.get("expires") or (time.time() + 86400 * 30)))
+        lines.append(f"{dom}\t{include_sub}\t{path_s}\t{sec}\t{exp}\t{name}\t{val}")
+    if len(lines) <= 1:
+        return None
+
+    fd, tmp_path = tempfile.mkstemp(prefix=".jarvis_ytcookies_", suffix=".txt")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return tmp_path
+
+
 def _extract_with_ytdlp(
     query_or_url: str,
     base_opts: dict[str, Any],
@@ -396,30 +443,41 @@ def _extract_with_ytdlp(
 
     opts = dict(base_opts)
     opts.setdefault("http_headers", dict(DEFAULT_HEADERS))
+    vault_cookie_file = None if cookies_browser else _build_social_vault_cookiefile(target_url)
     if cookies_browser:
         opts["cookiesfrombrowser"] = (cookies_browser,)
+    elif vault_cookie_file:
+        opts["cookiefile"] = vault_cookie_file
 
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(target_url, download=download)
-    except Exception as first_exc:
-        if cookies_browser or not _needs_cookie_retry(str(first_exc)):
-            raise
-        last_exc: Exception = first_exc
-        info = None
-        for browser in _candidate_cookie_browsers():
-            retry_opts = dict(opts)
-            retry_opts["cookiesfrombrowser"] = (browser,)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(target_url, download=download)
+        except Exception as first_exc:
+            if cookies_browser or not _needs_cookie_retry(str(first_exc)):
+                raise
+            last_exc: Exception = first_exc
+            info = None
+            for browser in _candidate_cookie_browsers():
+                retry_opts = dict(opts)
+                retry_opts.pop("cookiefile", None)
+                retry_opts["cookiesfrombrowser"] = (browser,)
+                try:
+                    with yt_dlp.YoutubeDL(retry_opts) as ydl:
+                        info = ydl.extract_info(target_url, download=download)
+                    if info:
+                        break
+                except Exception as retry_exc:
+                    last_exc = retry_exc
+                    continue
+            if info is None:
+                raise last_exc from first_exc
+    finally:
+        if vault_cookie_file:
             try:
-                with yt_dlp.YoutubeDL(retry_opts) as ydl:
-                    info = ydl.extract_info(target_url, download=download)
-                if info:
-                    break
-            except Exception as retry_exc:
-                last_exc = retry_exc
-                continue
-        if info is None:
-            raise last_exc from first_exc
+                os.unlink(vault_cookie_file)
+            except Exception:
+                pass
 
     if info and info.get("entries") is not None:
         entries = [e for e in info["entries"] if e]
