@@ -37,6 +37,15 @@ def _base() -> pathlib.Path:
 
 ACCOUNTS_FILE = _base() / "memory" / "accounts.json"
 
+SOCIAL_SERVICES = (
+    "instagram",
+    "snapchat",
+    "tiktok",
+    "x",
+    "whatsapp",
+    "reddit",
+)
+
 SUPPORTED = [
     "email",
     "gmail",
@@ -55,6 +64,7 @@ SUPPORTED = [
     "dropbox",
     "hubspot",
     "calendly",
+    *SOCIAL_SERVICES,
 ]
 
 PERMISSIONS = ("ask", "full", "readonly", "paused")
@@ -101,6 +111,8 @@ def _is_rec_connected(rec: dict) -> bool:
         or rec.get("refresh_token")
         or rec.get("app_password")
         or rec.get("webhook_url")
+        or rec.get("session_connected")
+        or rec.get("cookies_browser")
         or (rec.get("client_id") and rec.get("client_secret") and rec.get("service") == "spotify")
     )
 
@@ -273,12 +285,16 @@ def get_integrations_status_summary() -> dict[str, Any]:
     def _entry(svc: str) -> dict[str, Any]:
         rec = d.get(svc) if isinstance(d.get(svc), dict) else {}
         connected = is_service_connected(svc)
+        default_perm = "ask" if svc in SOCIAL_SERVICES else "full"
         return {
             "service": svc,
             "connected": connected,
             "ignored": bool(rec.get("ignored", False)) and not connected,
             "email": str(rec.get("email", "") or ""),
-            "permission": str(rec.get("permission", "full") or "full"),
+            "handle": str(rec.get("handle", "") or ""),
+            "auth_mode": str(rec.get("auth_mode", "") or ""),
+            "cookies_browser": str(rec.get("cookies_browser", "") or ""),
+            "permission": str(rec.get("permission", default_perm) or default_perm),
             "has_oauth_client": bool(rec.get("client_id") and rec.get("client_secret")),
             "channel_id": str(rec.get("channel_id", "") or ""),
         }
@@ -302,34 +318,53 @@ def get_integrations_status_summary() -> dict[str, Any]:
             "dropbox",
             "hubspot",
             "calendly",
+            *SOCIAL_SERVICES,
         )
     }
     connected_names = [k for k, v in items.items() if v["connected"]]
+    connected_socials = [k for k in SOCIAL_SERVICES if items.get(k, {}).get("connected")]
     return {
         "services": items,
         "connected_count": len(connected_names),
         "connected_services": connected_names,
+        "connected_socials": connected_socials,
         "onboarding_done": bool(cfg.get("integrations_onboarding_done", False)),
     }
 
 
 def format_connected_for_prompt() -> str:
     """Compact summary injected into the system prompt so both Male & Female
-    editions know exactly which user accounts are live vs ignored."""
+    editions know exactly which user accounts & personal socials are live vs ignored."""
     summary = get_integrations_status_summary()
-    live = summary["connected_services"]
-    if not live:
-        return (
-            "[CONNECTED ACCOUNTS]\n"
-            "No direct cloud/email API tokens configured yet (user skipped or left optional). "
-            "Use browser automation (gws_pack / browser_control) if asked, or remind the user "
-            "they can add tokens anytime in HUD -> Integrations.\n"
+    all_live = summary["connected_services"]
+    socials_live = summary.get("connected_socials", [])
+    cloud_live = [s for s in all_live if s not in SOCIAL_SERVICES]
+
+    lines = ["[CONNECTED ACCOUNTS]"]
+    if cloud_live:
+        lines.append(
+            f"Direct background APIs connected and ready via `cloud_integrations`: {', '.join(cloud_live)}. "
+            "Prefer `cloud_integrations` over opening a browser whenever one of these connected services is requested."
         )
-    return (
-        "[CONNECTED ACCOUNTS]\n"
-        f"Direct background APIs connected and ready via `cloud_integrations`: {', '.join(live)}.\n"
-        "Prefer `cloud_integrations` over opening a browser whenever one of these connected services is requested.\n"
-    )
+    if socials_live:
+        svcs = summary.get("services", {})
+        soc_desc = ", ".join(
+            f"{s}"
+            + (f" (@{svcs[s]['handle'].lstrip('@')})" if svcs.get(s, {}).get("handle") else "")
+            + f" [{svcs.get(s, {}).get('permission', 'ask')}]"
+            for s in socials_live
+        )
+        lines.append(
+            f"Personal Social Accounts connected via `social_hub`: {soc_desc}. "
+            "Use `social_hub` to check unread DMs/Snaps/notifications, read/reply to messages, or control feeds/Reels."
+        )
+    if not cloud_live and not socials_live:
+        lines.append(
+            "No direct cloud/email API tokens or personal social sessions configured yet (user skipped or left optional). "
+            "Use `social_hub` (action='connect') for Instagram/Snapchat/TikTok/X/WhatsApp/Reddit, `browser_control` for general web, "
+            "or remind the user they can connect accounts anytime in HUD -> LINKS."
+        )
+    return "\n".join(lines) + "\n"
 
 
 def save_onboarding_integrations(payload: dict[str, Any]) -> dict[str, Any]:
@@ -500,6 +535,41 @@ def save_onboarding_integrations(payload: dict[str, Any]) -> dict[str, Any]:
                         permission="full",
                     )
                     saved.append(extra_svc)
+
+    # 11. Personal Social Accounts (Instagram, Snapchat, TikTok, X, WhatsApp, Reddit)
+    for soc_svc in SOCIAL_SERVICES:
+        block = payload.get(soc_svc)
+        if isinstance(block, dict):
+            if block.get("ignore"):
+                ignore_account(soc_svc)
+                ignored.append(soc_svc)
+            else:
+                cbrowser = str(block.get("cookies_browser") or "").strip().lower()
+                handle = str(block.get("handle") or "").strip().lstrip("@")
+                perm = str(block.get("permission") or "ask").strip().lower()
+                if perm not in PERMISSIONS:
+                    perm = "ask"
+                existing = get_account(soc_svc) or {}
+                if cbrowser or block.get("session_connected"):
+                    connect_account(
+                        soc_svc,
+                        handle=handle or str(existing.get("handle") or ""),
+                        cookies_browser=cbrowser or str(existing.get("cookies_browser") or ""),
+                        session_connected=bool(block.get("session_connected") or existing.get("session_connected") or cbrowser),
+                        auth_mode="browser_cookies" if cbrowser else str(existing.get("auth_mode") or "web_session"),
+                        permission=perm,
+                    )
+                    saved.append(soc_svc)
+                elif existing and _is_rec_connected({**existing, "service": soc_svc}):
+                    # Preserve already-connected web session while updating @handle or permission!
+                    connect_account(
+                        soc_svc,
+                        handle=handle or str(existing.get("handle") or ""),
+                        cookies_browser=str(existing.get("cookies_browser") or ""),
+                        session_connected=bool(existing.get("session_connected", True)),
+                        auth_mode=str(existing.get("auth_mode") or "web_session"),
+                        permission=perm,
+                    )
 
     try:
         from memory import config_manager as cm

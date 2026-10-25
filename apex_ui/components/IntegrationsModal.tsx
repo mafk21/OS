@@ -33,6 +33,8 @@ export default function IntegrationsModal() {
     skipIntegrations,
     disconnectIntegration,
     startGoogleOAuth,
+    connectSocialWeb,
+    importSocialCookies,
   } = useJarvis();
 
   const PRIMARY = theme.primary;
@@ -41,6 +43,9 @@ export default function IntegrationsModal() {
 
   // Per-service ignore flags + form values
   const [ignoredMap, setIgnoredMap] = useState<Record<string, boolean>>({});
+  const [socialHandles, setSocialHandles] = useState<Record<string, string>>({});
+  const [socialPerms, setSocialPerms] = useState<Record<string, string>>({});
+  const [socialMsg, setSocialMsg] = useState<Record<string, string>>({});
   const [emailAddr, setEmailAddr] = useState("");
   const [emailAppPw, setEmailAppPw] = useState("");
   const [imapHost, setImapHost] = useState("");
@@ -97,6 +102,28 @@ export default function IntegrationsModal() {
       dropbox: Boolean(svcs.dropbox?.ignored),
       hubspot: Boolean(svcs.hubspot?.ignored),
       calendly: Boolean(svcs.calendly?.ignored),
+      instagram: Boolean(svcs.instagram?.ignored),
+      snapchat: Boolean(svcs.snapchat?.ignored),
+      tiktok: Boolean(svcs.tiktok?.ignored),
+      x: Boolean(svcs.x?.ignored),
+      whatsapp: Boolean(svcs.whatsapp?.ignored),
+      reddit: Boolean(svcs.reddit?.ignored),
+    });
+    setSocialHandles((prev) => {
+      const next = { ...prev };
+      for (const sk of ["instagram", "snapchat", "tiktok", "x", "whatsapp", "reddit"]) {
+        if (svcs[sk]?.handle && !next[sk]) {
+          next[sk] = svcs[sk].handle || "";
+        }
+      }
+      return next;
+    });
+    setSocialPerms((prev) => {
+      const next = { ...prev };
+      for (const sk of ["instagram", "snapchat", "tiktok", "x", "whatsapp", "reddit"]) {
+        next[sk] = svcs[sk]?.permission || prev[sk] || "ask";
+      }
+      return next;
     });
     if (svcs.email?.email && !emailAddr) {
       setEmailAddr(svcs.email.email);
@@ -193,6 +220,36 @@ export default function IntegrationsModal() {
       calendly: {
         ignore: Boolean(ignoredMap.calendly),
         token: calendlyToken,
+      },
+      instagram: {
+        ignore: Boolean(ignoredMap.instagram),
+        handle: socialHandles.instagram || "",
+        permission: socialPerms.instagram || "ask",
+      },
+      snapchat: {
+        ignore: Boolean(ignoredMap.snapchat),
+        handle: socialHandles.snapchat || "",
+        permission: socialPerms.snapchat || "ask",
+      },
+      tiktok: {
+        ignore: Boolean(ignoredMap.tiktok),
+        handle: socialHandles.tiktok || "",
+        permission: socialPerms.tiktok || "ask",
+      },
+      x: {
+        ignore: Boolean(ignoredMap.x),
+        handle: socialHandles.x || "",
+        permission: socialPerms.x || "ask",
+      },
+      whatsapp: {
+        ignore: Boolean(ignoredMap.whatsapp),
+        handle: socialHandles.whatsapp || "",
+        permission: socialPerms.whatsapp || "ask",
+      },
+      reddit: {
+        ignore: Boolean(ignoredMap.reddit),
+        handle: socialHandles.reddit || "",
+        permission: socialPerms.reddit || "ask",
       },
     });
     setSaving(false);
@@ -971,6 +1028,229 @@ export default function IntegrationsModal() {
                         placeholder={item.extraPh}
                         style={inputStyle}
                       />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Personal Socials Section */}
+          <div
+            style={{
+              marginTop: 6,
+              padding: "6px 4px 2px",
+              borderTop: "1px solid rgba(255,255,255,0.08)",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              color: SECONDARY,
+              textTransform: "uppercase",
+            }}
+          >
+            PERSONAL SOCIALS · PERSISTENT SESSION & ASK-BEFORE-SEND GATE
+          </div>
+
+          {(
+            [
+              {
+                key: "instagram",
+                title: "15 · INSTAGRAM",
+                sub: "Direct DMs, unread notifications, Reels & feed control (AES-256-GCM session)",
+                canImportCookies: true,
+              },
+              {
+                key: "snapchat",
+                title: "16 · SNAPCHAT WEB",
+                sub: "web.snapchat.com — unread Snaps, chats & replies with HUD confirmation",
+                canImportCookies: true,
+              },
+              {
+                key: "tiktok",
+                title: "17 · TIKTOK",
+                sub: "Messages, notifications & hands-free For You Reel scrolling/liking",
+                canImportCookies: true,
+              },
+              {
+                key: "x",
+                title: "18 · X / TWITTER",
+                sub: "Direct Messages, notifications, timeline & confirmation-gated posts",
+                canImportCookies: true,
+              },
+              {
+                key: "whatsapp",
+                title: "19 · WHATSAPP WEB",
+                sub: "web.whatsapp.com — persistent QR sign-in, unread chats & safe replies",
+                canImportCookies: false,
+              },
+              {
+                key: "reddit",
+                title: "20 · REDDIT",
+                sub: "Chat / Inbox, notifications & confirmation-gated replies",
+                canImportCookies: true,
+              },
+            ] as const
+          ).map((soc) => {
+            const svcInfo = integrations.services?.[soc.key];
+            const isConn = Boolean(svcInfo?.connected);
+            const isIgn = Boolean(ignoredMap[soc.key]);
+            const curHandle = socialHandles[soc.key] || "";
+            const curPerm = socialPerms[soc.key] || "ask";
+            const statusNote = socialMsg[soc.key] || "";
+
+            return (
+              <div
+                key={soc.key}
+                data-testid={`social-card-${soc.key}`}
+                style={cardWrap(isIgn, isConn)}
+              >
+                {renderCardHeader(soc.key, soc.title, soc.sub, isConn, soc.key)}
+                {!isIgn && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))",
+                        gap: 8,
+                      }}
+                    >
+                      <input
+                        type="text"
+                        value={curHandle}
+                        onChange={(e) =>
+                          setSocialHandles((prev) => ({
+                            ...prev,
+                            [soc.key]: e.target.value,
+                          }))
+                        }
+                        placeholder="Optional @username / label"
+                        style={inputStyle}
+                      />
+                      <select
+                        value={curPerm}
+                        onChange={(e) =>
+                          setSocialPerms((prev) => ({
+                            ...prev,
+                            [soc.key]: e.target.value,
+                          }))
+                        }
+                        style={{ ...inputStyle, cursor: "pointer" }}
+                      >
+                        <option value="ask" style={{ background: "#08101c" }}>
+                          Policy: Ask Before Sending (Safe)
+                        </option>
+                        <option value="readonly" style={{ background: "#08101c" }}>
+                          Policy: Read-Only (Inbox & Feed)
+                        </option>
+                        <option value="full" style={{ background: "#08101c" }}>
+                          Policy: Full Auto (No Prompt)
+                        </option>
+                        <option value="paused" style={{ background: "#08101c" }}>
+                          Policy: Paused
+                        </option>
+                      </select>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSocialMsg((p) => ({
+                            ...p,
+                            [soc.key]: "Opening persistent sign-in window…",
+                          }));
+                          const r = await connectSocialWeb(soc.key, curHandle, curPerm);
+                          setSocialMsg((p) => ({
+                            ...p,
+                            [soc.key]:
+                              r.message || r.error || "Sign-in window launched.",
+                          }));
+                        }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "6px 12px",
+                          borderRadius: 999,
+                          border: `1px solid ${PRIMARY}`,
+                          background: `${PRIMARY}22`,
+                          color: "#ffffff",
+                          fontFamily: "var(--font-mono)",
+                          fontSize: 10,
+                          letterSpacing: "0.10em",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <ExternalLink size={11} />
+                        {soc.key === "whatsapp" ? "SCAN QR / SIGN IN" : "SIGN IN WINDOW"}
+                      </button>
+
+                      {soc.canImportCookies && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSocialMsg((p) => ({
+                              ...p,
+                              [soc.key]: "Scanning local browsers for active session…",
+                            }));
+                            const r = await importSocialCookies(
+                              soc.key,
+                              "auto",
+                              curHandle,
+                              curPerm
+                            );
+                            setSocialMsg((p) => ({
+                              ...p,
+                              [soc.key]: r.ok
+                                ? `Connected via ${r.browser} (${r.cookie_count} cookies encrypted)!`
+                                : r.error || "No active browser cookies found.",
+                            }));
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: 999,
+                            border: `1px solid ${SECONDARY}88`,
+                            background: `${SECONDARY}18`,
+                            color: SECONDARY,
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 10,
+                            letterSpacing: "0.10em",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Link2 size={11} />
+                          IMPORT BROWSER SESSION
+                        </button>
+                      )}
+
+                      {isConn && svcInfo?.auth_mode && (
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 9.5,
+                            color: GREEN,
+                            opacity: 0.9,
+                          }}
+                        >
+                          Mode: {svcInfo.auth_mode}
+                          {svcInfo.cookies_browser ? ` (${svcInfo.cookies_browser})` : ""}
+                        </span>
+                      )}
+                    </div>
+
+                    {statusNote && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(240,237,232,0.82)",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {statusNote}
+                      </div>
                     )}
                   </div>
                 )}

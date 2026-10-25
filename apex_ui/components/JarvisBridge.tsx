@@ -65,6 +65,9 @@ export type IntegrationServiceInfo = {
   connected: boolean;
   ignored: boolean;
   email: string;
+  handle?: string;
+  auth_mode?: string;
+  cookies_browser?: string;
   permission: string;
   has_oauth_client?: boolean;
   channel_id?: string;
@@ -74,6 +77,7 @@ export type IntegrationsSummary = {
   services: Record<string, IntegrationServiceInfo>;
   connected_count: number;
   connected_services: string[];
+  connected_socials?: string[];
   onboarding_done: boolean;
 };
 
@@ -238,6 +242,17 @@ export type JarvisContextValue = {
     clientId: string,
     clientSecret: string
   ) => Promise<{ ok: boolean; auth_url?: string; error?: string }>;
+  connectSocialWeb: (
+    platform: string,
+    handle?: string,
+    permission?: string
+  ) => Promise<{ ok: boolean; message?: string; error?: string }>;
+  importSocialCookies: (
+    platform: string,
+    browser?: string,
+    handle?: string,
+    permission?: string
+  ) => Promise<{ ok: boolean; browser?: string; cookie_count?: number; error?: string }>;
   updatePrivacy: (patch: Partial<PrivacySettings>) => Promise<void>;
   spawnWorker: (goal: string, tools?: string[]) => Promise<void>;
   cancelWorker: (workerId: string) => Promise<void>;
@@ -1092,6 +1107,71 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const connectSocialWeb = useCallback(
+    async (
+      platform: string,
+      handle = "",
+      permission = "ask"
+    ): Promise<{ ok: boolean; message?: string; error?: string }> => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "social_connect_web",
+            platform,
+            handle,
+            permission,
+          }),
+        });
+        const data = await r.json();
+        if (data.summary && typeof data.summary === "object") {
+          setIntegrations(data.summary as IntegrationsSummary);
+        }
+        return data;
+      } catch {
+        return { ok: false, error: "Could not start social sign-in session." };
+      }
+    },
+    []
+  );
+
+  const importSocialCookies = useCallback(
+    async (
+      platform: string,
+      browser = "auto",
+      handle = "",
+      permission = "ask"
+    ): Promise<{
+      ok: boolean;
+      browser?: string;
+      cookie_count?: number;
+      error?: string;
+    }> => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "social_import_cookies",
+            platform,
+            browser,
+            handle,
+            permission,
+          }),
+        });
+        const data = await r.json();
+        if (data.summary && typeof data.summary === "object") {
+          setIntegrations(data.summary as IntegrationsSummary);
+        }
+        return data;
+      } catch {
+        return { ok: false, error: "Could not import browser cookies." };
+      }
+    },
+    []
+  );
+
   const updatePrivacy = useCallback(
     async (patch: Partial<PrivacySettings>) => {
       setPrivacyState((prev) => ({ ...prev, ...patch }));
@@ -1355,6 +1435,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      connectSocialWeb,
+      importSocialCookies,
       updatePrivacy,
       spawnWorker,
       cancelWorker,
@@ -1441,6 +1523,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       skipIntegrations,
       disconnectIntegration,
       startGoogleOAuth,
+      connectSocialWeb,
+      importSocialCookies,
       updatePrivacy,
       spawnWorker,
       cancelWorker,
