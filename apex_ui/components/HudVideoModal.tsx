@@ -1,13 +1,38 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { ExternalLink, Volume2, VolumeX, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ExternalLink,
+  ListMusic,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  VolumeX,
+  X,
+} from "lucide-react";
 import { useJarvis } from "./JarvisBridge";
 
+function formatSec(sec?: number): string {
+  if (!sec || sec <= 0) return "";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export default function HudVideoModal() {
-  const { video, theme, activePersona, closeVideo, setVideoMuted } = useJarvis();
+  const {
+    video,
+    theme,
+    activePersona,
+    closeVideo,
+    setVideoMuted,
+    nextVideo,
+    prevVideo,
+    jumpVideo,
+  } = useJarvis();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -55,6 +80,10 @@ export default function HudVideoModal() {
   const primary = theme.primary;
   const secondary = theme.secondary;
   const platformLabel = (video.platform || "VIDEO").toUpperCase();
+  const queue = Array.isArray(video.queue) ? video.queue : [];
+  const queueTotal = video.queue_total || queue.length;
+  const queueIndex = video.queue_index || 0;
+  const hasQueue = queueTotal > 1;
 
   return (
     <div
@@ -64,8 +93,8 @@ export default function HudVideoModal() {
         top: "50%",
         left: "50%",
         transform: "translate(-50%, -50%)",
-        width: "min(760px, calc(100vw - 40px))",
-        maxHeight: "calc(100vh - 130px)",
+        width: "min(780px, calc(100vw - 40px))",
+        maxHeight: "calc(100vh - 120px)",
         zIndex: 85,
         display: "flex",
         flexDirection: "column",
@@ -84,7 +113,7 @@ export default function HudVideoModal() {
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 10,
+          gap: 8,
           padding: "10px 14px",
           borderBottom: "1px solid rgba(255,255,255,0.08)",
         }}
@@ -105,6 +134,26 @@ export default function HudVideoModal() {
           {platformLabel}
         </span>
 
+        {hasQueue && (
+          <span
+            data-testid="hud-video-mix-badge"
+            title={video.playlist_title || "Active Mix / Playlist"}
+            style={{
+              padding: "3px 9px",
+              borderRadius: 999,
+              background: `rgba(${theme.orbGlow2Rgb}, 0.16)`,
+              border: `1px solid rgba(${theme.orbGlow2Rgb}, 0.45)`,
+              color: secondary,
+              fontFamily: "var(--font-mono), monospace",
+              fontSize: 9.5,
+              letterSpacing: "0.10em",
+              flexShrink: 0,
+            }}
+          >
+            MIX · {queueIndex + 1}/{queueTotal}
+          </span>
+        )}
+
         <div
           style={{
             flex: 1,
@@ -120,6 +169,81 @@ export default function HudVideoModal() {
         >
           {video.title}
         </div>
+
+        {hasQueue && (
+          <>
+            <button
+              type="button"
+              onClick={() => prevVideo()}
+              title="Previous track in Mix"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <SkipBack size={12} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => nextVideo()}
+              title="Next track in Mix"
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#e2e8f0",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              <SkipForward size={12} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setQueueOpen((prev) => !prev)}
+              title="Toggle Mix tracklist"
+              style={{
+                height: 28,
+                padding: "0 9px",
+                borderRadius: 999,
+                border: `1px solid ${queueOpen ? primary : "rgba(255,255,255,0.18)"}`,
+                background: queueOpen
+                  ? `rgba(${theme.orbGlowRgb}, 0.18)`
+                  : "rgba(255,255,255,0.05)",
+                color: queueOpen ? primary : "#dbe6f2",
+                fontFamily: "var(--font-mono), monospace",
+                fontSize: 9.5,
+                letterSpacing: "0.08em",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                cursor: "pointer",
+                flexShrink: 0,
+              }}
+            >
+              <ListMusic size={12} />
+              QUEUE
+            </button>
+          </>
+        )}
 
         <button
           type="button"
@@ -141,6 +265,7 @@ export default function HudVideoModal() {
             alignItems: "center",
             gap: 5,
             cursor: "pointer",
+            flexShrink: 0,
           }}
         >
           {video.muted ? <VolumeX size={12} /> : <Volume2 size={12} />}
@@ -166,6 +291,7 @@ export default function HudVideoModal() {
               alignItems: "center",
               gap: 4,
               textDecoration: "none",
+              flexShrink: 0,
             }}
           >
             <ExternalLink size={11} />
@@ -189,6 +315,7 @@ export default function HudVideoModal() {
             justifyContent: "center",
             cursor: "pointer",
             padding: 0,
+            flexShrink: 0,
           }}
         >
           <X size={13} />
@@ -203,7 +330,7 @@ export default function HudVideoModal() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          maxHeight: "calc(100vh - 190px)",
+          maxHeight: queueOpen && hasQueue ? "calc(100vh - 340px)" : "calc(100vh - 190px)",
         }}
       >
         <video
@@ -214,9 +341,14 @@ export default function HudVideoModal() {
           playsInline
           controls
           muted={Boolean(video.audio_url) ? true : video.muted}
+          onEnded={() => {
+            if (hasQueue) {
+              nextVideo();
+            }
+          }}
           style={{
             width: "100%",
-            maxHeight: "calc(100vh - 190px)",
+            maxHeight: queueOpen && hasQueue ? "calc(100vh - 340px)" : "calc(100vh - 190px)",
             objectFit: "contain",
             display: "block",
           }}
@@ -232,6 +364,103 @@ export default function HudVideoModal() {
           />
         )}
       </div>
+
+      {/* Collapsible Mix / Playlist Tracklist Drawer */}
+      {hasQueue && queueOpen && (
+        <div
+          data-testid="hud-video-queue-drawer"
+          style={{
+            maxHeight: 165,
+            overflowY: "auto",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(2, 6, 14, 0.86)",
+            padding: "6px 10px",
+          }}
+        >
+          {video.playlist_title && (
+            <div
+              style={{
+                padding: "4px 6px 6px",
+                color: secondary,
+                fontFamily: "var(--font-mono), monospace",
+                fontSize: 9.5,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              {video.playlist_title}
+            </div>
+          )}
+          {queue.map((item, idx) => {
+            const active = idx === queueIndex;
+            return (
+              <button
+                key={`${item.id || idx}-${idx}`}
+                type="button"
+                onClick={() => jumpVideo(idx)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  border: active
+                    ? `1px solid rgba(${theme.orbGlowRgb}, 0.45)`
+                    : "1px solid transparent",
+                  background: active
+                    ? `rgba(${theme.orbGlowRgb}, 0.14)`
+                    : "transparent",
+                  color: active ? primary : "#dbe6f2",
+                  fontSize: 11.5,
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{
+                    width: 24,
+                    fontFamily: "var(--font-mono), monospace",
+                    fontSize: 10,
+                    opacity: 0.72,
+                    flexShrink: 0,
+                  }}
+                >
+                  {String(idx + 1).padStart(2, "0")}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {item.title}
+                  {item.uploader ? (
+                    <span style={{ opacity: 0.62, marginLeft: 6 }}>
+                      · {item.uploader}
+                    </span>
+                  ) : null}
+                </span>
+                {item.duration ? (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-mono), monospace",
+                      fontSize: 10,
+                      opacity: 0.65,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {formatSec(item.duration)}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

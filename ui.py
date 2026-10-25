@@ -6913,8 +6913,12 @@ class JarvisUI:
         headers: dict | None = None,
         webpage_url: str = "",
         platform: str = "",
+        queue: list[dict] | None = None,
+        queue_index: int = 0,
+        playlist_title: str = "",
+        playlist_url: str = "",
     ) -> None:
-        """Thread-safe: play a video in both Classic Qt and the 3D Web HUD."""
+        """Thread-safe: play a video (or Mix/Playlist queue) in both Classic Qt and the 3D Web HUD."""
         if self._apex_bridge is None or self._win.isVisible():
             self._win._video_open_sig.emit(
                 str(source or ""),
@@ -6932,9 +6936,35 @@ class JarvisUI:
                     headers=headers,
                     webpage_url=str(webpage_url or ""),
                     platform=str(platform or ""),
+                    queue=queue,
+                    queue_index=int(queue_index or 0),
+                    playlist_title=str(playlist_title or ""),
+                    playlist_url=str(playlist_url or ""),
                 )
             except Exception:
                 pass
+
+    def next_video(self) -> dict:
+        if self._apex_bridge is not None and hasattr(self._apex_bridge, "step_video_queue"):
+            return self._apex_bridge.step_video_queue(1)
+        return {"ok": False, "error": "No Mix or Playlist queue is currently loaded."}
+
+    def prev_video(self) -> dict:
+        if self._apex_bridge is not None and hasattr(self._apex_bridge, "step_video_queue"):
+            return self._apex_bridge.step_video_queue(-1)
+        return {"ok": False, "error": "No Mix or Playlist queue is currently loaded."}
+
+    def jump_video(self, index: int) -> dict:
+        if self._apex_bridge is not None and hasattr(self._apex_bridge, "jump_video_queue"):
+            return self._apex_bridge.jump_video_queue(int(index))
+        return {"ok": False, "error": "No Mix or Playlist queue is currently loaded."}
+
+    def current_mix_source(self) -> str:
+        if self._apex_bridge is not None and hasattr(self._apex_bridge, "current_mix_target"):
+            src = self._apex_bridge.current_mix_target()
+            if src:
+                return src
+        return ""
 
     def stop_video(self) -> None:
         """Thread-safe: close the video and give the HUD back to the avatar."""
