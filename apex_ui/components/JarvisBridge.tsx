@@ -252,7 +252,14 @@ export type JarvisContextValue = {
     browser?: string,
     handle?: string,
     permission?: string
-  ) => Promise<{ ok: boolean; browser?: string; cookie_count?: number; error?: string }>;
+  ) => Promise<{
+    ok: boolean;
+    browser?: string;
+    cookie_count?: number;
+    message?: string;
+    auto_opened_window?: boolean;
+    error?: string;
+  }>;
   updatePrivacy: (patch: Partial<PrivacySettings>) => Promise<void>;
   spawnWorker: (goal: string, tools?: string[]) => Promise<void>;
   cancelWorker: (workerId: string) => Promise<void>;
@@ -1146,6 +1153,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       ok: boolean;
       browser?: string;
       cookie_count?: number;
+      message?: string;
+      auto_opened_window?: boolean;
       error?: string;
     }> => {
       try {

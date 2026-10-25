@@ -263,3 +263,300 @@ def test_hands_free_feed_and_apex_bridge_social_endpoints(isolated_socials_env):
     ):
         fd_out = social_hub({"action": "feed", "platform": "instagram", "command": "next"})
         assert "next post/reel on Instagram" in fd_out
+
+
+def test_windows_unpatched_popen_bypasses_create_no_window_for_visible_social_window(monkeypatch):
+    import subprocess as sp
+
+    orig_calls: list[tuple[list[str], dict]] = []
+    patched_calls: list[tuple[list[str], dict]] = []
+
+    class _FakeOrigPopen:
+        def __init__(self, args, **kw):
+            orig_calls.append((list(args), dict(kw)))
+
+    class _FakePatchedPopen(_FakeOrigPopen):
+        def __init__(self, args, **kw):
+            kw["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+            patched_calls.append((list(args), dict(kw)))
+
+    monkeypatch.setattr(sp, "_OrigPopen", _FakeOrigPopen, raising=False)
+    monkeypatch.setattr(sp, "Popen", _FakePatchedPopen)
+
+    sh._spawn_visible_or_hidden(["chrome.exe", "https://www.instagram.com/"], visible=True)
+    assert len(orig_calls) == 1
+    assert len(patched_calls) == 0
+    assert "creationflags" not in orig_calls[0][1]
+
+
+def test_chrome_v20_cookie_lock_auto_opens_instagram_signin_window(isolated_socials_env):
+    bridge = ApexHudBridge(None)
+    app = bridge._build_app()
+
+    with TestClient(app) as client, patch(
+        "yt_dlp.cookies.extract_cookies_from_browser",
+        side_effect=RuntimeError("Could not copy Chrome cookie database (App-Bound Encryption v20)"),
+    ), patch(
+        "core.social_hub.start_social_login",
+        return_value={
+            "ok": True,
+            "platform": "instagram",
+            "label": "Instagram",
+            "already_connected": False,
+            "message": "Opened Instagram in a dedicated window on your screen.",
+        },
+    ) as mock_login:
+        r = client.post(
+            "/api/hud/action",
+            json={
+                "action": "social_import_cookies",
+                "platform": "instagram",
+                "browser": "auto",
+                "handle": "@mafk",
+                "permission": "ask",
+            },
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert data["auto_opened_window"] is True
+        assert "opened a dedicated Instagram window" in data["error"]
+        mock_login.assert_called_once()
+
+
+def test_open_app_and_send_message_route_insta_through_social_hub(isolated_socials_env):
+    from actions.open_app import open_app
+    from actions.send_message import send_message
+
+    with patch(
+        "core.social_hub.control_social_feed",
+        return_value={"ok": True, "message": "Opened your Instagram feed."},
+    ) as mock_feed:
+        res_open = open_app({"app_name": "insta"})
+        assert res_open == "Opened your Instagram feed."
+        mock_feed.assert_called_once_with("instagram", "open_feed")
+
+    with patch(
+        "core.social_hub.control_social_feed",
+        return_value={"ok": True, "message": "Opened Instagram Reels / Spotlight."},
+    ) as mock_reels:
+        res_reels = open_app({"app_name": "insta reels"})
+        assert "Reels" in res_reels
+        mock_reels.assert_called_once_with("instagram", "open_reels")
+
+    with patch(
+        "core.social_hub.stage_or_send_social_message",
+        return_value="[CONFIRMATION_PENDING] Send Instagram message to @sarah",
+    ) as mock_send:
+        res_msg = send_message(
+            {"platform": "insta", "receiver": "@sarah", "message_text": "Hey from JARVIS!"}
+        )
+        assert "[CONFIRMATION_PENDING]" in res_msg
+        mock_send.assert_called_once_with("instagram", "@sarah", "Hey from JARVIS!")
+
+
+def test_media_engine_uses_encrypted_instagram_vault_cookiefile_for_ytdlp(isolated_socials_env):
+    from pathlib import Path
+
+    from core.media_engine import _build_social_vault_cookiefile
+
+    sh.save_encrypted_cookies(
+        "instagram",
+        [
+            {
+                "name": "sessionid",
+                "value": "ig_reel_vault_token_123",
+                "domain": ".instagram.com",
+                "path": "/",
+                "secure": True,
+                "expires": 1999999999,
+            }
+        ],
+    )
+    cf = _build_social_vault_cookiefile("https://www.instagram.com/reel/C9xyz123/")
+    assert cf is not None
+    try:
+        txt = Path(cf).read_text(encoding="utf-8")
+        assert "# Netscape HTTP Cookie File" in txt
+        assert ".instagram.com\tTRUE\t/\tTRUE\t1999999999\tsessionid\tig_reel_vault_token_123" in txt
+    finally:
+        Path(cf).unlink(missing_ok=True)
+
+
+def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
+    isolated_socials_env, monkeypatch
+):
+    """End-to-end test over a REAL local HTTP + WebSocket CDP server."""
+    import asyncio
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import json
+    import socket
+    import threading
+    import time
+
+    import websockets
+
+    buf = BytesIO()
+    Image.new("RGB", (240, 160), (15, 25, 45)).save(buf, format="JPEG")
+    import base64
+
+    jpg_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+    cdp_events: list[tuple[str, dict]] = []
+    state = {
+        "url": "https://www.instagram.com/accounts/login/",
+        "cookies": [],
+    }
+
+    # 1. Start real WebSocket CDP target server
+    ws_port_holder: dict[str, int] = {}
+    ws_ready = threading.Event()
+    ws_stop: dict[str, Any] = {}
+
+    def _run_ws_server() -> None:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        async def _handler(websocket):
+            async for raw in websocket:
+                req = json.loads(raw)
+                req_id = req["id"]
+                method = req["method"]
+                params = req.get("params") or {}
+                cdp_events.append((method, params))
+
+                result: dict = {}
+                if method == "Page.navigate":
+                    state["url"] = params.get("url", state["url"])
+                    result = {"frameId": "main"}
+                elif method == "Network.getAllCookies":
+                    result = {"cookies": list(state["cookies"])}
+                elif method == "Page.captureScreenshot":
+                    result = {"data": jpg_b64}
+                elif method == "Runtime.evaluate":
+                    expr = str(params.get("expression") or "")
+                    if "document.readyState" in expr:
+                        result = {"result": {"type": "string", "value": "complete"}}
+                    elif "location.href" in expr and "unread_badges" in expr:
+                        result = {
+                            "result": {
+                                "type": "object",
+                                "value": {
+                                    "title": "Instagram · Inbox",
+                                    "url": state["url"],
+                                    "unread_badges": ["1 unread message"],
+                                    "items": ["Sarah · Are you free tonight? · 1m"],
+                                },
+                            }
+                        }
+                    elif "dmComposerTextInput" in expr or 'aria-label*="Message"' in expr:
+                        result = {"result": {"type": "object", "value": {"x": 520, "y": 760}}}
+                    elif "dmComposerSendButton" in expr or "=== 'send'" in expr:
+                        result = {"result": {"type": "object", "value": {"x": 880, "y": 760}}}
+                    elif "needle" in expr or 'aria-label="Like"' in expr:
+                        result = {"result": {"type": "object", "value": {"x": 220, "y": 310}}}
+                    elif "location.href" in expr:
+                        result = {"result": {"type": "string", "value": state["url"]}}
+                    else:
+                        result = {"result": {"type": "number", "value": 0}}
+
+                await websocket.send(json.dumps({"id": req_id, "result": result}))
+
+        async def _serve():
+            stop_fut = loop.create_future()
+            ws_stop["loop"] = loop
+            ws_stop["fut"] = stop_fut
+            async with websockets.serve(_handler, "127.0.0.1", 0) as srv:
+                ws_port_holder["port"] = srv.sockets[0].getsockname()[1]
+                ws_ready.set()
+                await stop_fut
+
+        loop.run_until_complete(_serve())
+
+    ws_thread = threading.Thread(target=_run_ws_server, daemon=True)
+    ws_thread.start()
+    assert ws_ready.wait(timeout=5.0)
+    ws_url = f"ws://127.0.0.1:{ws_port_holder['port']}/devtools/page/tab1"
+
+    # 2. Start real HTTP `/json/version` & `/json/list` CDP discovery server
+    class _CdpHttpHandler(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            return
+
+        def do_GET(self):
+            if self.path.startswith("/json/version"):
+                payload = {"Browser": "Chrome/134.0", "webSocketDebuggerUrl": ws_url}
+            else:
+                payload = [
+                    {
+                        "id": "tab1",
+                        "type": "page",
+                        "title": "Instagram",
+                        "url": state["url"],
+                        "webSocketDebuggerUrl": ws_url,
+                    }
+                ]
+            raw = json.dumps(payload).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    http_srv = HTTPServer(("127.0.0.1", 0), _CdpHttpHandler)
+    http_port = http_srv.server_address[1]
+    threading.Thread(target=http_srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv("JARVIS_SOCIALS_CDP_PORT", str(http_port))
+
+    try:
+        # Step A: Start Instagram login -> not logged in yet -> watcher starts
+        connected_flag = threading.Event()
+        res_login = sh.start_social_login(
+            "instagram",
+            handle="@mafk",
+            permission="full",
+            on_connected=connected_flag.set,
+        )
+        assert res_login["ok"] is True
+        assert res_login["already_connected"] is False
+
+        # Simulate user finishing login in the Chrome window -> `sessionid` cookie appears!
+        state["url"] = "https://www.instagram.com/direct/inbox/"
+        state["cookies"] = [
+            {
+                "name": "sessionid",
+                "value": "live_cdp_ig_session_777",
+                "domain": ".instagram.com",
+                "path": "/",
+                "secure": True,
+            }
+        ]
+        assert connected_flag.wait(timeout=5.0), "Watcher did not detect live Instagram sessionid!"
+        assert accounts.is_service_connected("instagram") is True
+        assert sh.load_encrypted_cookies("instagram")[0]["value"] == "live_cdp_ig_session_777"
+
+        # Step B: Check Instagram inbox over real CDP + Vision
+        with patch(
+            "core.gemini.call",
+            return_value=SimpleNamespace(text="1 unread DM from Sarah: 'Are you free tonight?'"),
+        ):
+            inbox = sh.check_social_inbox("insta", include_notifications=False)
+        assert inbox["ok"] is True
+        assert "Sarah" in inbox["summary"]
+
+        # Step C: Send Instagram DM via trusted CDP mouse click + `Input.insertText` (Meta Lexical!)
+        sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
+        assert "Sent Instagram message to sarah" in sent
+        typed_texts = [p.get("text") for m, p in cdp_events if m == "Input.insertText"]
+        assert "Yes see you at 8!" in typed_texts
+
+        # Step D: Hands-free Instagram Reels scroll & Like over real CDP
+        assert sh.control_social_feed("insta", "open_reels")["ok"] is True
+        assert sh.control_social_feed("insta", "next")["ok"] is True
+        assert sh.control_social_feed("insta", "like")["ok"] is True
+        methods_called = {m for m, _ in cdp_events}
+        assert {"Input.dispatchKeyEvent", "Input.dispatchMouseEvent", "Input.insertText"} <= methods_called
+    finally:
+        http_srv.shutdown()
+        if "loop" in ws_stop and "fut" in ws_stop:
+            ws_stop["loop"].call_soon_threadsafe(ws_stop["fut"].set_result, True)
+

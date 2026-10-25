@@ -1182,10 +1182,14 @@ export default function IntegrationsModal() {
                         }}
                       >
                         <ExternalLink size={11} />
-                        {soc.key === "whatsapp" ? "SCAN QR / SIGN IN" : "SIGN IN WINDOW"}
+                        {isConn
+                          ? `OPEN ${soc.title.split("·").pop()?.trim() || "SESSION"}`
+                          : soc.key === "whatsapp"
+                          ? "SCAN QR / SIGN IN"
+                          : "SIGN IN WINDOW"}
                       </button>
 
-                      {soc.canImportCookies && (
+                      {soc.canImportCookies && !isConn && (
                         <button
                           type="button"
                           onClick={async () => {
@@ -1202,8 +1206,9 @@ export default function IntegrationsModal() {
                             setSocialMsg((p) => ({
                               ...p,
                               [soc.key]: r.ok
-                                ? `Connected via ${r.browser} (${r.cookie_count} cookies encrypted)!`
-                                : r.error || "No active browser cookies found.",
+                                ? r.message ||
+                                  `Connected via ${r.browser} (${r.cookie_count} cookies encrypted)!`
+                                : r.error || "Opened sign-in window.",
                             }));
                           }}
                           style={{
@@ -1235,21 +1240,23 @@ export default function IntegrationsModal() {
                             opacity: 0.9,
                           }}
                         >
-                          Mode: {svcInfo.auth_mode}
-                          {svcInfo.cookies_browser ? ` (${svcInfo.cookies_browser})` : ""}
+                          ✓ Active ({svcInfo.auth_mode}
+                          {svcInfo.cookies_browser ? ` · ${svcInfo.cookies_browser}` : ""})
                         </span>
                       )}
                     </div>
 
-                    {statusNote && (
+                    {(isConn || statusNote) && (
                       <div
                         style={{
                           fontSize: 11,
-                          color: "rgba(240,237,232,0.82)",
+                          color: isConn ? GREEN : "rgba(240,237,232,0.84)",
                           lineHeight: 1.4,
                         }}
                       >
-                        {statusNote}
+                        {isConn && (!statusNote || statusNote.includes("Log in once"))
+                          ? "✓ Connected — ready for voice & text DM checks, Reels control, and safe replies!"
+                          : statusNote}
                       </div>
                     )}
                   </div>

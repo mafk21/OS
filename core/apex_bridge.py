@@ -904,11 +904,22 @@ class ApexHudBridge:
             browser = str(data.get("browser") or "auto").strip().lower()
             handle = str(data.get("handle") or "").strip()
             perm = str(data.get("permission") or "ask").strip().lower()
+
+            def _on_cookie_social_done() -> None:
+                self.push_log(f"SYS: {plat.capitalize()} session authenticated ({perm}).")
+                if self._is_persona_chosen() and ui is not None:
+                    cb = getattr(ui, "on_integrations_change", None)
+                    if callable(cb):
+                        threading.Thread(target=cb, daemon=True).start()
+                self._broadcast_threadsafe(self.snapshot())
+
             res_imp = import_cookies_from_browser(
                 plat,
                 browser,
                 handle=handle,
                 permission=perm,
+                auto_open_window_on_lock=True,
+                on_connected=_on_cookie_social_done,
             )
             if res_imp.get("ok"):
                 self.push_log(
