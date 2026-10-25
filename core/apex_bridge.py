@@ -64,6 +64,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "web_search": ["researcher"],
     "youtube_video": ["researcher", "social_media"],
     "social_video": ["social_media", "researcher"],
+    "social_hub": ["social_media", "comms"],
     "video_player": ["social_media", "design"],
     "memory": ["memory"],
     "brain_control": ["memory", "editor"],
@@ -856,6 +857,12 @@ class ApexHudBridge:
             if svc == "google":
                 for g_svc in ("gmail", "google_drive", "google_calendar"):
                     accounts.disconnect_account(g_svc)
+            elif svc in getattr(accounts, "SOCIAL_SERVICES", ()):
+                try:
+                    from core.social_hub import disconnect_social_account
+                    disconnect_social_account(svc)
+                except Exception:
+                    accounts.disconnect_account(svc)
             elif svc:
                 accounts.disconnect_account(svc)
             self.push_log(f"SYS: Disconnected {svc or 'integration'}.")
@@ -865,6 +872,54 @@ class ApexHudBridge:
                     threading.Thread(target=cb, daemon=True).start()
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "social_connect_web":
+            from core.social_hub import start_social_login
+
+            plat = str(data.get("platform") or "").strip().lower()
+            handle = str(data.get("handle") or "").strip()
+            perm = str(data.get("permission") or "ask").strip().lower()
+
+            def _on_social_done() -> None:
+                self.push_log(f"SYS: {plat.capitalize()} session authenticated ({perm}).")
+                if self._is_persona_chosen() and ui is not None:
+                    cb = getattr(ui, "on_integrations_change", None)
+                    if callable(cb):
+                        threading.Thread(target=cb, daemon=True).start()
+                self._broadcast_threadsafe(self.snapshot())
+
+            res_soc = start_social_login(
+                plat,
+                handle=handle,
+                permission=perm,
+                on_connected=_on_social_done,
+            )
+            self._broadcast_threadsafe(self.snapshot())
+            return {**res_soc, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "social_import_cookies":
+            from core.social_hub import import_cookies_from_browser
+
+            plat = str(data.get("platform") or "").strip().lower()
+            browser = str(data.get("browser") or "auto").strip().lower()
+            handle = str(data.get("handle") or "").strip()
+            perm = str(data.get("permission") or "ask").strip().lower()
+            res_imp = import_cookies_from_browser(
+                plat,
+                browser,
+                handle=handle,
+                permission=perm,
+            )
+            if res_imp.get("ok"):
+                self.push_log(
+                    f"SYS: Connected {res_imp.get('label', plat)} via {res_imp.get('browser')} session ({perm})."
+                )
+                if self._is_persona_chosen() and ui is not None:
+                    cb = getattr(ui, "on_integrations_change", None)
+                    if callable(cb):
+                        threading.Thread(target=cb, daemon=True).start()
+            self._broadcast_threadsafe(self.snapshot())
+            return {**res_imp, "summary": accounts.get_integrations_status_summary()}
 
         if action == "start_google_oauth":
             cid = str(data.get("client_id") or "").strip()
