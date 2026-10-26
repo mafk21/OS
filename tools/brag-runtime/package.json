@@ -1,0 +1,11 @@
+{
+  "name": "jarvis-brag-runtime",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned full Brag/Hyperframes runtime; install explicitly, never during rendering",
+  "engines": {"node": ">=22"},
+  "dependencies": {
+    "hyperframes": "0.8.205",
+    "@ffprobe-installer/ffprobe": "2.1.2"
+  }
+}

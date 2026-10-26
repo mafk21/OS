@@ -85,7 +85,22 @@ def inspect_project(project: str) -> dict:
 
 
 def validate_request(params: dict) -> dict:
-    source = inspect_project(str(params.get("project_path") or BASE))
+    engine = str(params.get("engine") or "full").lower()
+    url = str(params.get("url") or "").strip()
+    if url:
+        from urllib.parse import urlsplit
+        parsed = urlsplit(url)
+        if engine != "full" or parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query:
+            raise ValueError("Website capture requires full mode and an explicit public HTTP(S) URL without credentials or secret query parameters.")
+    if engine not in ("full", "simple"):
+        raise ValueError("engine must be full (real Brag/Hyperframes) or explicit simple mode.")
+    source_files = params.get("source_files") or []
+    if not isinstance(source_files, list) or any(not isinstance(p, str) for p in source_files):
+        raise ValueError("source_files must be an array of public UI source paths.")
+    if url:
+        source = {"project": str(BASE), "title": parsed.hostname, "excerpt": "Inspect the requested website before planning product claims.", "sources": []}
+    else:
+        source = inspect_project(str(params.get("project_path") or BASE))
     fmt = str(params.get("format") or "landscape").lower()
     if fmt not in FORMATS:
         raise ValueError("format must be landscape, vertical or square.")
@@ -110,8 +125,19 @@ def validate_request(params: dict) -> dict:
         # Honest offline fallback: source COPY, not invented product claims.
         sentences = re.split(r"(?<=[.!?])\s+", source["excerpt"])
         highlights = [_clean(v.strip("#*| -"), 150) for v in sentences if len(v.strip()) > 20][:3]
+    if not highlights and engine == "full":
+        highlights = ["Derive factual highlights from captured or selected public UI; do not invent claims."]
     if not highlights:
         raise ValueError("No public product copy found. Provide hook and highlights, or add a public README.")
+    assets = params.get("asset_paths") or []
+    if not isinstance(assets, list) or any(not isinstance(v, str) for v in assets):
+        raise ValueError("asset_paths must be a list of public product media/font paths.")
+    resolved_assets = []
+    for raw in assets[:12]:
+        asset = (Path(source["project"])/raw).resolve()
+        if not asset.is_relative_to(Path(source["project"])) or not asset.is_file() or asset.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".svg", ".woff", ".woff2", ".ttf", ".mp4", ".webm") or asset.stat().st_size>50_000_000:
+            raise ValueError("Product assets must be public media/fonts inside the project, at most 50 MB each.")
+        resolved_assets.append(str(asset))
     images = []
     image_paths = params.get("image_paths") or []
     if not isinstance(image_paths, list) or any(not isinstance(v, str) for v in image_paths):
@@ -128,7 +154,7 @@ def validate_request(params: dict) -> dict:
     for flag in ("music", "sfx", "voice", "autoplay"):
         if flag in params and not isinstance(params[flag], bool):
             raise ValueError(flag + " must be a boolean.")
-    return {"source": source, "title": title, "hook": hook, "highlights": highlights,
+    return {"engine": engine, "url": url, "asset_paths": resolved_assets, "source_files": source_files, "creative_direction": _clean(params.get("creative_direction"), 500), "revision_of": params.get("revision_of"), "revision": _clean(params.get("revision"), 2000), "source": source, "title": title, "hook": hook, "highlights": highlights,
             "outro": _clean(params.get("outro") or title, 120), "format": fmt, "tone": tone,
             "duration": duration, "quality": quality, "image_paths": images,
             "music": params.get("music", True), "sfx": params.get("sfx", True),
@@ -142,7 +168,7 @@ def ffmpeg_path():
     return path
 
 
-def doctor() -> dict:
+def _simple_doctor() -> dict:
     result = {"renderer": "JARVIS local Brag-slim adapter (not Hyperframes)", "ready": False}
     try:
         import PIL
@@ -151,6 +177,15 @@ def doctor() -> dict:
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: install the existing requirements (Pillow, numpy, imageio-ffmpeg)."
     return result
+
+
+def doctor(engine="full", voice=False) -> dict:
+    if engine == "simple":
+        return _simple_doctor()
+    if engine != "full":
+        return {"ready": False, "error": "engine must be full or simple"}
+    from core.brag_full import doctor as full_doctor
+    return full_doctor(voice=voice)
 
 
 def _job_file(job_id):
@@ -400,7 +435,7 @@ def render(spec, folder, event, progress):
 
 def start(params: dict, notify=None):
     spec = validate_request(params)
-    ready = doctor()
+    ready = doctor(engine=spec["engine"], voice=spec["voice"])
     if not ready["ready"]:
         raise RuntimeError(ready["error"])
     job_id = uuid.uuid4().hex[:16]
@@ -408,15 +443,18 @@ def start(params: dict, notify=None):
     folder.mkdir(parents=True)
     scenes = [spec["hook"], *spec["highlights"], spec["outro"]]
     _atomic(folder/"plan.json", spec)
-    storyboard = "\n".join(f"{i+1}. {spec['duration']/len(scenes):.2f}s — {line}" for i, line in enumerate(scenes))
-    (folder/"brag-plan.md").write_text(f"# {spec['title']}\n\nTone: {spec['tone']}\nRenderer: JARVIS Brag-slim local adapter.\n"
-        f"Source files: {', '.join(spec['source']['sources'])}\nVisuals: {'user-selected product images' if spec['image_paths'] else 'source-copy motion cards, not a captured product demo'}.\n\n{storyboard}\n", encoding="utf-8")
-    (folder/"composition-brief.md").write_text(f"# Composition\n{spec['format']}, {spec['duration']} seconds, {spec['quality']}, 30 fps.\n"
-        "Local deterministic Pillow frames; H.264/AAC MP4. Original synthesized score; no upstream music samples. Narration only if requested.\n", encoding="utf-8")
-    (folder/"share-copy.txt").write_text(f"{spec['title']} — {spec['hook']}\n{spec['highlights'][0]}\n", encoding="utf-8")
+    if spec["engine"] == "full":
+        (folder/"brag-plan.md").write_text("# Full Brag\nCreative planning has not completed yet. Check job.json for status.\n", encoding="utf-8")
+    else:
+        storyboard = "\n".join(f"{i+1}. {spec['duration']/len(scenes):.2f}s — {line}" for i, line in enumerate(scenes))
+        (folder/"brag-plan.md").write_text(f"# {spec['title']}\n\nTone: {spec['tone']}\nRenderer: JARVIS Brag-slim local adapter.\n"
+            f"Source files: {', '.join(spec['source']['sources'])}\nVisuals: {'user-selected product images' if spec['image_paths'] else 'source-copy motion cards, not a captured product demo'}.\n\n{storyboard}\n", encoding="utf-8")
+        (folder/"composition-brief.md").write_text(f"# Composition\n{spec['format']}, {spec['duration']} seconds, {spec['quality']}, 30 fps.\n"
+            "Local deterministic Pillow frames; H.264/AAC MP4. Original synthesized score; no upstream music samples. Narration only if requested.\n", encoding="utf-8")
+        (folder/"share-copy.txt").write_text(f"{spec['title']} — {spec['hook']}\n{spec['highlights'][0]}\n", encoding="utf-8")
     event = threading.Event()
     with _LOCK:
-        _atomic(folder/"job.json", {"job_id": job_id, "status": "queued", "stage": "queued", "progress": 0, "created_at": time.time(), "directory": str(folder)})
+        _atomic(folder/"job.json", {"job_id": job_id, "engine": spec["engine"], "status": "queued", "stage": "queued", "progress": 0, "created_at": time.time(), "directory": str(folder)})
         _JOBS[job_id] = event
     def worker():
         last_notice = [-10, ""]
@@ -431,7 +469,11 @@ def start(params: dict, notify=None):
                     pass
         try:
             progress("preparing", 1)
-            result = render(spec, folder, event, progress)
+            if spec["engine"] == "full":
+                from core.brag_full import render as full_render
+                result = full_render(spec, folder, event, progress)
+            else:
+                result = render(spec, folder, event, progress)
             _check(event)
             data = _update(folder, status="completed", stage="verified", progress=100, **result)
         except Cancelled as exc:
@@ -450,3 +492,14 @@ def start(params: dict, notify=None):
                 pass  # Display failure cannot overwrite verified media status.
     threading.Thread(target=worker, name="brag-render-"+job_id, daemon=True).start()
     return {"job_id": job_id, "status": "queued", "directory": str(folder), "message": "Render started, not completed. Use status with this job_id."}
+
+
+def revise(job_id, instruction, notify=None):
+    state = status(job_id)
+    if state.get("status") != "completed" or state.get("engine") != "full":
+        raise ValueError("Revision requires a completed full-mode job.")
+    if not isinstance(instruction,str) or not instruction.strip():
+        raise ValueError("Describe what to change in the revision.")
+    previous = json.loads((_job_file(job_id).parent/"plan.json").read_text(encoding="utf-8"))
+    previous.update(project_path=previous["source"]["project"], revision_of=job_id, revision=instruction)
+    return start(previous, notify=notify)

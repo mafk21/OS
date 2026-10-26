@@ -21,7 +21,7 @@ def project(tmp_path, monkeypatch):
 
 
 def request(project, **overrides):
-    return {"project_path": str(project), "duration": 5, "quality": "draft", "hook": "Keep your work in orbit.",
+    return {"engine":"simple", "project_path": str(project), "duration": 5, "quality": "draft", "hook": "Keep your work in orbit.",
             "highlights": ["Organize projects in one place.", "Keep notes close to your work."], **overrides}
 
 
@@ -90,7 +90,7 @@ def test_interrupted_job_never_reports_completion(project):
 
 
 def test_background_render_failure_is_truthful_and_visible(project, monkeypatch):
-    monkeypatch.setattr(video, "doctor", lambda: {"ready":True})
+    monkeypatch.setattr(video, "doctor", lambda **_: {"ready":True})
     monkeypatch.setattr(video, "render", Mock(side_effect=RuntimeError("encode failed")))
     done = threading.Event()
     results = []
@@ -106,7 +106,7 @@ def test_background_render_failure_is_truthful_and_visible(project, monkeypatch)
 
 
 def test_cancellation_and_no_autoplay_for_partial_file(project, monkeypatch):
-    monkeypatch.setattr(video, "doctor", lambda: {"ready":True})
+    monkeypatch.setattr(video, "doctor", lambda **_: {"ready":True})
     started = threading.Event()
     def renderer(spec, folder, event, progress):
         started.set()
@@ -120,14 +120,14 @@ def test_cancellation_and_no_autoplay_for_partial_file(project, monkeypatch):
 
 
 def test_missing_dependency_does_not_claim_started(project, monkeypatch):
-    monkeypatch.setattr(video, "doctor", lambda: {"ready":False, "error":"missing ffmpeg"})
+    monkeypatch.setattr(video, "doctor", lambda **_: {"ready":False, "error":"missing ffmpeg"})
     assert "not started" in brag_video(request(project))
     assert not video.OUTPUT_ROOT.exists()
 
 
 @pytest.mark.parametrize("fmt,music,sfx", [("landscape", True, True), ("vertical", False, False), ("square", False, True)])
 def test_real_end_to_end_mp4_render_decode_and_deliverables(project, fmt, music, sfx):
-    assert video.doctor()["ready"]
+    assert video.doctor(engine="simple")["ready"]
     job = video.start(request(project, format=fmt, music=music, sfx=sfx))
     result = await_terminal(job["job_id"])
     assert result["status"] == "completed", result
@@ -189,7 +189,7 @@ def test_completed_job_callback_and_autoplay_use_existing_hud(project, monkeypat
     from types import SimpleNamespace
     player = SimpleNamespace(write_log=Mock(), show_content=Mock())
     done = threading.Event()
-    monkeypatch.setattr(video, "doctor", lambda: {"ready":True})
+    monkeypatch.setattr(video, "doctor", lambda **_: {"ready":True})
     def render(spec, folder, event, progress):
         return {"video":"verified-test.mp4"}
     monkeypatch.setattr(video, "render", render)

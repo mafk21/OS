@@ -35,8 +35,11 @@ ignored (that's the template).
 
 ## Brag video workflow
 
-`brag/` is the bundled Brag-slim adaptation for local project launch videos. It
-uses the executable `brag_video` action, not a documentation-only install. See
-its SKILL.md for dependency checks, inspect/generate/status/cancel, factual copy,
-formats, explicit narration consent, real MP4 verification, and output paths.
-The original MIT notice and pinned upstream creative references are included.
+`brag/` defaults to the full upstream Brag/Hyperframes workflow through the
+executable `brag_video` action, directed by JARVIS's configured provider (not
+Claude CLI). Includes pinned full guidance, licensed music/CC0 SFX, custom
+compositions, real checks, sampled visual critique/repair, verified MP4/poster,
+website capture, editable studio preview, revision jobs and delivery credits.
+Setup uses a real approval gate. See SKILL.md for dependencies, privacy/cost,
+limits, controls, tests and explicit `engine="simple"` lightweight mode. Original
+workflow/assets/licenses and provenance are preserved under upstream/ and UPSTREAM.md.
