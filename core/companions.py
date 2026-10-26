@@ -3,7 +3,7 @@ Behavior Interviews, Adaptive Style Learning, Custom Specialist Companions,
 Visual Skills Studio (custom_skills/), and Theme Presets — Phase 3.
 
 100% local-first (stored in `memory/companions.json` and `memory/custom_skills/`).
-Never touches `skills/` so the 10 core default skills contract stays pristine.
+Never touches `skills/` so the protected core default skills contract stays pristine.
 """
 
 from __future__ import annotations
@@ -471,7 +471,7 @@ def save_custom_skill(name: str, description: str, body: str) -> dict[str, Any]:
     core_names = discover_skills(CORE_SKILLS_DIR, logger=lambda _: None).names()
     if slug in core_names:
         raise ValueError(
-            f"'{slug}' is one of the 10 protected core skills. Choose a distinct custom name (e.g. '{slug}-custom')."
+            f"'{slug}' is one of the protected core skills. Choose a distinct custom name (e.g. '{slug}-custom')."
         )
     CUSTOM_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
     reg = discover_skills(CUSTOM_SKILLS_DIR, logger=lambda _: None)

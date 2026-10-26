@@ -89,14 +89,17 @@ def test_custom_specialist_companions_and_scoped_tool_permissions(isolated_studi
     assert ok_default is True
 
 
-def test_visual_skills_studio_protects_core_10_and_manages_custom_skills(isolated_studio):
-    # Attempting to overwrite one of the 10 core default skills is blocked
+def test_visual_skills_studio_protects_core_and_manages_custom_skills(isolated_studio):
+    # Attempting to overwrite a protected core default skill is blocked
     with pytest.raises(ValueError, match="protected core skills"):
         comp.save_custom_skill(
             "deep-research",
             "Attempted override of core skill",
             "## When to use\nx",
         )
+
+    with pytest.raises(ValueError, match="protected core skills"):
+        comp.save_custom_skill("topic-learning", "Override study skill", "## Procedure\nx")
 
     # Custom skill creation succeeds inside memory/custom_skills/
     res = comp.save_custom_skill(
@@ -108,8 +111,8 @@ def test_visual_skills_studio_protects_core_10_and_manages_custom_skills(isolate
 
     studio_skills = comp.list_all_skills_for_studio()
     assert any(s["name"] == "release-audit" and s["builtin"] is False for s in studio_skills)
-    # Core 10 directory remains strictly 10 skills
-    assert len(discover_skills(comp.CORE_SKILLS_DIR, logger=lambda _: None)) == 10
+    # Built-in skill set includes persistent subject learning
+    assert len(discover_skills(comp.CORE_SKILLS_DIR, logger=lambda _: None)) == 11
 
     assert comp.delete_custom_skill("release-audit") is True
 

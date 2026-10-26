@@ -22,16 +22,17 @@ EXPECTED_DEFAULT_SKILLS = {
     "second-brain",
     "system-doctor",
     "workspace-comms",
+    "topic-learning",
 }
 
 
-# ── 10 Default SKILL.md Playbooks ─────────────────────────────────────────
+# ── Default SKILL.md Playbooks ─────────────────────────────────────────
 
-def test_all_ten_default_skills_discover_cleanly():
+def test_all_default_skills_discover_cleanly():
     logs: list[str] = []
     reg = discover_skills(Path("skills"), logger=logs.append)
     assert reg.names() == EXPECTED_DEFAULT_SKILLS
-    assert len(reg) == 10
+    assert len(reg) == 11
     assert not any("rejected" in line.lower() for line in logs)
 
 
@@ -128,7 +129,7 @@ def test_rag_docs_multi_ext_index_and_ranked_search(tmp_path, monkeypatch):
 def test_diagnostics_targeted_skills_and_storage():
     out = diag.diagnostics_check({"action": "storage"})
     assert "storage: ok" in out or "GB free" in out
-    assert "10 active skill(s)" in out
+    assert "11 active skill(s)" in out
 
 
 def test_routines_run_renders_steps():
