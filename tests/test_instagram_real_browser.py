@@ -58,6 +58,15 @@ def browser_env(tmp_path, monkeypatch):
         if path.startswith(("/direct/t/", "/direct/e2ee/t/")):
             return request_route.fulfill(content_type="text/html", body='<html><body><main>'+composer()+'</main>'+script()+'<script>setup()</script></body></html>')
         if path == "/direct/new/":
+            screens = {
+                'cookie_screen':'<div role="dialog">Allow cookies<button>Cookie settings</button></div>',
+                'pin_screen':'<h1>Enter your PIN</h1><input inputmode="numeric">',
+                'restricted_screen':'<h1>Try again later</h1><button>OK</button>',
+                'app_screen':'Use the Instagram app<button>Open app</button>',
+            }
+            if state['mode'] in screens:
+                return request_route.fulfill(content_type="text/html", body='<html><body>'+screens[state['mode']]+'</body></html>')
+
             username = 'someoneelse' if state['mode'] == 'wrong_recipient' else 'sarah'
             row = '<label><span>'+username+'</span><br><span>Display name</span><input type="checkbox"></label>'
             if state['mode'] == 'ambiguous_recipient':
@@ -177,3 +186,21 @@ def test_actual_send_without_extra_confirmation(browser_env, monkeypatch):
     assert "CONFIRMATION_PENDING" not in result
     assert confirm._pending is None
     assert len(browser_env["posts"]) == 1
+
+
+
+@pytest.mark.parametrize("mode,stage", [("cookie_screen","inbox_cookie_consent"), ("pin_screen","inbox_encrypted_storage"),
+                                        ("restricted_screen","inbox_restricted"), ("app_screen","inbox_app_interstitial")])
+def test_actual_sparse_page_is_identified_before_search(browser_env, mode, stage):
+    browser_env["mode"] = mode
+    stages = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{hub._CDP._port}")
+        page = browser.contexts[0].new_page()
+        try:
+            with pytest.raises(RuntimeError):
+                instagram_web._open_from_compose(page, "sarah", stages.append)
+            assert stages[-1] == stage
+        finally:
+            page.close()
+    assert not browser_env["posts"]

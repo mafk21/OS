@@ -85,3 +85,20 @@ def test_resolved_thread_redirect_cannot_fill_another_chat(tmp_path, monkeypatch
     with pytest.raises(RecipientError, match="different conversation"):
         run.open_chat()
     assert not run.attempted
+
+
+@pytest.mark.parametrize("state", ["login", "security_check", "encrypted_storage", "restricted", "cookie_consent", "app_interstitial"])
+def test_known_interstitial_never_runs_recipient_search_or_clicks_through(monkeypatch, state):
+    page = SimpleNamespace(evaluate=Mock(return_value=state))
+    stages = []
+    with pytest.raises(RecipientError):
+        web._prepare_inbox(page, stages.append)
+    assert stages == ["inbox_" + state]
+    assert page.evaluate.call_count == 1
+
+
+def test_load_error_reloads_at_most_once():
+    page = SimpleNamespace(evaluate=Mock(return_value="load_error"), reload=Mock())
+    with pytest.raises(RecipientError, match="after one safe reload"):
+        web._prepare_inbox(page, lambda _: None)
+    page.reload.assert_called_once_with(wait_until="domcontentloaded")
