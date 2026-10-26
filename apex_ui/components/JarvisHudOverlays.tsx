@@ -625,6 +625,10 @@ export default function JarvisHudOverlays() {
                   fontSize: 12,
                   color: "rgba(240,237,232,0.78)",
                   marginTop: 3,
+                  maxHeight: 180,
+                  overflowY: "auto",
+                  whiteSpace: "pre-wrap",
+                  overflowWrap: "anywhere",
                 }}
               >
                 {confirm.detail}

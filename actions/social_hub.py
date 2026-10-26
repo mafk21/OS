@@ -50,7 +50,9 @@ def social_hub(
         st = get_social_hub_status()
         lines = ["Personal Social Accounts:"]
         for item in st["platforms"]:
-            badge = "✓ CONNECTED" if item["connected"] else ("⊘ IGNORED" if item["ignored"] else "○ NOT CONNECTED")
+            health = item.get("session_health", "unverified")
+            badge = ("✓ VERIFIED SESSION" if health == "authenticated" else "◌ SAVED SESSION (not live-verified)") if item["connected"] else (
+                "⊘ IGNORED" if item["ignored"] else "! SIGN IN / SECURITY CHECK REQUIRED" if health in ("login_required", "challenge_required") else "○ NOT CONNECTED")
             handle_s = f" (@{item['handle'].lstrip('@')})" if item["handle"] else ""
             mode_s = f" · {item['auth_mode']}" if item["connected"] and item["auth_mode"] else ""
             lines.append(
@@ -95,7 +97,7 @@ def social_hub(
                         pass
                 return msg
             # Fall through to interactive login if cookie import found nothing
-        in_hud_login = bool(params.get("in_hud", False))
+        in_hud_login = bool(params.get("in_hud", True))
         res_login = start_social_login(plat, handle=handle, permission=permission, in_hud=in_hud_login)
         return str(res_login.get("message") or res_login.get("error") or "Done.")
 
@@ -159,7 +161,21 @@ def social_hub(
             return "Specify platform ('instagram', 'snapchat', 'tiktok', 'x', 'whatsapp', or 'reddit')."
         recipient = str(params.get("recipient") or params.get("contact") or "").strip()
         message = str(params.get("message") or params.get("text") or "").strip()
-        return stage_or_send_social_message(raw_platform, recipient, message)
+        def report_result(result: str) -> None:
+            # This callback runs AFTER the user's approval, on the gate worker.
+            # A pending tool result is not evidence that sending completed.
+            if player is not None and hasattr(player, "show_content"):
+                player.show_content("Social message result", result)
+            else:
+                from core.apex_bridge import get_active_bridge
+                bridge = get_active_bridge()
+                if bridge is not None:
+                    bridge.push_content("Social message result", result)
+            if callable(speak):
+                speak("Report this social-message execution result accurately in the user's language. "
+                      "Do not claim delivery unless the result contains an Instagram acknowledgment. Result: " + result)
+
+        return stage_or_send_social_message(raw_platform, recipient, message, on_result=report_result)
 
     # ── 7. PUBLISH POST / TWEET (HUD CONFIRMATION GATED!) ─────────────────────
     if action in ("post", "tweet", "publish"):
@@ -216,12 +232,16 @@ TOOL = {
         "Accesses and controls the user's personal social accounts across Instagram, Snapchat Web "
         "(web.snapchat.com), TikTok, X / Twitter, WhatsApp Web, and Reddit. "
         "• SILENT BACKGROUND (NO APP WINDOW OPENED): 'check_inbox', 'read_messages', 'send_message', "
-        "and 'post' run 100% silently in the background via encrypted cookies & headless transport — "
+        "and supported 'post' operations run silently in the background via encrypted cookies & headless transport — "
         "NEVER opening any desktop browser/app window. Outbound DMs/posts are guarded by JARVIS's HUD "
         "CONFIRM/CANCEL banner when permission is 'ask'. "
         "• OPEN IN JARVIS'S HUD: 'feed' or 'open_hud' (with command='open_feed'|'open_reels'|'open_inbox'|"
         "'open_profile'|'next'|'previous'|'like'|'save'|'look') opens and controls the live interactive "
-        "social app directly inside JARVIS's own HUD!"
+        "social app directly inside JARVIS's own HUD! Use action='open_inbox' when the user asks to OPEN/SHOW chats, "
+        "not check_inbox (a background digest). Use exact @usernames for Instagram recipients; never guess "
+        "a person from a partial/display name. A saved connection is not proof of live login. "
+        "CONFIRMATION_PENDING is not completion; report the eventual execution result. "
+        "Instagram text-only posts are unsupported; do not promise media publishing."
     ),
     "parameters": {
         "type": "OBJECT",
@@ -236,6 +256,15 @@ TOOL = {
                     "post",
                     "feed",
                     "open_hud",
+                    "open_inbox",
+                    "open_feed",
+                    "open_reels",
+                    "open_profile",
+                    "next",
+                    "previous",
+                    "like",
+                    "save",
+                    "look",
                     "close_hud",
                     "connect",
                     "disconnect",
@@ -249,11 +278,11 @@ TOOL = {
             },
             "contact": {
                 "type": "STRING",
-                "description": "Contact name or @handle when reading ('read_messages') or replying ('send_message').",
+                "description": "Exact @username for Instagram (not a partial/display name); contact for other platforms when reading ('read_messages') or replying ('send_message').",
             },
             "recipient": {
                 "type": "STRING",
-                "description": "Recipient name or @handle for 'send_message'.",
+                "description": "Exact @username for Instagram, contact for other platforms. Never use a partial/display name to guess a recipient.",
             },
             "message": {
                 "type": "STRING",

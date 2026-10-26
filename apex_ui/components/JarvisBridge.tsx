@@ -68,6 +68,7 @@ export type IntegrationServiceInfo = {
   handle?: string;
   auth_mode?: string;
   cookies_browser?: string;
+  session_health?: string;
   permission: string;
   has_oauth_client?: boolean;
   channel_id?: string;
@@ -180,6 +181,7 @@ export type SocialHudState = {
   url: string;
   connected: boolean;
   opened_at: number;
+  session_health?: string;
 };
 
 export type JarvisContextValue = {
@@ -723,6 +725,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
         try {
           const msg = JSON.parse(ev.data);
           switch (msg.type) {
+            case "integrations":
+              if (msg.integrations) setIntegrations(msg.integrations as IntegrationsSummary);
+              break;
             case "bootstrap":
               applyBootstrap(msg);
               break;

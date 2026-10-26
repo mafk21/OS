@@ -40,6 +40,9 @@ export default function HudSocialModal() {
   const [liveUrl, setLiveUrl] = useState<string>("");
   const [isConn, setIsConn] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [frameError, setFrameError] = useState<string>("");
+  const [inputBusy, setInputBusy] = useState(false);
+  const [sessionHealth, setSessionHealth] = useState("unverified");
   const [errMsg, setErrMsg] = useState<string>("");
   const [quickText, setQuickText] = useState<string>("");
   const [ripple, setRipple] = useState<{ x: number; y: number; id: number } | null>(
@@ -48,6 +51,9 @@ export default function HudSocialModal() {
 
   const activeBoostUntilRef = useRef<number>(0);
   const inFlightRef = useRef<boolean>(false);
+  const epochRef = useRef(0);
+  const inputBusyRef = useRef(false);
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   const boostFps = useCallback(() => {
@@ -57,35 +63,44 @@ export default function HudSocialModal() {
   const fetchFrame = useCallback(async (plat: string) => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
+    const epoch = epochRef.current;
     try {
       const r = await fetch(
         `/api/hud/social/frame?platform=${encodeURIComponent(plat)}`,
-        { cache: "no-store" }
+        { cache: "no-store", signal: AbortSignal.timeout(15000) }
       );
       const data = await r.json();
-      if (data && data.ok && data.image_b64) {
+      if (epoch !== epochRef.current) return;
+      if (r.ok && data && data.ok && data.image_b64) {
         setFrameB64(data.image_b64);
         if (data.url) setLiveUrl(data.url);
         setIsConn(Boolean(data.connected));
-        setErrMsg("");
-      } else if (data && data.error) {
-        setErrMsg(data.error);
+        setSessionHealth(data.session_health || "unverified");
+        setFrameError("");
+      } else {
+        setFrameError(data?.error || "The live frame is unavailable. Use Refresh to reconnect.");
       }
     } catch {
-      // ignore transient poll hiccup
+      if (epoch === epochRef.current) setFrameError("The live stream is unavailable. The image may be stale; wait for reconnection.");
     } finally {
       inFlightRef.current = false;
-      setLoading(false);
+      if (epoch === epochRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    epochRef.current += 1;
+    setFrameB64("");
+    setLiveUrl("");
+    setErrMsg("");
+    setFrameError("");
     if (!socialHud || !socialHud.active) {
       setFrameB64("");
       return;
     }
     setLoading(true);
     setIsConn(Boolean(socialHud.connected));
+    setSessionHealth(socialHud.session_health || "unverified");
     boostFps();
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -101,31 +116,62 @@ export default function HudSocialModal() {
 
     return () => {
       cancelled = true;
+      epochRef.current += 1;
       if (timer) clearTimeout(timer);
     };
   }, [socialHud?.active, socialHud?.platform, socialHud?.opened_at, boostFps, fetchFrame]);
 
   const sendInteract = useCallback(
-    async (payload: Record<string, unknown>) => {
-      if (!socialHud) return;
-      boostFps();
-      try {
-        await fetch("/api/hud/social/interact", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            platform: socialHud.platform,
-            layout: socialHud.layout,
-            ...payload,
-          }),
-        });
-        await fetchFrame(socialHud.platform);
-      } catch {
-        // ignore
-      }
+    (payload: Record<string, unknown>): Promise<boolean> => {
+      if (!socialHud) return Promise.resolve(false);
+      const epoch = epochRef.current;
+      const run = async () => {
+        if (epoch !== epochRef.current) return false;
+        boostFps();
+        try {
+          const r = await fetch("/api/hud/social/interact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(20000),
+            body: JSON.stringify({ platform: socialHud.platform, layout: socialHud.layout,
+                                   opened_at: socialHud.opened_at, ...payload }),
+          });
+          const data = await r.json();
+          if (!r.ok || !data?.ok) throw new Error(data?.error || "HUD interaction failed.");
+          if (epoch === epochRef.current) {
+            setErrMsg("");
+            await fetchFrame(socialHud.platform);
+          }
+          return true;
+        } catch (err) {
+          if (epoch === epochRef.current) setErrMsg(
+            `${err instanceof Error ? err.message : "HUD interaction failed."} It may have applied; inspect the chat before retrying a send.`
+          );
+          return false;
+        }
+      };
+      // Preserve click -> focus -> typing -> Enter order, even under latency.
+      const task = queueRef.current.then(run, run);
+      queueRef.current = task;
+      return task;
     },
     [socialHud, boostFps, fetchFrame]
   );
+
+  const insertQuickText = async (submit: boolean) => {
+    if (inputBusyRef.current || !quickText) return;
+    inputBusyRef.current = true;
+    setInputBusy(true);
+    const text = quickText;
+    try {
+      if (await sendInteract({ kind: "type", text, submit })) {
+        setQuickText(current => current === text ? "" : current);
+      }
+    } finally {
+      inputBusyRef.current = false;
+      setInputBusy(false);
+    }
+  };
 
   if (!socialHud || !socialHud.active) return null;
 
@@ -135,7 +181,7 @@ export default function HudSocialModal() {
 
   const onViewportClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const el = viewportRef.current;
-    if (!el) return;
+    if (!el || frameError) return;
     el.focus();
     const rect = el.getBoundingClientRect();
     const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -146,6 +192,7 @@ export default function HudSocialModal() {
 
   const onViewportWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (frameError) return;
     sendInteract({
       kind: "wheel",
       deltaX: e.deltaX,
@@ -154,7 +201,7 @@ export default function HudSocialModal() {
   };
 
   const onViewportKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (frameError || e.metaKey || e.ctrlKey || e.altKey) return;
     if (
       [
         "Enter",
@@ -179,13 +226,8 @@ export default function HudSocialModal() {
 
   const onQuickSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickText) {
-      sendInteract({ kind: "key", key: "Enter" });
-      return;
-    }
-    const toSend = quickText;
-    setQuickText("");
-    sendInteract({ kind: "type", text: toSend, submit: true });
+    if (!quickText || frameError) return;
+    void insertQuickText(true);
   };
 
   const pillBtn: React.CSSProperties = {
@@ -224,6 +266,11 @@ export default function HudSocialModal() {
         overflow: "hidden",
       }}
     >
+      {(errMsg || frameError) && (
+        <div role="alert" style={{ padding: "9px 12px", background: "#482b18", color: "#ffcc92", fontSize: 12 }}>
+          {errMsg || frameError}
+        </div>
+      )}
       {/* Top Header: Platform + Live Status + Controls */}
       <div
         style={{
@@ -245,6 +292,7 @@ export default function HudSocialModal() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <span
+              title={isConn ? "Live signed-in session" : sessionHealth === "login_required" ? "Sign in inside this HUD" : sessionHealth === "challenge_required" ? "Complete Instagram security verification inside this HUD" : "Session not live-verified yet"}
               style={{
                 width: 7,
                 height: 7,
@@ -317,7 +365,10 @@ export default function HudSocialModal() {
                 <button
                   key={p.key}
                   type="button"
-                  onClick={() => openSocialHud(p.key, "feed", socialHud.layout)}
+                  onClick={async () => {
+                    const result = await openSocialHud(p.key, "feed", socialHud.layout);
+                    if (!result.ok) setErrMsg(result.error || "Could not open the social HUD.");
+                  }}
                   style={{
                     ...pillBtn,
                     padding: "3px 7px",
@@ -407,8 +458,8 @@ export default function HudSocialModal() {
           >
             <RefreshCw size={18} style={{ color: PRIMARY }} />
             <div>
-              {errMsg
-                ? errMsg
+              {(errMsg || frameError)
+                ? (errMsg || frameError)
                 : loading
                 ? `Connecting live ${socialHud.label} stream inside HUD…`
                 : `Preparing ${socialHud.label}…`}
@@ -516,18 +567,15 @@ export default function HudSocialModal() {
         <button
           type="button"
           title="Insert text without pressing Enter"
-          onClick={() => {
-            if (!quickText) return;
-            const t = quickText;
-            setQuickText("");
-            sendInteract({ kind: "type", text: t, submit: false });
-          }}
+          disabled={inputBusy || Boolean(frameError)}
+          onClick={() => void insertQuickText(false)}
           style={{ ...pillBtn, padding: "6px 9px" }}
         >
           TYPE
         </button>
         <button
           type="submit"
+          disabled={inputBusy || Boolean(frameError) || !quickText}
           title="Type & press Enter / Send"
           style={{
             ...pillBtn,

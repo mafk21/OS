@@ -710,8 +710,12 @@ class ApexHudBridge:
         with self._lock:
             return str(task_id) in self._cancelled_task_ids
 
+    def push_integrations(self) -> None:
+        """Publish observed session health to already-open Settings/LINKS panels."""
+        self._broadcast_threadsafe({"type": "integrations", "integrations": accounts.get_integrations_status_summary()})
+
     def push_confirm(self, title: str, detail: str) -> None:
-        obj = {"title": str(title)[:120], "detail": str(detail)[:300]}
+        obj = {"title": str(title)[:120], "detail": str(detail)[:4000]}
         with self._lock:
             self._confirm = obj
         self._broadcast_threadsafe({"type": "confirm", "confirm": obj})
@@ -1210,7 +1214,9 @@ class ApexHudBridge:
             return {"ok": True}
 
         if action == "confirm_decision":
-            approved = bool(data.get("approved", False))
+            approved = data.get("approved", False)
+            if not isinstance(approved, bool):
+                return {"ok": False, "error": "Confirmation decision must be a boolean."}
             confirm_gate.resolve(approved)
             self.hide_confirm()
             return {"ok": True}
@@ -1836,6 +1842,8 @@ class ApexHudBridge:
                 body = await req.json()
             except Exception:
                 body = {}
+            if not isinstance(body, dict):
+                return JSONResponse({"ok": False, "error": "Expected an interaction object."}, status_code=400)
             res = await asyncio.to_thread(interact_hud_social, body)
             return JSONResponse(res)
 

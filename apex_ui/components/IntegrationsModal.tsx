@@ -1279,13 +1279,13 @@ export default function IntegrationsModal() {
                             opacity: 0.9,
                           }}
                         >
-                          ✓ Active ({svcInfo.auth_mode}
+                          {svcInfo.session_health === "authenticated" ? "✓ Live session verified" : "◌ Session saved — not live-verified"} ({svcInfo.auth_mode}
                           {svcInfo.cookies_browser ? ` · ${svcInfo.cookies_browser}` : ""})
                         </span>
                       )}
                     </div>
 
-                    {(isConn || statusNote) && (
+                    {(isConn || statusNote || svcInfo?.session_health === "login_required" || svcInfo?.session_health === "challenge_required") && (
                       <div
                         style={{
                           fontSize: 11,
@@ -1293,8 +1293,12 @@ export default function IntegrationsModal() {
                           lineHeight: 1.4,
                         }}
                       >
-                        {isConn && (!statusNote || statusNote.includes("Log in once"))
-                          ? "✓ Connected — ready for voice & text DM checks, Reels control, and safe replies!"
+                        {svcInfo?.session_health === "login_required" || svcInfo?.session_health === "challenge_required"
+                          ? "Sign in or complete the security check using OPEN IN HUD. Your permission policy has not changed."
+                          : isConn && (!statusNote || statusNote.includes("Log in once"))
+                          ? svcInfo?.session_health === "authenticated"
+                            ? "✓ Session verified. Sends still require a server acknowledgment; saved credentials alone never prove delivery."
+                            : "Session saved. Open DMs in the HUD or check the inbox to verify the live login."
                           : statusNote}
                       </div>
                     )}

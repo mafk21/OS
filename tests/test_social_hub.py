@@ -32,7 +32,16 @@ def isolated_socials_env(tmp_path, monkeypatch):
     monkeypatch.setenv("JARVIS_SOCIALS_DIR", str(soc_dir))
     monkeypatch.setattr(security_vault, "AUDIT_DB_PATH", audit_db)
     monkeypatch.setattr(security_vault, "VAULT_KEY_FILE", vault_key)
-    return tmp_path
+    monkeypatch.setattr(sh, "_CDP", sh._NativeCdpSocialBrowser())
+    confirm_gate.resolve(False)
+    yield tmp_path
+    confirm_gate.resolve(False)
+    with sh._WATCHERS_LOCK:
+        for event in sh._WATCHERS_CANCEL.values():
+            event.set()
+        sh._WATCHERS_CANCEL.clear()
+        sh._WATCHERS_ACTIVE.clear()
+    sh._HUD_SOCIAL_SESSIONS.clear()
 
 
 def test_social_accounts_onboarding_ignore_and_prompt_injection(isolated_socials_env):
@@ -405,6 +414,7 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
     state = {
         "url": "https://www.instagram.com/accounts/login/",
         "cookies": [],
+        "tabs": {},
     }
 
     # 1. Start real WebSocket CDP target server
@@ -417,6 +427,9 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
         asyncio.set_event_loop(loop)
 
         async def _handler(websocket):
+            target_id = websocket.request.path.rsplit("/", 1)[-1]
+            def page_url():
+                return state["url"] if target_id == "tab1" else state["tabs"].get(target_id, "about:blank")
             async for raw in websocket:
                 req = json.loads(raw)
                 req_id = req["id"]
@@ -426,7 +439,10 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
 
                 result: dict = {}
                 if method == "Page.navigate":
-                    state["url"] = params.get("url", state["url"])
+                    if target_id == "tab1":
+                        state["url"] = params.get("url", state["url"])
+                    else:
+                        state["tabs"][target_id] = params.get("url", "about:blank")
                     result = {"frameId": "main"}
                 elif method == "Network.getAllCookies":
                     result = {"cookies": list(state["cookies"])}
@@ -434,7 +450,19 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
                     result = {"data": jpg_b64}
                 elif method == "Runtime.evaluate":
                     expr = str(params.get("expression") or "")
-                    if "document.readyState" in expr:
+                    if "const response = await fetch" in expr:
+                        if '"POST"' in expr:
+                            body = {"status": "ok", "payload": {"item_id": "server-cdp-message-1"}}
+                        else:
+                            body = {"inbox": {"threads": [{"thread_id": "sarah-thread", "users": [{"pk": "2", "username": "sarah"}], "items": []}]}}
+                        result = {"result": {"value": {"status": 200, "body": json.dumps(body)}}}
+                    elif "jarvisVerifyLike" in expr or "jarvisVerifySave" in expr:
+                        result = {"result": {"value": True}}
+                    elif "sels.some" in expr:
+                        result = {"result": {"value": bool(state["cookies"]) and "/login" not in page_url()}}
+                    elif "authenticated:" in expr:
+                        result = {"result": {"value": {"url": page_url(), "title": "Instagram", "authenticated": bool(state["cookies"])}}}
+                    elif "document.readyState" in expr:
                         result = {"result": {"type": "string", "value": "complete"}}
                     elif "location.href" in expr and "unread_badges" in expr:
                         result = {
@@ -442,7 +470,7 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
                                 "type": "object",
                                 "value": {
                                     "title": "Instagram · Inbox",
-                                    "url": state["url"],
+                                    "url": page_url(),
                                     "unread_badges": ["1 unread message"],
                                     "items": ["Sarah · Are you free tonight? · 1m"],
                                 },
@@ -455,7 +483,7 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
                     elif "needle" in expr or 'aria-label="Like"' in expr:
                         result = {"result": {"type": "object", "value": {"x": 220, "y": 310}}}
                     elif "location.href" in expr:
-                        result = {"result": {"type": "string", "value": state["url"]}}
+                        result = {"result": {"type": "string", "value": page_url()}}
                     else:
                         result = {"result": {"type": "number", "value": 0}}
 
@@ -482,6 +510,18 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
         def log_message(self, *_args):
             return
 
+        def do_PUT(self):
+            from urllib.parse import unquote
+            target_id = "tab" + str(len(state["tabs"]) + 2)
+            url = unquote(self.path.split("?", 1)[1])
+            state["tabs"][target_id] = url
+            raw = json.dumps({"id": target_id, "url": url, "webSocketDebuggerUrl": ws_url.rsplit("/", 1)[0] + "/" + target_id}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
         def do_GET(self):
             if self.path.startswith("/json/version"):
                 payload = {"Browser": "Chrome/134.0", "webSocketDebuggerUrl": ws_url}
@@ -494,7 +534,7 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
                         "url": state["url"],
                         "webSocketDebuggerUrl": ws_url,
                     }
-                ]
+                ] + [{"id": tid, "type": "page", "url": url, "webSocketDebuggerUrl": ws_url.rsplit("/", 1)[0] + "/" + tid} for tid, url in state["tabs"].items()]
             raw = json.dumps(payload).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -543,13 +583,15 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
         assert inbox["ok"] is True
         assert "Sarah" in inbox["summary"]
 
-        # Step C: Send Instagram DM via trusted CDP mouse click + `Input.insertText` (headless — 0 visible windows!)
-        with patch("core.social_hub._ig_api_send_dm", return_value=None):
-            sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
-        assert "Sent Instagram message to sarah" in sent
+        # Step C: Send once through same-origin browser fetch, require a real
+        # protocol receipt; no guessed coordinates or composer-click success.
+        sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
+        assert "Instagram acknowledgment: server-cdp-message-1" in sent
         assert sh._CDP._headless is True
-        typed_texts = [p.get("text") for m, p in cdp_events if m == "Input.insertText"]
-        assert "Yes see you at 8!" in typed_texts
+        fetches = [p["expression"] for m, p in cdp_events if m == "Runtime.evaluate" and "const response = await fetch" in p.get("expression", "")]
+        assert sum('"POST"' in expr for expr in fetches) == 1
+        from urllib.parse import unquote_plus
+        assert any("Yes see you at 8!" in unquote_plus(expr) for expr in fetches)
 
         # Step D: Open & interact with Instagram right inside JARVIS's HUD (`HudSocialModal` endpoints!)
         bridge = ApexHudBridge(None)
@@ -655,7 +697,7 @@ def test_zero_window_instagram_direct_http_api_inbox_read_and_send(isolated_soci
 
                 parsed = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
                 sent_payloads.append(parsed)
-                return httpx.Response(200, json={"status": "ok"})
+                return httpx.Response(200, json={"status": "ok", "payload": {"item_id": "http-message-1"}})
             return httpx.Response(404, json={})
 
     orig_client = httpx.Client

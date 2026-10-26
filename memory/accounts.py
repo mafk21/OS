@@ -22,6 +22,8 @@ import smtplib
 import ssl
 import sys
 import time
+import threading
+from functools import wraps
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -82,6 +84,17 @@ EMAIL_PROVIDERS: dict[str, tuple[str, int, str, int]] = {
 }
 
 
+_ACCOUNT_WRITE_LOCK = threading.RLock()
+
+
+def _account_transaction(fn):
+    @wraps(fn)
+    def locked(*args, **kwargs):
+        with _ACCOUNT_WRITE_LOCK:
+            return fn(*args, **kwargs)
+    return locked
+
+
 def _load() -> dict:
     if not ACCOUNTS_FILE.exists():
         return {"accounts": {}}
@@ -99,11 +112,24 @@ def _save(data: dict) -> None:
     ACCOUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     from core.security_vault import encrypt_dict_secrets
     encrypted = encrypt_dict_secrets(data)
-    ACCOUNTS_FILE.write_text(json.dumps(encrypted, indent=2), encoding="utf-8")
+    import tempfile
+    import os
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=ACCOUNTS_FILE.parent,
+                                         prefix=".accounts-", suffix=".tmp", delete=False) as stream:
+            temp_path = pathlib.Path(stream.name)
+            json.dump(encrypted, stream, indent=2)
+        os.replace(temp_path, ACCOUNTS_FILE)
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 def _is_rec_connected(rec: dict) -> bool:
     if not isinstance(rec, dict) or rec.get("ignored"):
+        return False
+    if rec.get("session_health") in {"login_required", "challenge_required"}:
         return False
     return bool(
         rec.get("token")
@@ -143,6 +169,22 @@ def get_account(service: str) -> dict | None:
     return dict(rec) if isinstance(rec, dict) else None
 
 
+@_account_transaction
+def update_session_health(service: str, health: str) -> None:
+    """Store observed session health without changing opt-out or permission policy."""
+    if service not in SOCIAL_SERVICES or health not in {"unverified", "authenticated", "login_required", "challenge_required", "unavailable"}:
+        return
+    data = _load()
+    rec = data.get("accounts", {}).get(service)
+    if not isinstance(rec, dict) or rec.get("ignored") or rec.get("session_health") == health:
+        return
+    rec["session_health"] = health
+    if health == "authenticated":
+        rec["session_connected"] = True
+    rec["session_checked_at"] = int(time.time())
+    _save(data)
+
+
 def is_service_connected(service: str) -> bool:
     svc = (service or "").strip().lower()
     rec = get_account(svc)
@@ -163,6 +205,7 @@ def is_service_connected(service: str) -> bool:
     return False
 
 
+@_account_transaction
 def connect_account(
     service: str,
     token: str = "",
@@ -189,6 +232,8 @@ def connect_account(
             "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
     )
+    if svc in SOCIAL_SERVICES and extra.get("session_connected"):
+        cur["session_health"] = "unverified"
     for k, v in extra.items():
         if v is not None:
             cur[k] = v.strip() if isinstance(v, str) else v
@@ -214,6 +259,7 @@ def connect_account(
     return {"service": svc, "permission": permission, "connected": connected}
 
 
+@_account_transaction
 def ignore_account(service: str) -> dict:
     """Explicitly mark an optional service as ignored by the user."""
     svc = (service or "").strip().lower()
@@ -229,6 +275,7 @@ def ignore_account(service: str) -> dict:
     return {"service": svc, "ignored": True}
 
 
+@_account_transaction
 def set_permission(service: str, permission: str) -> dict:
     svc = (service or "").strip().lower()
     if permission not in PERMISSIONS:
@@ -242,6 +289,7 @@ def set_permission(service: str, permission: str) -> dict:
     return {"service": svc, "permission": permission}
 
 
+@_account_transaction
 def disconnect_account(service: str) -> str:
     svc = (service or "").strip().lower()
     data = _load()
@@ -292,6 +340,7 @@ def get_integrations_status_summary() -> dict[str, Any]:
             "ignored": bool(rec.get("ignored", False)) and not connected,
             "email": str(rec.get("email", "") or ""),
             "handle": str(rec.get("handle", "") or ""),
+            "session_health": str(rec.get("session_health") or "unverified"),
             "auth_mode": str(rec.get("auth_mode", "") or ""),
             "cookies_browser": str(rec.get("cookies_browser", "") or ""),
             "permission": str(rec.get("permission", default_perm) or default_perm),
