@@ -62,3 +62,6 @@ screenshots/
 
 # Source excerpts and acquired subject knowledge are private runtime data.
 memory/learning/
+
+# Brag render jobs, public delivery files and private intermediate plans.
+memory/generated_videos/

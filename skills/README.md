@@ -32,3 +32,11 @@ skills/
 Rules enforced by the loader: lowercase-hyphen name ≤64 chars matching the
 folder, non-empty description, non-empty body. Folders starting with `_` are
 ignored (that's the template).
+
+## Brag video workflow
+
+`brag/` is the bundled Brag-slim adaptation for local project launch videos. It
+uses the executable `brag_video` action, not a documentation-only install. See
+its SKILL.md for dependency checks, inspect/generate/status/cancel, factual copy,
+formats, explicit narration consent, real MP4 verification, and output paths.
+The original MIT notice and pinned upstream creative references are included.

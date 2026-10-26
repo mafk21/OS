@@ -5,12 +5,12 @@
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **65,000+ lines** across **159 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **51 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Execution Surface** | **52 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **12 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
 | **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **504 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **531 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -140,6 +140,46 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
 
 ---
+
+### Brag launch videos inside JARVIS
+
+Say **“make a 20-second launch video for this project”** or **“let’s /brag about JARVIS”**.
+The new `brag` skill uses the auto-discovered `brag_video` action to inspect public
+project metadata, plan factual copy, and render a real local H.264/AAC MP4 in the
+background. It uses a model-independent adaptation of upstream
+[Brag-slim](https://github.com/latent-spaces/brag), pinned and MIT-attributed under
+`skills/brag/`. **This adapter uses Pillow + FFmpeg, not Hyperframes or Claude Code.**
+
+- **Deliverables:** `brag.mp4`, a settled-frame `brag.jpg` baked as frame zero,
+  `brag-plan.md`, `composition-brief.md`, editable `plan.json`, `share-copy.txt`,
+  scene stills and logs in ignored `memory/generated_videos/<job_id>/`.
+- **Formats/options:** landscape, vertical, square; 5–30 seconds (default 20);
+  draft or final (1920×1080 landscape), seven tone presets, optional selected
+  product screenshots. Without images, it makes **source-copy motion cards**,
+  not captured footage or an interactive reconstruction of the app.
+- **Audio:** original synthesized music and soft cues, independently switchable.
+  Narration is off by default; explicit `voice=true` uses JARVIS’s configured
+  OpenAI-compatible speech adapter, not upstream Kokoro. Voice can incur provider
+  charges. Missing/too-long speech fails explicitly; it is never silently dropped.
+- **Lifecycle:** `doctor`, `inspect`, `generate`, `status`, `cancel`; live progress
+  cards, terminal transcript/speech notification, optional existing HUD playback.
+  A queued job is not a completed video. Cancellation kills active media commands;
+  a restart marks unfinished jobs interrupted. Completed means full MP4 decode
+  succeeded, not merely that a filename exists.
+- **Safety:** no automatic installers, no website browsing, no source-script
+  execution, no upload/publication. Inspector reads only root public README or
+  package description, respects ignored metadata and rejects symlinked metadata.
+  Product images must remain inside the selected project. Review stills/copy for
+  privacy and factual accuracy before public sharing.
+- **Setup:** existing `Pillow`, `numpy`, `imageio-ffmpeg` requirements; no Node,
+  browser or separate Claude subscription. Run `brag_video(action="doctor")` first.
+  Local projects only; website capture, custom HTML/Hyperframes compositions and
+  arbitrary generative cinema are not supported by this adapter.
+
+Example tool request after inspection:
+```json
+{"action":"generate","project_path":"/path/to/project","title":"My Project","hook":"A factual product hook","highlights":["A real feature","Another real feature"],"format":"vertical","duration":20,"tone":"polished","music":true,"voice":false,"autoplay":true}
+```
 
 ### Instagram / Socials reliability
 
