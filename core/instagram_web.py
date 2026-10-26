@@ -65,19 +65,69 @@ def _send_ack(response) -> str:
     return find(payload.get("data"))
 
 
+def _profile_verified(page, username: str) -> bool:
+    """Canonical metadata OR an exact profile-header username, never a display name."""
+    metadata = page.locator('link[rel="canonical"], meta[property="og:url"]')
+    for i in range(metadata.count()):
+        node = metadata.nth(i)
+        identity = urlsplit(node.get_attribute("href") or node.get_attribute("content") or "")
+        if identity.hostname in ("www.instagram.com", "instagram.com") and identity.path.rstrip("/").lower() == "/" + username:
+            return True
+    return page.evaluate("""username => Array.from(document.querySelectorAll(
+      'main header h1, main header h2, main header [role="heading"], main > div header a'
+    )).some(el => (el.innerText || '').trim().replace(/^@/, '').toLowerCase() === username)""", username) is True
+
+
+_CHAT_READY_JS = r"""username => {
+  if (/\/(accounts\/login|challenge|checkpoint)(\/|$)/.test(location.pathname)) return 'blocked';
+  // A profile may open a chat dialog without navigating to /direct/t/.
+  for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+    if (!dialog.getBoundingClientRect().width) continue;
+    const identity = Array.from(dialog.querySelectorAll('a[href]')).some(a => {
+      const u = new URL(a.href);
+      return ['www.instagram.com', 'instagram.com'].includes(u.hostname) &&
+             u.pathname.replace(/\/$/, '').toLowerCase() === '/' + username;
+    });
+    if (identity && dialog.querySelector('textarea, [role="textbox"][contenteditable="true"]')) {
+      dialog.setAttribute('data-jarvis-verified-chat', 'true');
+      return 'dialog';
+    }
+  }
+  return /^\/direct\/t\/[^/]+/.test(location.pathname) ? 'thread' : false;
+}"""
+
+
+def _composer(root):
+    # Prefer a message-labelled composer to an unrelated visible search box.
+    preferred = root.locator('textarea[placeholder*="message" i]:visible, '
+        '[role="textbox"][contenteditable="true"][aria-label*="message" i]:visible, '
+        'textarea[placeholder*="رسالة"]:visible, '
+        '[role="textbox"][contenteditable="true"][aria-label*="رسالة"]:visible')
+    preferred.first.wait_for(state="visible") if preferred.count() else None
+    if preferred.count() == 1:
+        return preferred.first
+    candidates = root.locator('textarea[placeholder]:visible, [role="textbox"][contenteditable="true"]:visible')
+    candidates.first.wait_for(state="visible")
+    if candidates.count() != 1:
+        raise RecipientError("No unique Instagram message composer. Open the intended chat in the HUD; nothing was sent.")
+    return candidates.first
+
+
 def send_instagram_message(hub, recipient: str, message: str, *, expected_sender: dict | None = None) -> str:
     """Use the exact profile's Message button, then wait for a server send receipt."""
     username = recipient.strip().lstrip("@").lower()
     if not re.fullmatch(r"[a-z0-9_.]{1,30}", username):
         raise RecipientError("Use an exact Instagram @username. Nothing was sent.")
     attempted = False
+    step = "browser_start"
+    playwright = None
     with _LOCK:
-        manager = _playwright()
-        playwright = manager.start()
         try:
             profile_url = f"https://www.instagram.com/{username}/"
             tab = hub._CDP.get_or_open_tab("instagram", profile_url, headless=True,
                                           force_navigate=True, purpose="send")
+            playwright = _playwright().start()
+            step = "browser_attach"
             browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{hub._CDP._port}", timeout=15000)
             page = None
             # Select the exact CDP target, not another tab with the same URL.
@@ -93,29 +143,30 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
             if page is None:
                 raise RuntimeError("Could not attach to Instagram's background tab. Open Instagram in the HUD.")
             page.set_default_timeout(12000)
-            page.wait_for_url(profile_url)
+            step = "profile_identity"
+            page.wait_for_url(lambda url: urlsplit(str(url)).path.rstrip("/").lower() == "/" + username
+                              or any(part in str(url) for part in ("/accounts/login", "/challenge", "/checkpoint")))
             page.wait_for_load_state("domcontentloaded")
             parsed = urlsplit(page.url)
-            if parsed.hostname != "www.instagram.com" or parsed.path.rstrip("/").lower() != "/" + username:
-                raise RecipientError("Instagram redirected away from the exact profile. Complete login/security verification in the HUD; nothing was sent.")
-            # The canonical profile metadata must independently confirm identity.
-            canonical = page.locator('link[rel="canonical"], meta[property="og:url"]').first
-            canonical.wait_for(state="attached")
-            canonical_url = canonical.get_attribute("href") or canonical.get_attribute("content") or ""
-            identity = urlsplit(canonical_url)
-            if identity.hostname not in ("www.instagram.com", "instagram.com") or identity.path.rstrip("/").lower() != "/" + username:
+            if parsed.hostname not in ("www.instagram.com", "instagram.com") or parsed.path.rstrip("/").lower() != "/" + username:
+                raise RecipientError("Instagram requires login or a security check. Complete it in the HUD; nothing was sent.")
+            # SPA pages can omit/stale their canonical metadata. A rendered,
+            # exact username in the profile header is independent identity proof.
+            if not _profile_verified(page, username):
                 raise RecipientError("Instagram did not confirm the exact profile identity. Nothing was sent.")
-            buttons = page.get_by_role("button", name=re.compile(r"^(Message|Send message|إرسال رسالة|رسالة)$", re.I))
+            step = "open_conversation"
+            names = re.compile(r"^(Message|Send message|إرسال رسالة|ارسال رسالة|رسالة)$", re.I)
+            buttons = page.get_by_role("button", name=names).or_(page.get_by_role("link", name=names))
             buttons.first.wait_for(state="visible")
             if buttons.count() != 1:
-                raise RecipientError("The exact profile has no unique Message button. Check messaging restrictions in the HUD; nothing was sent.")
+                raise RecipientError("The exact profile has no unique Message control. Check messaging restrictions in the HUD; nothing was sent.")
             buttons.click()
-            page.wait_for_url(re.compile(r"https://www\.instagram\.com/direct/t/[^/]+/?"))
-            composers = page.locator('textarea[placeholder]:visible, [role="textbox"][contenteditable="true"]:visible')
-            composers.first.wait_for(state="visible")
-            if composers.count() != 1:
-                raise RuntimeError("No unique Instagram message composer. Open the chat in the HUD; nothing was sent.")
-            composer = composers.first
+            state = page.wait_for_function(_CHAT_READY_JS, arg=username).json_value()
+            if state == "blocked":
+                raise RecipientError("Complete Instagram's login/security check in the HUD; nothing was sent.")
+            root = page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
+            step = "message_composer"
+            composer = _composer(root)
             draft = composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()
             if draft.strip():
                 raise RuntimeError("This Instagram chat already has an unsent draft. It was not changed or sent; review it in the HUD.")
@@ -129,10 +180,14 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
 
             check_sender()
             composer.fill(message)
-            send = page.get_by_role("button", name=re.compile(r"^(Send|إرسال)$", re.I))
-            send.first.wait_for(state="visible")
-            if send.count() != 1 or not send.is_enabled():
-                raise RuntimeError("No unique enabled Send button. The draft was not submitted; review it in the HUD.")
+            actual = composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()
+            if actual != message:
+                raise RuntimeError("The composer did not retain the exact approved text. The draft was not submitted.")
+            step = "send_control"
+            send = root.get_by_role("button", name=re.compile(r"^(Send|Send message|إرسال|ارسال|إرسال رسالة|ارسال رسالة)$", re.I))
+            count = send.count()
+            if count > 1 or (count == 1 and not send.is_enabled()):
+                raise RuntimeError("No unique enabled Send control. The draft was not submitted; review it in the HUD.")
             check_sender()
             allowed, reason = hub.accounts.check_permission("instagram", "send")
             if not allowed:
@@ -145,8 +200,15 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
                     acknowledgments.append(ack)
 
             page.on("response", observe)
+            step = "submit_once"
             attempted = True  # a click timeout can still mean the message was submitted
-            send.click()
+            if count == 1:
+                send.click()
+            else:
+                # Instagram also exposes Enter-to-send composers with no
+                # labelled Send button. Submit only this verified composer.
+                composer.press("Enter")
+            step = "server_receipt"
             deadline = time.monotonic() + 15.0
             while not acknowledgments and time.monotonic() < deadline:
                 page.wait_for_timeout(250)
@@ -154,12 +216,22 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
                 raise DeliveryUnknown("Instagram's native Send control was activated, but no server acknowledgment was received. Check the chat in the HUD before retrying. No automatic retry was made.")
             return (f"Sent Instagram message to @{username} through Instagram's own web composer. "
                     f"Instagram acknowledgment: {acknowledgments[0]}. This does not mean the recipient has read it.")
-        except DeliveryUnknown:
-            raise
+        except DeliveryUnknown as exc:
+            raise DeliveryUnknown(f"[IG:{step}] {exc}") from exc
         except Exception as exc:
             if attempted:
-                raise DeliveryUnknown("The Instagram native send was attempted, but its result is unknown. Check the chat in the HUD before retrying; no automatic retry was made.") from exc
-            raise
+                raise DeliveryUnknown(f"[IG:{step}] The Instagram native send was attempted, but its result is unknown. Check the chat in the HUD before retrying; no automatic retry was made.") from exc
+            if isinstance(exc, RecipientError):
+                raise RecipientError(f"[IG:{step}] {exc}") from exc
+            if isinstance(exc, RuntimeError) and not type(exc).__module__.startswith("playwright"):
+                raise RuntimeError(f"[IG:{step}] {exc}") from exc
+            # Playwright call logs may contain approved message text; do not
+            # expose those logs or hide the failing step behind a generic error.
+            raise RuntimeError(f"[IG:{step}] {type(exc).__name__}. Open Instagram DMs in the HUD and check login, security prompts, or an unsent draft. Nothing was submitted.") from exc
         finally:
-            # Stop this CDP client, NOT the user's persistent browser/profile.
-            playwright.stop()
+            # Cleanup cannot turn an acknowledged send into a failure/retry.
+            if playwright is not None:
+                try:
+                    playwright.stop()
+                except Exception:
+                    pass

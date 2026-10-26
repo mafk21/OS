@@ -529,8 +529,12 @@ def _ig_api_send_dm(recipient: str, message: str) -> str | None:
                 r_prof = client.get("https://www.instagram.com/api/v1/users/web_profile_info/",
                                     params={"username": clean_rec})
                 if r_prof.status_code != 200:
-                    raise RecipientError("Could not resolve that recipient. Use their exact @username and check the Instagram HUD.")
+                    # An unavailable private lookup is not proof that the user
+                    # does not exist. No write happened; native UI may resolve it.
+                    return None
                 user = ((r_prof.json().get("data") or {}).get("user")) or {}
+                if not user:
+                    return None
                 if str(user.get("username") or "").casefold() != needle:
                     raise RecipientError("Recipient identity could not be verified. Nothing was sent; provide the exact @username.")
                 user_pk = str(user.get("id") or user.get("pk") or "")
@@ -2425,7 +2429,11 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
 
     # Tier 1: Session-backed Instagram Direct API (same-origin browser or cookie HTTP).
     if platform == "instagram":
-        api_sent = _ig_api_send_dm(clean_rec, message)
+        # The authenticated web app is the primary transport when its session
+        # exists. Do not POST to an undocumented endpoint first: current and
+        # encrypted chats may reject it even though native messaging works.
+        native_session = _CDP._endpoint_alive() or (socials_root_dir() / "browser_profile").exists()
+        api_sent = None if native_session else _ig_api_send_dm(clean_rec, message)
         if api_sent:
             security_vault.log_audit_event(
                 actor,
