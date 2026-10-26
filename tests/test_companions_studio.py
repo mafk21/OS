@@ -112,7 +112,7 @@ def test_visual_skills_studio_protects_core_and_manages_custom_skills(isolated_s
     studio_skills = comp.list_all_skills_for_studio()
     assert any(s["name"] == "release-audit" and s["builtin"] is False for s in studio_skills)
     # Built-in skill set includes persistent subject learning
-    assert len(discover_skills(comp.CORE_SKILLS_DIR, logger=lambda _: None)) == 11
+    assert len(discover_skills(comp.CORE_SKILLS_DIR, logger=lambda _: None)) == 12
 
     assert comp.delete_custom_skill("release-audit") is True
 
