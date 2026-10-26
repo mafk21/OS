@@ -104,27 +104,46 @@ def _wait_chat(page, username: str, *, timeout: int = 12000):
     return page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
 
 
-def _open_from_compose(page, username: str):
+def _open_from_compose(page, username: str, progress=lambda _: None):
     """Recover only pre-submission navigation, never retry a message write.
 
     Instagram's profile Message button may be missing, blocked by an overlay,
     or leave the profile unchanged. Its dedicated new-message page is a separate
     first-party route. Resolve one exact username there before opening the chat.
     """
+    progress("compose_search")
     page.goto("https://www.instagram.com/direct/new/", wait_until="domcontentloaded")
     searches = page.locator('input[name="queryBox"]:visible, input[placeholder*="Search" i]:visible, '
                             'input[placeholder*="بحث"]:visible, input[aria-label*="Search" i]:visible')
-    searches.first.wait_for(state="visible")
+    try:
+        searches.first.wait_for(state="visible", timeout=5000)
+    except Exception as exc:
+        if not (type(exc).__name__ == "TimeoutError" and type(exc).__module__.startswith("playwright")):
+            raise
+        # Some versions redirect /direct/new/ to the inbox; open its composer
+        # rather than waiting indefinitely for a search input that isn't there.
+        progress("compose_launcher")
+        names = re.compile(r"^(New message|Compose|رسالة جديدة|إنشاء رسالة)$", re.I)
+        launcher = page.get_by_role("button", name=names).or_(page.get_by_role("link", name=names))
+        icons = page.locator('svg[aria-label="New message"], svg[aria-label="رسالة جديدة"]')
+        launcher = launcher.or_(icons.locator('xpath=ancestor::*[self::button or @role="button" or self::a][1]')).and_(page.locator(":visible"))
+        launcher.first.wait_for(state="visible")
+        if launcher.count() != 1:
+            raise RecipientError("No unique New message control in the Instagram inbox. Nothing was sent.")
+        launcher.click()
+        progress("compose_search")
+        searches.first.wait_for(state="visible")
     if searches.count() != 1:
         raise RecipientError("Instagram did not expose a unique recipient search. Nothing was sent.")
     searches.fill(username)
+    progress("compose_exact_recipient")
     # Inspect only selectable search rows, not arbitrary text elsewhere in the
     # inbox. The username must be the row's primary label, not a full-name
     # substring, and there must be exactly one matching row.
     page.wait_for_function(r"""username => {
       for (const old of document.querySelectorAll('[data-jarvis-recipient]')) old.removeAttribute('data-jarvis-recipient');
-      const rows = Array.from(document.querySelectorAll('[role="button"], label'))
-        .filter(row => row.getBoundingClientRect().width && row.querySelector('input[type="checkbox"], [role="checkbox"], [role="radio"], input[type="radio"]'));
+      const rows = Array.from(document.querySelectorAll('[role="button"], [role="option"], label'))
+        .filter(row => row.getBoundingClientRect().width);
       const matches = rows.filter(row => {
         const lines = (row.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
         return lines[0] && lines[0].replace(/^@/, '').toLowerCase() === username;
@@ -139,20 +158,31 @@ def _open_from_compose(page, username: str):
     )).filter(el => el.closest('[data-jarvis-recipient="exact"]') === null).length"""
     if page.evaluate(selected):
         raise RecipientError("Instagram already has another recipient selected. No group was created and nothing was sent.")
+    progress("compose_selection")
     row.click()
     page.wait_for_function(r"""() => {
       const row = document.querySelector('[data-jarvis-recipient="exact"]');
-      return row && row.querySelector('input:checked, [aria-checked="true"]');
+      if (!row) return false;
+      if (row.matches('[aria-selected="true"], [aria-checked="true"]') || row.querySelector('input:checked, [aria-checked="true"]')) return true;
+      // Some layouts use an SVG selection indicator instead of a checkbox.
+      // Require an exact selected-recipient chip with a removal control.
+      return Array.from(document.querySelectorAll('[role="button"], button')).some(chip => {
+        const label = (chip.innerText || '').trim().replace(/^@/, '').toLowerCase();
+        return label === row.innerText.split('\n')[0].trim().replace(/^@/, '').toLowerCase() &&
+          !!chip.querySelector('[aria-label*="Remove" i], [aria-label*="إزالة"]');
+      });
     }""", timeout=5000)
     if page.evaluate(selected):
         raise RecipientError("Instagram selected more than the approved recipient. Nothing was sent.")
     # This selects a recipient, NOT a Send operation. Never click a generic
     # "Send" control here or infer success from selecting a search result.
+    progress("compose_open_chat")
     next_control = page.get_by_role("button", name=re.compile(r"^(Chat|Next|دردشة|التالي)$", re.I))
     next_control.first.wait_for(state="visible")
     if next_control.count() != 1 or not next_control.is_enabled():
         raise RecipientError("Instagram did not expose a unique Chat/Next control. Nothing was sent.")
     next_control.click()
+    progress("compose_chat_transition")
     return _wait_chat(page, username)
 
 
@@ -182,7 +212,7 @@ def _open_conversation(page, username: str, progress):
         if state in ("thread", "dialog"):
             return page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
         progress("compose_recipient_lookup")
-        return _open_from_compose(page, username)
+        return _open_from_compose(page, username, progress)
 
 
 def _composer(root):

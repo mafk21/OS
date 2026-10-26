@@ -513,3 +513,29 @@ def test_native_session_does_not_issue_speculative_api_write(monkeypatch):
     assert "native-id" in result
     api.assert_not_called()
     native.assert_called_once()
+
+
+def test_instagram_no_confirmation_preference_executes_once(monkeypatch):
+    connected("ask")
+    monkeypatch.delenv("JARVIS_INSTAGRAM_CONFIRM_SEND", raising=False)
+    sent = Mock(return_value="Instagram acknowledgment: direct-no-prompt")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", sent)
+    results = []
+    assert hub._instagram_send_confirmation_required() is False
+    result = hub.stage_or_send_social_message("instagram", "sarah", "hello", on_result=results.append)
+    assert "direct-no-prompt" in result
+    assert "CONFIRMATION_PENDING" not in result
+    assert results == [result]
+    assert confirm._pending is None
+    sent.assert_called_once_with("sarah", "hello")
+
+
+@pytest.mark.parametrize("permission", ["readonly", "paused"])
+def test_no_confirmation_preference_does_not_override_send_restrictions(monkeypatch, permission):
+    connected(permission)
+    monkeypatch.delenv("JARVIS_INSTAGRAM_CONFIRM_SEND", raising=False)
+    sent = Mock(side_effect=AssertionError("Policy must block before execution"))
+    monkeypatch.setattr(hub, "_ig_api_send_dm", sent)
+    result = hub.stage_or_send_social_message("instagram", "sarah", "hello")
+    assert "blocked" in result.lower() or "paused" in result.lower()
+    sent.assert_not_called()

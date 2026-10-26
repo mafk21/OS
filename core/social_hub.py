@@ -2536,6 +2536,18 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
     return res_msg
 
 
+def _instagram_send_confirmation_required() -> bool:
+    """Explicit deployment preference; permissions are still enforced separately."""
+    override = os.environ.get("JARVIS_INSTAGRAM_CONFIRM_SEND")
+    if override is not None:
+        return override.strip().lower() not in ("0", "false", "no", "off")
+    try:
+        settings = json.loads((accounts._base() / "config" / "social_preferences.json").read_text(encoding="utf-8"))
+        return settings.get("instagram_confirm_send") is not False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def stage_or_send_social_message(
     platform: str,
     recipient: str,
@@ -2589,8 +2601,8 @@ def stage_or_send_social_message(
                 pass
         return result
 
-    if perm == "full":
-        return execute("jarvis_full_perm")
+    if perm == "full" or (plat == "instagram" and not _instagram_send_confirmation_required()):
+        return execute("jarvis_full_perm" if perm == "full" else "user_disabled_instagram_confirmation")
 
     title = f"Send {spec['label']} message to {recipient.strip()}"
     detail = f"Message: \"{message}\""
