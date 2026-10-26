@@ -539,3 +539,35 @@ def test_no_confirmation_preference_does_not_override_send_restrictions(monkeypa
     result = hub.stage_or_send_social_message("instagram", "sarah", "hello")
     assert "blocked" in result.lower() or "paused" in result.lower()
     sent.assert_not_called()
+
+
+def test_execution_failure_is_written_to_visible_transcript_without_invented_login(monkeypatch):
+    connected("full")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", Mock(side_effect=RuntimeError("[IG:compose_exact_recipient] No unique result")))
+    player = SimpleNamespace(show_content=Mock(), write_log=Mock())
+    spoken = []
+    result = social_hub({"action": "send_message", "platform": "instagram", "recipient": "sarah", "message": "hello"}, player=player, speak=spoken.append)
+    assert "compose_exact_recipient" in result
+    player.write_log.assert_called_once_with("SYS: " + result)
+    assert "No unique result" in spoken[0]
+
+
+def test_audit_failure_does_not_turn_acknowledged_send_into_failure(monkeypatch):
+    connected("full")
+    sent = Mock(return_value="Instagram acknowledgment: accepted-once")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", sent)
+    monkeypatch.setattr(hub.security_vault, "log_audit_event", Mock(side_effect=OSError("database unavailable")))
+    results = []
+    result = hub.stage_or_send_social_message("instagram", "sarah", "hello", on_result=results.append)
+    assert "accepted-once" in result and "not confirmed" not in result
+    assert results == [result]
+    sent.assert_called_once()
+
+
+def test_audit_failure_does_not_swallow_execution_failure_callback(monkeypatch):
+    connected("full")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", Mock(side_effect=RuntimeError("[IG:compose_exact_recipient] Missing row")))
+    monkeypatch.setattr(hub.security_vault, "log_audit_event", Mock(side_effect=OSError("database unavailable")))
+    results = []
+    result = hub.stage_or_send_social_message("instagram", "sarah", "hello", on_result=results.append)
+    assert "Missing row" in result and results == [result]

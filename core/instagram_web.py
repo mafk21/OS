@@ -1,17 +1,19 @@
-"""Conservative native-web fallback for Instagram Direct, including encrypted chats.
+"""Stateful native Instagram messaging: GET-only resolution, one native submission.
 
-This drives Instagram's own composer using the existing headless profile. It is
-only called when API lookup failed BEFORE any send attempt. No speculative
-clicks, display-name matching, draft overwrites, or click-as-success reporting.
+No undocumented API write, speculative resend, draft overwrite or click-as-success.
+Failures leave a privacy-filtered local diagnostic without requiring hidden logs.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
+import uuid
 import threading
 import time
 from urllib.parse import urlsplit
 
-from core.instagram_direct import DeliveryUnknown, RecipientError, receipt_id
+from core.instagram_direct import DeliveryUnknown, RecipientError, receipt_id, exact_thread
 
 _LOCK = threading.Lock()
 
@@ -133,6 +135,13 @@ def _open_from_compose(page, username: str, progress=lambda _: None):
         launcher.click()
         progress("compose_search")
         searches.first.wait_for(state="visible")
+    # Prefer the dedicated recipient input over the inbox's unrelated search.
+    query_box = page.locator('input[name="queryBox"]:visible')
+    dialog_search = page.locator('[role="dialog"] input:not([type="checkbox"]):not([type="radio"]):visible')
+    if query_box.count() == 1:
+        searches = query_box
+    elif dialog_search.count() == 1:
+        searches = dialog_search
     if searches.count() != 1:
         raise RecipientError("Instagram did not expose a unique recipient search. Nothing was sent.")
     searches.fill(username)
@@ -142,25 +151,37 @@ def _open_from_compose(page, username: str, progress=lambda _: None):
     # substring, and there must be exactly one matching row.
     page.wait_for_function(r"""username => {
       for (const old of document.querySelectorAll('[data-jarvis-recipient]')) old.removeAttribute('data-jarvis-recipient');
-      const rows = Array.from(document.querySelectorAll('[role="button"], [role="option"], label'))
-        .filter(row => row.getBoundingClientRect().width);
+      const search = document.querySelector('input[name="queryBox"], input[placeholder*="Search" i], input[placeholder*="بحث"], input[aria-label*="Search" i]');
+      const scope = search?.closest('[role="dialog"]') || document.querySelector('main') || document.body;
+      const normalize = s => (s || '').trim().replace(/^@/, '').toLowerCase();
+      const visible = el => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
+      const rows = Array.from(scope.querySelectorAll('button, [role="button"], [role="option"], label, [tabindex="0"]')).filter(visible);
       const matches = rows.filter(row => {
+        // An exact first-party profile link is independent username evidence,
+        // including rows that render a display name before the actual handle.
+        const handles = Array.from(row.querySelectorAll('a[href]')).map(a => {
+          try {const u = new URL(a.href); return ['www.instagram.com', 'instagram.com'].includes(u.hostname) && /^\/[a-z0-9_.]{1,30}\/?$/i.test(u.pathname) ? u.pathname.replace(/^\/|\/$/g, '').toLowerCase() : '';} catch {return '';}
+        }).filter(Boolean);
+        if (handles.length) return handles.every(handle => handle === username);
         const lines = (row.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
-        return lines[0] && lines[0].replace(/^@/, '').toLowerCase() === username;
-      }).filter(row => !rows.some(other => other !== row && row.contains(other)));
-      if (matches.length !== 1) return false;
-      matches[0].setAttribute('data-jarvis-recipient', 'exact');
+        return lines.length > 0 && normalize(lines[0]) === username;
+      });
+      // Only collapse nested MATCHES. An unrelated child button must not
+      // discard an otherwise valid row (the previous picker did exactly that).
+      const unique = matches.filter(row => !matches.some(other => other !== row && row.contains(other)));
+      if (unique.length !== 1) return false;
+      unique[0].setAttribute('data-jarvis-recipient', 'exact');
       return true;
     }""", arg=username, timeout=15000)
     row = page.locator('[data-jarvis-recipient="exact"]')
     selected = r"""() => Array.from(document.querySelectorAll(
-      'input[type="checkbox"]:checked, input[type="radio"]:checked, [role="checkbox"][aria-checked="true"], [role="radio"][aria-checked="true"]'
+      'input[type="checkbox"]:checked, input[type="radio"]:checked, [role="option"][aria-selected="true"], [role="checkbox"][aria-checked="true"], [role="radio"][aria-checked="true"]'
     )).filter(el => el.closest('[data-jarvis-recipient="exact"]') === null).length"""
     if page.evaluate(selected):
         raise RecipientError("Instagram already has another recipient selected. No group was created and nothing was sent.")
     progress("compose_selection")
     row.click()
-    page.wait_for_function(r"""() => {
+    page.wait_for_function(r"""username => {
       const row = document.querySelector('[data-jarvis-recipient="exact"]');
       if (!row) return false;
       if (row.matches('[aria-selected="true"], [aria-checked="true"]') || row.querySelector('input:checked, [aria-checked="true"]')) return true;
@@ -168,10 +189,10 @@ def _open_from_compose(page, username: str, progress=lambda _: None):
       // Require an exact selected-recipient chip with a removal control.
       return Array.from(document.querySelectorAll('[role="button"], button')).some(chip => {
         const label = (chip.innerText || '').trim().replace(/^@/, '').toLowerCase();
-        return label === row.innerText.split('\n')[0].trim().replace(/^@/, '').toLowerCase() &&
+        return label === username &&
           !!chip.querySelector('[aria-label*="Remove" i], [aria-label*="إزالة"]');
       });
-    }""", timeout=5000)
+    }""", arg=username, timeout=5000)
     if page.evaluate(selected):
         raise RecipientError("Instagram selected more than the approved recipient. Nothing was sent.")
     # This selects a recipient, NOT a Send operation. Never click a generic
@@ -231,123 +252,253 @@ def _composer(root):
     return candidates.first
 
 
+class InstagramMessageRun:
+    """One operation, one owner, one write boundary, explicit terminal states.
+
+    Browser/session recovery and recipient lookup are read-only. Once submit()
+    begins, no navigation or retry branch is reachable. Playwright objects stay
+    on this thread; the shared CDP runner handles its own event-loop boundary.
+    """
+    def __init__(self, hub, username, message, expected_sender):
+        self.hub, self.username, self.message = hub, username, message
+        self.expected_sender = expected_sender
+        self.stage = "browser_start"
+        self.history = []
+        self.page = None
+        self.playwright = None
+        self.attempted = False
+        self.acknowledgments = []
+
+    def progress(self, stage):
+        self.stage = stage
+        self.history.append(stage)
+
+    def attach(self):
+        self.progress("browser_start")
+        self.hub._CDP.ensure_browser(headless=True)
+        self.progress("background_tab_prepare")
+        url = f"https://www.instagram.com/{self.username}/"
+        tab = self.hub._CDP.get_or_open_tab("instagram", url, headless=True,
+                    force_navigate=True, purpose="send")
+        self.progress("playwright_driver_start")
+        self.playwright = _playwright().start()
+        self.progress("browser_attach")
+        browser = self.playwright.chromium.connect_over_cdp(
+            f"http://127.0.0.1:{self.hub._CDP._port}", timeout=15000)
+        for context in browser.contexts:
+            for candidate in context.pages:
+                session = context.new_cdp_session(candidate)
+                try:
+                    if session.send("Target.getTargetInfo")["targetInfo"].get("targetId") == tab.get("id"):
+                        self.page = candidate
+                finally:
+                    session.detach()
+        if self.page is None:
+            raise RuntimeError("Could not attach to the dedicated Instagram target.")
+        self.page.set_default_timeout(12000)
+        self.progress("profile_identity")
+        self.page.wait_for_url(lambda url: urlsplit(str(url)).path.rstrip("/").lower() == "/" + self.username
+                  or any(part in str(url) for part in ("/accounts/login", "/challenge", "/checkpoint")))
+        self.page.wait_for_load_state("domcontentloaded")
+        current = urlsplit(self.page.url)
+        if current.hostname not in ("www.instagram.com", "instagram.com") or current.path.rstrip("/").lower() != "/" + self.username:
+            raise RecipientError("Instagram redirected to login or a security check; complete that specific screen in the HUD.")
+
+    def existing_thread(self):
+        """Resolve existing exact 1:1 chats with GETs, never a speculative API POST.
+
+        A changed/unsupported read API simply leaves the UI resolver available.
+        A verified different/group identity is never accepted. Bound the work
+        to three pages instead of scraping the inbox or reading message bodies.
+        """
+        self.progress("session_thread_lookup")
+        cursor = ""
+        matches = []
+        for _ in range(3):
+            try:
+                result = self.page.evaluate(r"""async cursor => {
+                  const query = new URLSearchParams({limit:'50', thread_message_limit:'0'});
+                  if (cursor) query.set('cursor', cursor);
+                  const response = await fetch('/api/v1/direct_v2/inbox/?' + query, {
+                    method:'GET', credentials:'same-origin', redirect:'error',
+                    headers:{'X-IG-App-ID':'936619743392459', 'X-Requested-With':'XMLHttpRequest'},
+                    signal:AbortSignal.timeout(5000)
+                  });
+                  if (!response.ok) return null;
+                  const payload = await response.json();
+                  // Do not return message contents to Python or diagnostics.
+                  if (!payload.inbox) return null;
+                  return {threads:(payload.inbox.threads || []).map(t => ({
+                    thread_id:t.thread_id, is_group:t.is_group,
+                    users:(t.users || []).map(u => ({username:u.username}))
+                  })), cursor:payload.inbox.has_older ? payload.inbox.oldest_cursor : ''};
+                }""", cursor)
+            except Exception:
+                return None
+            if not isinstance(result, dict) or not isinstance(result.get("threads"), list):
+                return None
+            match = exact_thread(result["threads"], self.username)
+            if match:
+                matches.append(match)
+            cursor = result.get("cursor")
+            if not isinstance(cursor, str) or not cursor:
+                break
+        # Repeated pagination results cannot silently resolve to another chat.
+        ids = {str(t.get("thread_id") or "") for t in matches}
+        ids.discard("")
+        if len(ids) > 1:
+            raise RecipientError("More than one exact one-to-one conversation was returned; no chat was selected.")
+        if not ids:
+            return None
+        thread_id = ids.pop()
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", thread_id):
+            return None
+        return thread_id
+
+    def open_chat(self):
+        thread_id = self.existing_thread()
+        if thread_id:
+            self.progress("resolved_thread_navigation")
+            self.page.goto(f"https://www.instagram.com/direct/t/{thread_id}/", wait_until="domcontentloaded")
+            root = _wait_chat(self.page, self.username)
+            # A server-verified thread ID must survive native navigation; do
+            # not accept a redirect to some other conversation.
+            path = urlsplit(self.page.url).path.rstrip("/")
+            if path.split("/")[-1] != thread_id:
+                raise RecipientError("Instagram redirected to a different conversation; nothing was filled.")
+            return root
+        self.progress("profile_identity")
+        if not _profile_verified(self.page, self.username):
+            raise RecipientError("Instagram did not expose independent exact-profile identity.")
+        return _open_conversation(self.page, self.username, self.progress)
+
+    def check_sender(self):
+        if self.expected_sender is None:
+            return
+        current = self.hub._cookie_dict("instagram")
+        key = "ds_user_id" if self.expected_sender.get("ds_user_id") else "sessionid"
+        if not self.expected_sender.get(key) or self.expected_sender[key] != current.get(key):
+            raise RecipientError("The signed-in account changed. Request a new operation; nothing was submitted.")
+
+    def prepare(self, root):
+        self.progress("message_composer")
+        composer = _composer(root)
+        text = lambda: composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()
+        if text().strip():
+            raise RuntimeError("This chat already has an unsent draft. It was not changed or sent.")
+        self.check_sender()
+        composer.fill(self.message)
+        if text() != self.message:
+            raise RuntimeError("The composer did not retain the exact approved message. The draft was not submitted.")
+        self.progress("send_control")
+        send = root.get_by_role("button", name=re.compile(r"^(Send|Send message|إرسال|ارسال|إرسال رسالة|ارسال رسالة)$", re.I))
+        count = send.count()
+        if count > 1 or (count == 1 and not send.is_enabled()):
+            raise RuntimeError("No unique enabled Send control. The draft was not submitted.")
+        self.check_sender()
+        allowed, reason = self.hub.accounts.check_permission("instagram", "send")
+        if not allowed:
+            raise RuntimeError(f"Send blocked by current permission: {reason}. The draft was not submitted.")
+        return composer, send, count
+
+    def submit(self, composer, send, count):
+        def observe(response):
+            ack = _send_ack(response)
+            if ack:
+                self.acknowledgments.append(ack)
+        self.page.on("response", observe)
+        self.progress("submit_once")
+        self.attempted = True  # even a click timeout may have submitted
+        if count:
+            send.click()
+        else:
+            composer.press("Enter")
+        self.progress("server_receipt")
+        deadline = time.monotonic() + 15
+        while not self.acknowledgments and time.monotonic() < deadline:
+            self.page.wait_for_timeout(250)
+        if not self.acknowledgments:
+            raise DeliveryUnknown("Submission was attempted but no server receipt arrived. Check the chat before retrying. No automatic retry was made.")
+        self.progress("acknowledged")
+        return (f"Sent Instagram message to @{self.username} through Instagram's own web composer. "
+                f"Instagram acknowledgment: {self.acknowledgments[0]}. This does not mean the recipient has read it.")
+
+    def failure_diagnostic(self):
+        """Strict allowlist: never serialize DOM text, cookies, URLs or messages."""
+        report = {"version": 2, "stage": self.stage, "history": self.history[-20:], "attempted": self.attempted}
+        if self.page is not None:
+            try:
+                observed = self.page.evaluate("""() => ({
+                  visible_dialogs: [...document.querySelectorAll('[role="dialog"]')].filter(e=>e.getBoundingClientRect().width).length,
+                  visible_inputs: [...document.querySelectorAll('input')].filter(e=>e.getBoundingClientRect().width).length,
+                  selectable_rows: document.querySelectorAll('[role="option"], [role="button"], label').length,
+                  exact_rows: document.querySelectorAll('[data-jarvis-recipient="exact"]').length,
+                  login_form: !!document.querySelector('input[type="password"]')
+                })""")
+                if isinstance(observed, dict):
+                    for key in ("visible_dialogs", "visible_inputs", "selectable_rows", "exact_rows", "login_form"):
+                        if type(observed.get(key)) in (int, bool):
+                            report[key] = observed[key]
+            except Exception:
+                pass
+        try:
+            directory = self.hub.socials_root_dir()
+            target = directory / "instagram_last_failure.json"
+            temporary = directory / (".instagram-diagnostic-" + uuid.uuid4().hex)
+            try:
+                with temporary.open("x", encoding="utf-8") as stream:
+                    os.chmod(temporary, 0o600)
+                    json.dump(report, stream)
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return report
+
+    def fail(self, exc):
+        diagnostic = self.failure_diagnostic()
+        if self.attempted:
+            raise DeliveryUnknown(f"[IG:{self.stage}] The send was attempted but its result is unknown. Check the chat before retrying. No automatic retry was made.") from exc
+        if isinstance(exc, (RecipientError, RuntimeError)) and not type(exc).__module__.startswith("playwright"):
+            raise type(exc)(f"[IG:{self.stage}] {exc}") from exc
+        explanations = {
+            "compose_search": "Instagram's recipient search input did not appear.",
+            "compose_launcher": "The inbox did not expose an accessible New Message control.",
+            "compose_exact_recipient": "The search did not produce one verifiable exact username row.",
+            "compose_selection": "The exact recipient row did not expose a verifiable selected state.",
+            "compose_open_chat": "The selected recipient did not produce an enabled Chat/Next control.",
+            "compose_chat_transition": "Instagram did not open the selected recipient's conversation.",
+            "session_thread_lookup": "The read-only session lookup could not resolve the recipient.",
+        }
+        reason = explanations.get(self.stage, "Instagram did not complete this operation state.")
+        if self.stage in ("browser_start", "background_tab_prepare", "playwright_driver_start", "browser_attach"):
+            reason = "The dedicated browser control could not start or attach; this is not an Instagram login error."
+        if diagnostic.get("login_form"):
+            reason += " A login form is actually visible in the browser."
+        counts = ", ".join(f"{k}={diagnostic[k]}" for k in ("visible_inputs", "selectable_rows", "exact_rows") if k in diagnostic)
+        raise RuntimeError(f"[IG:{self.stage}] {reason} Nothing was submitted. "
+                           f"Diagnostic v2: {counts or 'page unavailable'}. Details: ~/.jarvis_socials/instagram_last_failure.json (or JARVIS_SOCIALS_DIR).") from exc
+
+    def run(self):
+        try:
+            self.attach()
+            root = self.open_chat()
+            return self.submit(*self.prepare(root))
+        except Exception as exc:
+            self.fail(exc)
+        finally:
+            if self.playwright is not None:
+                try:
+                    self.playwright.stop()
+                except Exception:
+                    pass
+
+
 def send_instagram_message(hub, recipient: str, message: str, *, expected_sender: dict | None = None) -> str:
-    """Use the exact profile's Message button, then wait for a server send receipt."""
+    """Native Instagram send engine; this entry point never retries a write."""
     username = recipient.strip().lstrip("@").lower()
     if not re.fullmatch(r"[a-z0-9_.]{1,30}", username):
         raise RecipientError("Use an exact Instagram @username. Nothing was sent.")
-    attempted = False
-    step = "browser_start"
-    playwright = None
     with _LOCK:
-        try:
-            profile_url = f"https://www.instagram.com/{username}/"
-            hub._CDP.ensure_browser(headless=True)
-            step = "background_tab_prepare"
-            tab = hub._CDP.get_or_open_tab("instagram", profile_url, headless=True,
-                                          force_navigate=True, purpose="send")
-            step = "playwright_driver_start"
-            playwright = _playwright().start()
-            step = "browser_attach"
-            browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{hub._CDP._port}", timeout=15000)
-            page = None
-            # Select the exact CDP target, not another tab with the same URL.
-            for context in browser.contexts:
-                for candidate in context.pages:
-                    session = context.new_cdp_session(candidate)
-                    try:
-                        info = session.send("Target.getTargetInfo")["targetInfo"]
-                        if info.get("targetId") == tab.get("id"):
-                            page = candidate
-                    finally:
-                        session.detach()
-            if page is None:
-                raise RuntimeError("Could not attach to Instagram's background tab. Open Instagram in the HUD.")
-            page.set_default_timeout(12000)
-            step = "profile_identity"
-            page.wait_for_url(lambda url: urlsplit(str(url)).path.rstrip("/").lower() == "/" + username
-                              or any(part in str(url) for part in ("/accounts/login", "/challenge", "/checkpoint")))
-            page.wait_for_load_state("domcontentloaded")
-            parsed = urlsplit(page.url)
-            if parsed.hostname not in ("www.instagram.com", "instagram.com") or parsed.path.rstrip("/").lower() != "/" + username:
-                raise RecipientError("Instagram requires login or a security check. Complete it in the HUD; nothing was sent.")
-            # SPA pages can omit/stale their canonical metadata. A rendered,
-            # exact username in the profile header is independent identity proof.
-            if not _profile_verified(page, username):
-                raise RecipientError("Instagram did not confirm the exact profile identity. Nothing was sent.")
-            def progress(value):
-                nonlocal step
-                step = value
-            root = _open_conversation(page, username, progress)
-            step = "message_composer"
-            composer = _composer(root)
-            draft = composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()
-            if draft.strip():
-                raise RuntimeError("This Instagram chat already has an unsent draft. It was not changed or sent; review it in the HUD.")
-            def check_sender():
-                if expected_sender is None:
-                    return
-                current = hub._cookie_dict("instagram")
-                key = "ds_user_id" if expected_sender.get("ds_user_id") else "sessionid"
-                if not expected_sender.get(key) or expected_sender.get(key) != current.get(key):
-                    raise RecipientError("The signed-in account changed. The draft was not submitted; request a new confirmation.")
-
-            check_sender()
-            composer.fill(message)
-            actual = composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()
-            if actual != message:
-                raise RuntimeError("The composer did not retain the exact approved text. The draft was not submitted.")
-            step = "send_control"
-            send = root.get_by_role("button", name=re.compile(r"^(Send|Send message|إرسال|ارسال|إرسال رسالة|ارسال رسالة)$", re.I))
-            count = send.count()
-            if count > 1 or (count == 1 and not send.is_enabled()):
-                raise RuntimeError("No unique enabled Send control. The draft was not submitted; review it in the HUD.")
-            check_sender()
-            allowed, reason = hub.accounts.check_permission("instagram", "send")
-            if not allowed:
-                raise RuntimeError(f"Send blocked by current permission: {reason}. The draft was not submitted.")
-            acknowledgments = []
-
-            def observe(response):
-                ack = _send_ack(response)
-                if ack:
-                    acknowledgments.append(ack)
-
-            page.on("response", observe)
-            step = "submit_once"
-            attempted = True  # a click timeout can still mean the message was submitted
-            if count == 1:
-                send.click()
-            else:
-                # Instagram also exposes Enter-to-send composers with no
-                # labelled Send button. Submit only this verified composer.
-                composer.press("Enter")
-            step = "server_receipt"
-            deadline = time.monotonic() + 15.0
-            while not acknowledgments and time.monotonic() < deadline:
-                page.wait_for_timeout(250)
-            if not acknowledgments:
-                raise DeliveryUnknown("Instagram's native Send control was activated, but no server acknowledgment was received. Check the chat in the HUD before retrying. No automatic retry was made.")
-            return (f"Sent Instagram message to @{username} through Instagram's own web composer. "
-                    f"Instagram acknowledgment: {acknowledgments[0]}. This does not mean the recipient has read it.")
-        except DeliveryUnknown as exc:
-            raise DeliveryUnknown(f"[IG:{step}] {exc}") from exc
-        except Exception as exc:
-            if attempted:
-                raise DeliveryUnknown(f"[IG:{step}] The Instagram native send was attempted, but its result is unknown. Check the chat in the HUD before retrying; no automatic retry was made.") from exc
-            if isinstance(exc, RecipientError):
-                raise RecipientError(f"[IG:{step}] {exc}") from exc
-            if isinstance(exc, RuntimeError) and not type(exc).__module__.startswith("playwright"):
-                raise RuntimeError(f"[IG:{step}] {exc}") from exc
-            if step in ("browser_start", "background_tab_prepare", "playwright_driver_start", "browser_attach"):
-                raise RuntimeError(f"[IG:{step}] {type(exc).__name__}: browser control could not start or attach. This is not an Instagram login prompt. Restart JARVIS and check its dedicated Chrome/Edge process and remote-debugging policy. Nothing was submitted.") from exc
-            # Playwright call logs may contain approved message text; do not
-            # expose those logs or hide the failing step behind a generic error.
-            raise RuntimeError(f"[IG:{step}] {type(exc).__name__}. Open Instagram DMs in the HUD and check login, security prompts, or an unsent draft. Nothing was submitted.") from exc
-        finally:
-            # Cleanup cannot turn an acknowledged send into a failure/retry.
-            if playwright is not None:
-                try:
-                    playwright.stop()
-                except Exception:
-                    pass
+        return InstagramMessageRun(hub, username, message, expected_sender).run()
