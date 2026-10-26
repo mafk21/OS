@@ -93,8 +93,96 @@ _CHAT_READY_JS = r"""username => {
       return 'dialog';
     }
   }
-  return /^\/direct\/t\/[^/]+/.test(location.pathname) ? 'thread' : false;
+  return /^\/direct\/(?:e2ee\/)?t\/[^/]+/.test(location.pathname) ? 'thread' : false;
 }"""
+
+
+def _wait_chat(page, username: str, *, timeout: int = 12000):
+    state = page.wait_for_function(_CHAT_READY_JS, arg=username, timeout=timeout).json_value()
+    if state == "blocked":
+        raise RecipientError("Complete Instagram's login/security check in the HUD; nothing was sent.")
+    return page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
+
+
+def _open_from_compose(page, username: str):
+    """Recover only pre-submission navigation, never retry a message write.
+
+    Instagram's profile Message button may be missing, blocked by an overlay,
+    or leave the profile unchanged. Its dedicated new-message page is a separate
+    first-party route. Resolve one exact username there before opening the chat.
+    """
+    page.goto("https://www.instagram.com/direct/new/", wait_until="domcontentloaded")
+    searches = page.locator('input[name="queryBox"]:visible, input[placeholder*="Search" i]:visible, '
+                            'input[placeholder*="بحث"]:visible, input[aria-label*="Search" i]:visible')
+    searches.first.wait_for(state="visible")
+    if searches.count() != 1:
+        raise RecipientError("Instagram did not expose a unique recipient search. Nothing was sent.")
+    searches.fill(username)
+    # Inspect only selectable search rows, not arbitrary text elsewhere in the
+    # inbox. The username must be the row's primary label, not a full-name
+    # substring, and there must be exactly one matching row.
+    page.wait_for_function(r"""username => {
+      for (const old of document.querySelectorAll('[data-jarvis-recipient]')) old.removeAttribute('data-jarvis-recipient');
+      const rows = Array.from(document.querySelectorAll('[role="button"], label'))
+        .filter(row => row.getBoundingClientRect().width && row.querySelector('input[type="checkbox"], [role="checkbox"], [role="radio"], input[type="radio"]'));
+      const matches = rows.filter(row => {
+        const lines = (row.innerText || '').split('\n').map(s => s.trim()).filter(Boolean);
+        return lines[0] && lines[0].replace(/^@/, '').toLowerCase() === username;
+      }).filter(row => !rows.some(other => other !== row && row.contains(other)));
+      if (matches.length !== 1) return false;
+      matches[0].setAttribute('data-jarvis-recipient', 'exact');
+      return true;
+    }""", arg=username, timeout=15000)
+    row = page.locator('[data-jarvis-recipient="exact"]')
+    selected = r"""() => Array.from(document.querySelectorAll(
+      'input[type="checkbox"]:checked, input[type="radio"]:checked, [role="checkbox"][aria-checked="true"], [role="radio"][aria-checked="true"]'
+    )).filter(el => el.closest('[data-jarvis-recipient="exact"]') === null).length"""
+    if page.evaluate(selected):
+        raise RecipientError("Instagram already has another recipient selected. No group was created and nothing was sent.")
+    row.click()
+    page.wait_for_function(r"""() => {
+      const row = document.querySelector('[data-jarvis-recipient="exact"]');
+      return row && row.querySelector('input:checked, [aria-checked="true"]');
+    }""", timeout=5000)
+    if page.evaluate(selected):
+        raise RecipientError("Instagram selected more than the approved recipient. Nothing was sent.")
+    # This selects a recipient, NOT a Send operation. Never click a generic
+    # "Send" control here or infer success from selecting a search result.
+    next_control = page.get_by_role("button", name=re.compile(r"^(Chat|Next|دردشة|التالي)$", re.I))
+    next_control.first.wait_for(state="visible")
+    if next_control.count() != 1 or not next_control.is_enabled():
+        raise RecipientError("Instagram did not expose a unique Chat/Next control. Nothing was sent.")
+    next_control.click()
+    return _wait_chat(page, username)
+
+
+def _open_conversation(page, username: str, progress):
+    names = re.compile(r"^(Message|Send message|إرسال رسالة|ارسال رسالة|رسالة)$", re.I)
+    try:
+        progress("profile_message_control")
+        # Hidden responsive copies should not make a unique visible control
+        # appear ambiguous or cause us to wait forever on the first hidden one.
+        buttons = page.get_by_role("button", name=names).or_(page.get_by_role("link", name=names)).and_(page.locator(":visible"))
+        buttons.first.wait_for(state="visible", timeout=8000)
+        if buttons.count() != 1:
+            raise RecipientError("No unique visible profile Message control.")
+        buttons.click(timeout=8000)
+        progress("conversation_transition")
+        return _wait_chat(page, username)
+    except Exception as exc:
+        # Only a Playwright timeout justifies navigation recovery; identity,
+        # security-check and other explicit failures must not be bypassed.
+        if not (type(exc).__name__ == "TimeoutError" and type(exc).__module__.startswith("playwright")):
+            raise
+        # A click can finish navigating just as its wait expires. Inspect state
+        # again before abandoning it, without filling or submitting anything.
+        state = page.evaluate(_CHAT_READY_JS, username)
+        if state == "blocked":
+            raise RecipientError("Complete Instagram's login/security check in the HUD; nothing was sent.") from exc
+        if state in ("thread", "dialog"):
+            return page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
+        progress("compose_recipient_lookup")
+        return _open_from_compose(page, username)
 
 
 def _composer(root):
@@ -154,17 +242,10 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
             # exact username in the profile header is independent identity proof.
             if not _profile_verified(page, username):
                 raise RecipientError("Instagram did not confirm the exact profile identity. Nothing was sent.")
-            step = "open_conversation"
-            names = re.compile(r"^(Message|Send message|إرسال رسالة|ارسال رسالة|رسالة)$", re.I)
-            buttons = page.get_by_role("button", name=names).or_(page.get_by_role("link", name=names))
-            buttons.first.wait_for(state="visible")
-            if buttons.count() != 1:
-                raise RecipientError("The exact profile has no unique Message control. Check messaging restrictions in the HUD; nothing was sent.")
-            buttons.click()
-            state = page.wait_for_function(_CHAT_READY_JS, arg=username).json_value()
-            if state == "blocked":
-                raise RecipientError("Complete Instagram's login/security check in the HUD; nothing was sent.")
-            root = page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
+            def progress(value):
+                nonlocal step
+                step = value
+            root = _open_conversation(page, username, progress)
             step = "message_composer"
             composer = _composer(root)
             draft = composer.input_value() if composer.evaluate("el => el.tagName === 'TEXTAREA'") else composer.inner_text()

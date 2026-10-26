@@ -18,6 +18,9 @@ class Locator:
     def first(self):
         return self
 
+    def and_(self, _):
+        return self
+
     def nth(self, _):
         return self
 
@@ -36,7 +39,7 @@ class Locator:
     def get_attribute(self, name):
         return self.page.canonical if name == "href" else None
 
-    def click(self):
+    def click(self, **_):
         if self.kind == "message":
             self.page.url = "https://www.instagram.com/direct/t/intended-thread/"
         elif self.kind == "send":
