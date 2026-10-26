@@ -304,3 +304,61 @@ def test_static_hud_bundle_contains_male_and_female_editions():
     assert "MALE EDITION" in combined
     assert "CHOOSE INTERFACE VERSION" in combined
 
+
+def test_persona_choice_remembered_across_restarts_and_changeable_anytime(
+    tmp_path, monkeypatch
+):
+    import json
+
+    from actions.companion_os import companion_os
+    from memory import config_manager as cfg
+
+    fake_cfg = tmp_path / "api_keys.json"
+    monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cfg, "CONFIG_FILE", fake_cfg)
+    monkeypatch.delenv("JARVIS_SKIP_PERSONA_PROMPT", raising=False)
+
+    # 1. Fresh install: API key saved, but persona NOT chosen yet -> asks once
+    cfg.save_api_keys(gemini_api_key="AIzaSyFreshInstallTestKey12345")
+    assert cfg.is_persona_chosen() is False
+
+    # 2. User selects Female edition on first run -> persisted to disk
+    res_f = cfg.save_persona("female")
+    assert res_f["persona"] == "female"
+    assert cfg.is_persona_chosen() is True
+    saved_disk = json.loads(fake_cfg.read_text(encoding="utf-8"))
+    assert saved_disk["persona"] == "female"
+    assert saved_disk["persona_chosen"] is True
+
+    # 3. Simulate app restart (new bridge / new JarvisUI session): remembered automatically!
+    restarted_ui = _DummyUI()
+    restarted_ui._win._ready = True
+    restarted_ui._persona_selected = cfg.is_persona_chosen()
+    assert restarted_ui._persona_selected is True
+
+    bridge = ApexHudBridge(restarted_ui, port=0)
+    boot_after_restart = bridge.snapshot()
+    assert boot_after_restart["persona_chosen"] is True
+    assert boot_after_restart["persona"] == "female"
+
+    # 4. Legacy config upgrade: even if an older api_keys.json only had `"persona": "male"`
+    #    (without `"persona_chosen"`), it is still remembered without re-prompting!
+    fake_cfg.write_text(
+        json.dumps({"gemini_api_key": "AIzaSyLegacyKey1234567890", "persona": "male"}),
+        encoding="utf-8",
+    )
+    assert cfg.is_persona_chosen() is True
+    assert cfg.get_persona() == "male"
+
+    # 5. User can still switch anytime later (via HUD action OR voice/text `companion_os`)
+    out_voice = companion_os({"action": "set_persona", "persona": "female"})
+    assert "Female edition" in out_voice
+    assert cfg.get_persona() == "female"
+    assert cfg.is_persona_chosen() is True
+
+    r_hud = bridge.handle_action({"action": "set_persona", "persona": "male"})
+    assert r_hud["ok"] is True
+    assert cfg.get_persona() == "male"
+    assert cfg.is_persona_chosen() is True
+
+

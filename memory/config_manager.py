@@ -210,6 +210,15 @@ def get_persona() -> str:
     return "male"
 
 
+def is_persona_chosen() -> bool:
+    """Return True once the user has chosen Male or Female at least once."""
+    data = load_api_keys()
+    if bool(data.get("persona_chosen", False)):
+        return True
+    raw = str(data.get("persona", "") or "").strip().lower()
+    return raw in PERSONAS
+
+
 def save_persona(persona: str, voice_name: str | None = None) -> dict:
     """Persist the chosen interface persona ('male' or 'female'), matching
     Gemini Live voice, and UI accent colour in one atomic update."""
@@ -233,6 +242,7 @@ def save_persona(persona: str, voice_name: str | None = None) -> dict:
 
     ui_color = FEMALE_UI_COLOR if p == "female" else MALE_UI_COLOR
     data["persona"] = p
+    data["persona_chosen"] = True
     data["voice_name"] = chosen_voice
     data["ui_color"] = ui_color
     CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")

@@ -1533,7 +1533,9 @@ export default function JarvisHudOverlays() {
                   flex: 1,
                 }}
               >
-                {assistantName.toUpperCase()} · CHOOSE INTERFACE VERSION
+                {personaChosen
+                  ? `${assistantName.toUpperCase()} · SWITCH INTERFACE EDITION`
+                  : `${assistantName.toUpperCase()} · CHOOSE INTERFACE VERSION`}
               </span>
               {personaChosen && (
                 <button
@@ -1562,9 +1564,11 @@ export default function JarvisHudOverlays() {
                 color: "rgba(240,237,232,0.74)",
               }}
             >
-              Select whether to launch the <strong>Male</strong> or{" "}
-              <strong>Female</strong> edition. Hover or tap either card to
-              preview the 3D core palette live before activating.
+              Select whether to use the <strong>Male</strong> or{" "}
+              <strong>Female</strong> edition. Your choice is remembered
+              automatically whenever you open {assistantName}, and you can
+              switch anytime later from the top-right{" "}
+              <strong>♂ / ♀</strong> button, Settings (⚙), or by voice.
             </div>
 
             <div

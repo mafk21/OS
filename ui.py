@@ -6279,15 +6279,26 @@ class JarvisUI:
         self._classic_mode = False
         self._embedded_hud = False
         self._pending_text_commands: list[str] = []
-        from memory.config_manager import is_integrations_onboarding_done
+        from memory.config_manager import (
+            get_ui_color,
+            is_integrations_onboarding_done,
+            is_persona_chosen,
+        )
         self._integrations_ready = (
             os.environ.get("JARVIS_SKIP_INTEGRATIONS_PROMPT", "").strip().lower()
             in ("1", "true", "yes")
             or is_integrations_onboarding_done()
         )
-        self._persona_selected = os.environ.get(
-            "JARVIS_SKIP_PERSONA_PROMPT", ""
-        ).strip().lower() in ("1", "true", "yes")
+        self._persona_selected = (
+            os.environ.get("JARVIS_SKIP_PERSONA_PROMPT", "").strip().lower()
+            in ("1", "true", "yes")
+            or is_persona_chosen()
+        )
+        if self._persona_selected:
+            try:
+                self._win._preview_ui_color(get_ui_color())
+            except Exception:
+                pass
 
         classic_mode = os.environ.get("JARVIS_CLASSIC_UI", "").strip().lower() in (
             "1", "true", "yes",

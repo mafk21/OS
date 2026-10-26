@@ -115,6 +115,33 @@ def companion_os(parameters: dict[str, Any] | None = None, player=None, **_kwarg
             comp = companions.set_active_companion(cid)
             return f"Switched active companion to {comp['name']} ({comp['role']}, {comp['persona']} edition)."
 
+        if action in ("set_persona", "switch_persona", "switch_gender", "set_gender"):
+            from core.apex_bridge import get_active_bridge
+            from memory import config_manager as cfg
+
+            raw_p = str(params.get("persona") or params.get("name") or "male").strip().lower()
+            target_p = "female" if "fem" in raw_p or raw_p in ("girl", "woman", "aria") else "male"
+            req_voice = str(params.get("voice") or "").strip()
+
+            br = get_active_bridge()
+            if br is not None:
+                res_p = br.handle_action({"action": "set_persona", "persona": target_p, "voice": req_voice})
+                return (
+                    f"Switched to the {res_p.get('persona', target_p).capitalize()} edition "
+                    f"(voice: {res_p.get('voice', '')}) and saved your preference."
+                )
+            if player is not None and hasattr(player, "select_persona"):
+                res_p = player.select_persona(target_p, req_voice)
+                return (
+                    f"Switched to the {res_p['persona'].capitalize()} edition "
+                    f"(voice: {res_p['voice']}) and saved your preference."
+                )
+            res_p = cfg.save_persona(target_p, req_voice or None)
+            return (
+                f"Switched to the {res_p['persona'].capitalize()} edition "
+                f"(voice: {res_p['voice']}) and saved your preference."
+            )
+
         if action == "companion_create":
             comp = companions.save_companion(
                 {
@@ -176,7 +203,7 @@ def companion_os(parameters: dict[str, Any] | None = None, player=None, **_kwarg
             return f"ALERT: Audit hash chain broken at entry #{ch['broken_at_id']} ({ch.get('reason')})."
 
         return (
-            "Supported companion_os actions: automation_list, automation_save, automation_run, "
+            "Supported companion_os actions: set_persona, automation_list, automation_save, automation_run, "
             "automation_toggle, automation_delete, companion_list, companion_activate, "
             "companion_create, portal_create, portal_list, portal_revoke, portal_revoke_all, audit_verify."
         )
@@ -187,9 +214,10 @@ def companion_os(parameters: dict[str, Any] | None = None, player=None, **_kwarg
 TOOL = {
     "name": "companion_os",
     "description": (
-        "Manage recurring Automations, switch or create Specialist Companions, create or "
-        "revoke read-only Guest Portal share links, and verify the SHA-256 Action Audit Chain "
-        "by voice or text. Actions: automation_list | automation_save | automation_run | "
+        "Switch JARVIS's Male/Female interface & voice edition ('set_persona' with persona='male'|'female', "
+        "remembered across restarts), manage recurring Automations, switch or create Specialist Companions, "
+        "create or revoke read-only Guest Portal share links, and verify the SHA-256 Action Audit Chain "
+        "by voice or text. Actions: set_persona | automation_list | automation_save | automation_run | "
         "automation_toggle | automation_delete | companion_list | companion_activate | "
         "companion_create | portal_create | portal_list | portal_revoke | portal_revoke_all | audit_verify."
     ),
