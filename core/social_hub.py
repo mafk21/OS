@@ -2488,6 +2488,16 @@ def read_social_messages(platform: str, contact: str = "") -> dict[str, Any]:
 # ── 3. Send DM / Snap Reply & Publish Post (100% Silent Background + Confirm!) ─
 
 
+def _record_social_send_audit(*args, **kwargs) -> None:
+    # This runs AFTER an outcome exists. An unavailable audit DB must not turn
+    # a provider acknowledgment into a reported failure and encourage a resend.
+    try:
+        security_vault.log_audit_event(*args, **kwargs)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Social send audit unavailable (%s)", type(exc).__name__)
+
+
 def _execute_send_message_now(platform: str, recipient: str, message: str, actor: str) -> str:
     spec = SOCIAL_PLATFORMS[platform]
     allowed, reason = accounts.check_permission(platform, "send")
@@ -2505,7 +2515,7 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
         native_session = _CDP._endpoint_alive() or (socials_root_dir() / "browser_profile").exists()
         api_sent = None if native_session else _ig_api_send_dm(clean_rec, message)
         if api_sent:
-            security_vault.log_audit_event(
+            _record_social_send_audit(
                 actor,
                 f"social_send_message:{platform}",
                 {"platform": platform, "recipient": clean_rec, "length": len(message), "transport": "http_api"},
@@ -2518,7 +2528,7 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
         # supports chat variants the undocumented API may not expose.
         from core.instagram_web import send_instagram_message
         result = send_instagram_message(sys.modules[__name__], clean_rec, message, expected_sender=original_sender)
-        security_vault.log_audit_event(actor, f"social_send_message:{platform}",
+        _record_social_send_audit(actor, f"social_send_message:{platform}",
             {"platform": platform, "recipient": clean_rec, "length": len(message), "transport": "instagram_web_ui"},
             result_summary=result, status="ok")
         return result
@@ -2596,7 +2606,7 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
         raise DeliveryUnknown(f"The send control was activated on {spec['label']}, but delivery could not be verified. Check the HUD before retrying; no automatic retry was made.")
 
     res_msg = _CDP.run_on_tab(ws_url, _send_coro, timeout=50.0)
-    security_vault.log_audit_event(
+    _record_social_send_audit(
         actor,
         f"social_send_message:{platform}",
         {"platform": platform, "recipient": clean_rec, "length": len(message), "transport": "headless_cdp"},
@@ -2661,7 +2671,7 @@ def stage_or_send_social_message(
             result = _execute_send_message_now(plat, recipient, message, actor=actor)
         except Exception as exc:
             result = f"{spec['label']} send not confirmed: {exc}"
-            security_vault.log_audit_event(actor, f"social_send_message:{plat}",
+            _record_social_send_audit(actor, f"social_send_message:{plat}",
                 {"platform": plat, "recipient": recipient, "length": len(message)},
                 result_summary=result, status="unknown" if isinstance(exc, DeliveryUnknown) else "error")
         if on_result:

@@ -36,6 +36,10 @@ def browser_env(tmp_path, monkeypatch):
         if request.method == "POST":
             state["posts"].append(request.post_data)
             return request_route.fulfill(json={"status": "ok", "payload": {"item_id": "real-browser-simulated-id"}})
+        if path == "/api/v1/direct_v2/inbox/" and state["mode"] == "direct_lookup":
+            return request_route.fulfill(json={"status":"ok", "inbox":{"threads":[
+                {"thread_id":"test-thread", "users":[{"username":"sarah"}], "items":[{"text":"never returned to Python"}]}
+            ]}})
         if path == "/sarah/":
             if state["mode"] == "login":
                 return request_route.fulfill(status=302, headers={"Location": "https://www.instagram.com/accounts/login/"})
@@ -43,7 +47,7 @@ def browser_env(tmp_path, monkeypatch):
             control = '<a href="/direct/t/test-thread/">Message</a>' if state["mode"] == "link" else '<button onclick="location.href=\'/direct/t/test-thread/\'">Message</button>'
             if state["mode"] == "encrypted":
                 control = '<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Message</button>'
-            if state["mode"] in ("stuck", "wrong_recipient", "ambiguous_recipient", "preselected_recipient", "aria_option", "inbox_launcher"):
+            if state["mode"] in ("stuck", "wrong_recipient", "ambiguous_recipient", "preselected_recipient", "aria_option", "inbox_launcher", "direct_lookup", "nested_action", "profile_anchor", "contradictory_anchor"):
                 control = '<button>Message</button>'
             if state["mode"] == "hidden_copy":
                 control = '<button style="display:none">Message</button>' + control
@@ -62,6 +66,12 @@ def browser_env(tmp_path, monkeypatch):
                 row += '<label>someoneelse<input type="checkbox" checked></label>'
             if state['mode'] == 'aria_option':
                 row = '<div role="option" onclick="this.setAttribute(\'aria-selected\', \'true\')">sarah<br>Display name</div>'
+            if state['mode'] == 'nested_action':
+                row = '<label>sarah<br>Display name<input type="checkbox"><button type="button">More info</button></label>'
+            if state['mode'] == 'profile_anchor':
+                row = '<label>Display Name<br><a href="/sarah/" onclick="event.preventDefault()">sarah</a><input type="checkbox"></label>'
+            if state['mode'] == 'contradictory_anchor':
+                row = '<label>sarah<br><a href="/someoneelse/">Different account</a><input type="checkbox"></label>'
             search = '<input name="queryBox" placeholder="Search">'
             if state['mode'] == 'inbox_launcher':
                 search = '<button onclick="this.outerHTML=\'<input name=&quot;queryBox&quot; placeholder=&quot;Search&quot;>\'"><svg aria-label="New message"></svg></button>'
@@ -124,7 +134,7 @@ def browser_env(tmp_path, monkeypatch):
         assert not thread.is_alive(), "Browser controller leaked"
 
 
-@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal", "encrypted", "hidden_copy", "stuck", "aria_option", "inbox_launcher"])
+@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal", "encrypted", "hidden_copy", "stuck", "aria_option", "inbox_launcher", "direct_lookup", "nested_action", "profile_anchor"])
 def test_actual_confirmed_native_send_variants(browser_env, mode):
     browser_env["mode"] = mode
     completed = threading.Event()
@@ -150,7 +160,7 @@ def test_actual_browser_blocks_draft_or_login_without_sending(browser_env, mode)
     assert not browser_env["posts"]
 
 
-@pytest.mark.parametrize("mode", ["wrong_recipient", "ambiguous_recipient", "preselected_recipient"])
+@pytest.mark.parametrize("mode", ["wrong_recipient", "ambiguous_recipient", "preselected_recipient", "contradictory_anchor"])
 def test_compose_recovery_never_selects_wrong_or_ambiguous_recipient(browser_env, mode):
     browser_env["mode"] = mode
     with pytest.raises(RuntimeError, match=r"IG:compose_(exact_recipient|selection)"):

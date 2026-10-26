@@ -162,6 +162,13 @@ def social_hub(
         recipient = str(params.get("recipient") or params.get("contact") or "").strip()
         message = str(params.get("message") or params.get("text") or "").strip()
         def report_result(result: str) -> None:
+            # Persist the exact outcome in the visible transcript, not only a
+            # transient card or an LLM-generated paraphrase of a hidden error.
+            if player is not None and callable(getattr(player, "write_log", None)):
+                try:
+                    player.write_log("SYS: " + result)
+                except Exception:
+                    pass
             # Never let one broken display channel swallow the execution result.
             displayed = False
             if player is not None and hasattr(player, "show_content"):
@@ -181,8 +188,9 @@ def social_hub(
             if callable(speak):
                 try:
                     speak("Report the following social-message execution result accurately in the user's language, "
-                          "including its IG step code and recovery action if present. Do not replace it with a generic "
-                          "system problem, and do not claim delivery without an Instagram acknowledgment. Result: " + result)
+                          "including its exact IG step code and specific reason. Do not invent a login/security explanation "
+                          "unless the result explicitly observed a login/security screen. Do not invent an honorific. "
+                          "Do not claim delivery without an Instagram acknowledgment. Result: " + result)
                 except Exception:
                     pass
 
@@ -192,7 +200,7 @@ def social_hub(
             # Readiness/vault/UI failures can occur before the gate is staged.
             # Do not leak raw exception logs (they may contain private input).
             result = (f"Social message execution stopped [IG:prepare:{type(exc).__name__}]. "
-                      "Open Instagram DMs in the HUD to check login or security prompts. "
+                      "The operation failed during preparation, before a result could be established. "
                       "Check the chat before retrying; no automatic resend was made.")
             report_result(result)
             return result
