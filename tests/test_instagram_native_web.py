@@ -135,7 +135,7 @@ def native(monkeypatch):
     permission = {"allowed": True}
     cookies = {"sessionid": "fake-session", "ds_user_id": "1"}
     hub = SimpleNamespace(
-        _CDP=SimpleNamespace(_port=1234, get_or_open_tab=Mock(return_value={"id": "background-target"})),
+        _CDP=SimpleNamespace(_port=1234, ensure_browser=Mock(return_value=1234), get_or_open_tab=Mock(return_value={"id": "background-target"})),
         accounts=SimpleNamespace(check_permission=lambda *_: (permission["allowed"], "read-only")),
         _cookie_dict=lambda _: cookies,
     )
@@ -222,6 +222,7 @@ def test_hud_confirmation_native_send_with_real_playwright_loop(native, monkeypa
 
     cdp = sh._NativeCdpSocialBrowser()
     cdp._port = 1234
+    monkeypatch.setattr(cdp, "ensure_browser", lambda **_: 1234)
     monkeypatch.setattr(sh, "_CDP", cdp)
     loop_handoffs = []
 
