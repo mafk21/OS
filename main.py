@@ -1872,6 +1872,14 @@ class JarvisLive:
         })
 
         parts = [time_ctx, identity_ctx]
+        # Shared by Gemini Live and the OpenAI adapters: retain discoverability after restarts.
+        try:
+            from core.topic_learning import prompt_index
+            study_index = prompt_index()
+            if study_index:
+                parts.append(study_index)
+        except Exception:
+            pass
         try:
             from memory.accounts import format_connected_for_prompt
             parts.append(format_connected_for_prompt())
@@ -2089,9 +2097,9 @@ class JarvisLive:
                 # uploaded Brain knowledge files, Forever Timeline, and outputs.
                 try:
                     from memory.timeline import unified_brain_search
-                    result = unified_brain_search(args.get("query", ""), limit=8)
+                    result = await loop.run_in_executor(None, lambda: unified_brain_search(args.get("query", ""), limit=8))
                 except Exception:
-                    result = search_memory(args.get("query", ""), limit=8)
+                    result = await loop.run_in_executor(None, lambda: search_memory(args.get("query", ""), limit=8))
 
             elif name == "skill_read":
                 # Skills live on disk as SKILL.md folders; metadata is already in

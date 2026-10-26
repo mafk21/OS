@@ -68,6 +68,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "video_player": ["social_media", "design"],
     "memory": ["memory"],
     "brain_control": ["memory", "editor"],
+    "topic_learning": ["memory", "researcher"],
     "smart_notes": ["memory", "editor"],
     "lecture_capture": ["memory", "editor"],
     "code_helper": ["developer", "engineering"],

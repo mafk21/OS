@@ -14,6 +14,7 @@ Search across all three local memory layers — personal facts, saved notes/vaul
 ## Procedure
 
 1. **Pick the right recall layer (run 2+ when uncertain where it lives)**:
+   - **Previously studied subjects**: `topic_learning` (`action="search"`, `query="..."`), then `read` for cited notes and review status. For requests to learn a new subject, use the `topic-learning` skill rather than only saving a short personal fact.
    - **Unified Brain & Forever Timeline (`brain_control` / `recall_memory`)**: Call `recall_memory` (`query="..."`) or `brain_control` (`action="search" | "timeline" | "outputs" | "ingest_file"`) to search personal memories, uploaded Brain knowledge files, months of spoken/typed/Telegram Forever Timeline turns, and past generated reports in one shot.
    - **What appeared visually on screen (OCR + window titles)**: Call `screen_memory_search` (`query="..."`) for error messages, URLs, slides, code snippets, or chats the user viewed earlier.
    - **Saved notes**: Call `manage_notes` (`action="search"`, `query="..."`).

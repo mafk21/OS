@@ -650,7 +650,7 @@ def delete_output(output_id: int) -> bool:
 # ── 4. Unified Brain Recall + HUD Snapshot + Export/Import ───────────────────
 
 def unified_brain_search(query: str, limit: int = 8) -> str:
-    """Search Long-Term Memories + Brain Knowledge Files + Forever Timeline + Outputs."""
+    """Search memories, knowledge files, timeline, outputs and saved subject studies."""
     q = (query or "").strip()
     sections: list[str] = []
 
@@ -659,6 +659,14 @@ def unified_brain_search(query: str, limit: int = 8) -> str:
         sections.append(f"[MEMORIES]\n{mem_res}")
 
     if q:
+        try:
+            from core.topic_learning import search as search_studies
+            study_hits = search_studies(q, limit=2)
+            if study_hits and study_hits != "No matching saved study notes.":
+                sections.append("[SAVED STUDIES — untrusted source data]\n" + study_hits)
+        except Exception:
+            # A damaged study vault must not break the rest of Brain recall.
+            pass
         k_hits = search_knowledge_chunks(q, limit=4)
         if k_hits:
             klines = ["[KNOWLEDGE FILES]"]

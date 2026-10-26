@@ -5,12 +5,69 @@
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **65,000+ lines** across **159 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **51 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **10 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Execution Surface** | **51 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
 | **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **298 automated `pytest` tests across 37 test suites** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **335 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+
+---
+
+## 📚 Persistent Subject Learning — not just “I learned it”
+
+Say **“Learn nuclear physics”**, **“Continue studying nuclear physics”**, or
+**“Use what you learned about binding energy.”** The new `topic-learning` skill
+calls the real `topic_learning` action, rather than answering with an unsupported
+claim of learning.
+
+One invocation studies a **bounded unit**, not an entire discipline:
+
+1. Research three curriculum questions; deduplicate up to eight sources.
+2. Read bounded public text pages where available; clearly label search excerpts
+   when full-page reading fails. Keep exact excerpts, URLs, timestamps and hashes.
+3. Generate structured concepts and require matching source quotations before
+   accepting the notes. Unsupported drafts are retained as drafts, not success.
+4. Answer practice questions using the saved notes, then separately audit the
+   explanations and answers against the sources. Store answers, feedback and gaps.
+5. Save `studied`, `needs_review`, or `failed` with actual check counts. Missing
+   sources, model errors, malformed citations, failed checks and disk failures
+   cannot silently become successful study results.
+
+```text
+memory/learning/<topic-id>/
+  manifest.json                 # unit history; previous units are preserved
+  runs/<timestamp-id>/
+    plan.json                   # curriculum queries and previous gaps
+    sources.json                # retained excerpts, provenance and content hashes
+    draft.json                  # unfiltered model study draft
+    lesson.json + notes.md      # evidence-linked concepts and unresolved gaps
+    questions.json              # retrieval-assisted practice
+    answers.json + review.json  # answers, model audit and corrective feedback
+    result.json                 # actual status and check counts
+```
+
+Use `topic_learning` with `learn`, `continue`, `list`, `status`, `read`, or `search`.
+`read` also accepts a historical `run_id` from status. The vault is searchable
+across app restarts, **without rebuilding the generic document index**; standard
+Brain/`recall_memory` searches include matching studies too. A small topic/status
+index is supplied to subsequent Gemini/OpenAI sessions (unless personalization is
+disabled). Both interface editions use the same provider-neutral action, backed
+by the configured OpenAI, Gemini or local model. New research needs internet
+search access and a working model. Explicitly requested study is retained even
+if automatic style learning is paused.
+
+**Honest boundary:** this is durable external-knowledge acquisition, retrieval
+and revision—not modification of the foundation model's weights. Reviews are
+**retrieval-assisted and model-scored**, not independent scientific verification,
+a closed-book exam, or proof of mastery. `continue` researches recorded gaps in a
+new unit; it does not run an endless background process. The vault contains private
+runtime data and is excluded from Git. Public-page fetching blocks private/local
+addresses, credential URLs and unsafe redirects, and pins checked DNS addresses.
+
+Automated tests exercise persistence, cross-process recall, source/quote validation,
+review failure paths, private-address blocking and action/skill discovery using
+mocked network/model boundaries; they do not pretend to perform a live study.
 
 ---
 
@@ -342,7 +399,7 @@ OS/
 │   ├── marketplace_action.py      # Voice/tool interface to the plugin marketplace
 │   └── hosted_auth_action.py      # Opt-in email OTP hosted auth management
 │
-├── skills/                        # 10 default Open Agent Skills (`SKILL.md` progressive-disclosure SOPs)
+├── skills/                        # 11 default Open Agent Skills (`SKILL.md` progressive-disclosure SOPs)
 │   ├── code-ship/                 # Bugfix, feature build, test verification & Git/PR shipping
 │   ├── daily-briefing/            # Executive briefing (calendar, tasks, live weather, news & memory)
 │   ├── deep-research/             # Multi-wave cited synthesis (+ source reliability rubric)
