@@ -913,6 +913,28 @@ class _CdpConnection:
                 return res if isinstance(res, dict) else {}
 
 
+class SocialBrowserStartupError(RuntimeError):
+    """Browser lifecycle failure, distinct from Instagram login/navigation."""
+
+
+def _profile_browser_processes(profile_dir: Path) -> list[tuple[int, bool]]:
+    """Find only processes using OUR exact profile; never terminate them here."""
+    import psutil
+    expected = os.path.normcase(os.path.realpath(profile_dir))
+    matches = []
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            args = proc.info.get("cmdline") or []
+            profile = next((a.split("=", 1)[1] for a in args if a.startswith("--user-data-dir=")), "")
+            if not profile or os.path.normcase(os.path.realpath(profile.strip('"'))) != expected:
+                continue
+            port = next((a.split("=", 1)[1] for a in args if a.startswith("--remote-debugging-port=")), "0")
+            matches.append((int(port) if port.isdigit() else 0, any(a.startswith("--headless") for a in args)))
+        except (psutil.Error, OSError):
+            continue
+    return matches
+
+
 class _NativeCdpSocialBrowser:
     """Manages `~/.jarvis_socials/browser_profile` via real Chrome/Edge + CDP."""
 
@@ -928,10 +950,43 @@ class _NativeCdpSocialBrowser:
         if not self._port:
             return False
         try:
-            r = httpx.get(f"http://127.0.0.1:{self._port}/json/version", timeout=1.2)
-            return r.status_code == 200
+            r = httpx.get(f"http://127.0.0.1:{self._port}/json/version", timeout=1.2, trust_env=False)
+            return (r.status_code == 200 and
+                    str(r.json().get("webSocketDebuggerUrl") or "").startswith("ws://"))
         except Exception:
             return False
+
+    def _recover_profile_browser(self, profile_dir: Path) -> bool:
+        # Chromium's own endpoint file includes an unguessable browser target
+        # token. Validate it so a stale/reused port cannot attach to another app.
+        try:
+            lines = (profile_dir / "DevToolsActivePort").read_text().splitlines()
+            port, token = int(lines[0]), lines[1]
+            if not 0 < port < 65536 or not token.startswith("/devtools/browser/"):
+                raise ValueError("invalid endpoint")
+            response = httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=1.2, trust_env=False)
+            if response.status_code == 200 and urlsplit(response.json().get("webSocketDebuggerUrl", "")).path == token:
+                self._port = port
+                self._headless = None  # recovered session; never restart just to switch modes
+                return True
+        except (OSError, ValueError, IndexError, TypeError, AttributeError, httpx.HTTPError):
+            pass
+        # Older releases used a fixed random port, so Chrome did not write
+        # DevToolsActivePort. Recover those via their exact profile arguments.
+        owners = _profile_browser_processes(profile_dir)
+        for port, headless in owners:
+            self._port = port
+            if self._endpoint_alive():
+                self._headless = headless
+                return True
+        self._port = 0
+        if owners:
+            raise SocialBrowserStartupError(
+                "[browser:profile_busy] The JARVIS social browser is already running with this profile, "
+                "but its control port is unavailable. No second browser was launched and no profile locks were removed. "
+                "Close that dedicated JARVIS browser process and retry; your saved login is preserved. Nothing was submitted."
+            )
+        return False
 
     def shutdown(self) -> None:
         with self._lock:
@@ -940,7 +995,7 @@ class _NativeCdpSocialBrowser:
     def _shutdown_locked(self) -> None:
         if self._port and not os.environ.get("JARVIS_SOCIALS_CDP_PORT", "").strip():
             try:
-                v = httpx.get(f"http://127.0.0.1:{self._port}/json/version", timeout=1.0).json()
+                v = httpx.get(f"http://127.0.0.1:{self._port}/json/version", timeout=1.0, trust_env=False).json()
                 b_ws = v.get("webSocketDebuggerUrl")
                 if b_ws:
                     self.run_on_tab(
@@ -972,6 +1027,8 @@ class _NativeCdpSocialBrowser:
         if env_port.isdigit():
             self._port = int(env_port)
             self._headless = bool(headless)
+            if not self._endpoint_alive():
+                raise SocialBrowserStartupError("[browser:external_port] The configured JARVIS_SOCIALS_CDP_PORT is not a browser endpoint. Check that setting; nothing was submitted.")
             return self._port
 
         with self._lock:
@@ -982,23 +1039,15 @@ class _NativeCdpSocialBrowser:
                 else:
                     return self._port
 
-            exe = find_chromium_binary()
-            if not exe:
-                raise RuntimeError(
-                    "No Chromium browser (Chrome, Edge, Brave, Opera) found on this machine."
-                )
-
             profile_dir = socials_root_dir() / "browser_profile"
             profile_dir.mkdir(parents=True, exist_ok=True)
-            for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-                lp = profile_dir / lock_name
-                if lp.is_symlink() or lp.exists():
-                    try:
-                        lp.unlink()
-                    except Exception:
-                        pass
+            if self._recover_profile_browser(profile_dir):
+                return self._port
+            exe = find_chromium_binary()
+            if not exe:
+                raise SocialBrowserStartupError("[browser:missing_binary] No Chrome/Edge/Chromium executable found. Install one or set JARVIS_SOCIALS_BROWSER_BIN. Nothing was submitted.")
 
-            port = _pick_free_port()
+            port = 0  # Chromium selects/binds the port atomically and writes DevToolsActivePort
             args = [
                 exe,
                 f"--user-data-dir={profile_dir}",
@@ -1020,14 +1069,35 @@ class _NativeCdpSocialBrowser:
             self._port = port
             self._headless = bool(headless)
 
-            deadline = time.monotonic() + 14.0
+            deadline = time.monotonic() + 45.0
             while time.monotonic() < deadline:
-                if self._endpoint_alive():
-                    break
+                try:
+                    lines = (profile_dir / "DevToolsActivePort").read_text().splitlines()
+                    candidate = int(lines[0])
+                    if 0 < candidate < 65536:
+                        response = httpx.get(f"http://127.0.0.1:{candidate}/json/version", timeout=1.0, trust_env=False)
+                        if (response.status_code == 200 and len(lines) > 1 and
+                                urlsplit(response.json().get("webSocketDebuggerUrl", "")).path == lines[1]):
+                            self._port = candidate
+                            break
+                except (OSError, ValueError, IndexError, TypeError, AttributeError, httpx.HTTPError):
+                    pass
+                code = self._proc.poll()
+                if code is not None:
+                    self._proc = None
+                    self._port = 0
+                    raise SocialBrowserStartupError(
+                        f"[browser:exited] Chrome/Edge exited before its control endpoint was ready (exit {code}). "
+                        "Check the dedicated browser profile and your device's browser/security policy. "
+                        "No Instagram page was opened and nothing was submitted."
+                    )
                 time.sleep(0.2)
             else:
                 self._shutdown_locked()
-                raise RuntimeError("Timed out waiting for Chrome/Edge social session port.")
+                raise SocialBrowserStartupError(
+                    "[browser:endpoint_timeout] The dedicated browser did not expose its local control endpoint within 45 seconds. "
+                    "Check your device's Chrome/Edge remote-debugging security policy. This is not an Instagram login error. Nothing was submitted."
+                )
 
             all_saved: list[dict[str, Any]] = []
             live_cookies = self.get_all_cookies()
@@ -1049,7 +1119,7 @@ class _NativeCdpSocialBrowser:
         if not self._endpoint_alive():
             return []
         try:
-            items = httpx.get(f"http://127.0.0.1:{self._port}/json/list", timeout=3.0).json()
+            items = httpx.get(f"http://127.0.0.1:{self._port}/json/list", timeout=3.0, trust_env=False).json()
             return [
                 t
                 for t in items
@@ -1100,9 +1170,9 @@ class _NativeCdpSocialBrowser:
         if chosen is None:
             enc_u = quote(url, safe=":/?&=%#+-_~.")
             new_url = f"http://127.0.0.1:{self._port}/json/new?{enc_u}"
-            resp = httpx.put(new_url, timeout=5.0)
+            resp = httpx.put(new_url, timeout=5.0, trust_env=False)
             if resp.status_code == 405:
-                resp = httpx.get(new_url, timeout=5.0)
+                resp = httpx.get(new_url, timeout=5.0, trust_env=False)
             resp.raise_for_status()
             chosen = resp.json()
             force_navigate = False

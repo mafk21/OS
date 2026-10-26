@@ -242,8 +242,11 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
     with _LOCK:
         try:
             profile_url = f"https://www.instagram.com/{username}/"
+            hub._CDP.ensure_browser(headless=True)
+            step = "background_tab_prepare"
             tab = hub._CDP.get_or_open_tab("instagram", profile_url, headless=True,
                                           force_navigate=True, purpose="send")
+            step = "playwright_driver_start"
             playwright = _playwright().start()
             step = "browser_attach"
             browser = playwright.chromium.connect_over_cdp(f"http://127.0.0.1:{hub._CDP._port}", timeout=15000)
@@ -336,6 +339,8 @@ def send_instagram_message(hub, recipient: str, message: str, *, expected_sender
                 raise RecipientError(f"[IG:{step}] {exc}") from exc
             if isinstance(exc, RuntimeError) and not type(exc).__module__.startswith("playwright"):
                 raise RuntimeError(f"[IG:{step}] {exc}") from exc
+            if step in ("browser_start", "background_tab_prepare", "playwright_driver_start", "browser_attach"):
+                raise RuntimeError(f"[IG:{step}] {type(exc).__name__}: browser control could not start or attach. This is not an Instagram login prompt. Restart JARVIS and check its dedicated Chrome/Edge process and remote-debugging policy. Nothing was submitted.") from exc
             # Playwright call logs may contain approved message text; do not
             # expose those logs or hide the failing step behind a generic error.
             raise RuntimeError(f"[IG:{step}] {type(exc).__name__}. Open Instagram DMs in the HUD and check login, security prompts, or an unsent draft. Nothing was submitted.") from exc
