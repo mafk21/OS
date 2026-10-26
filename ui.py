@@ -2325,7 +2325,13 @@ class ConfirmBanner(_HudOverlay):
             dtl.setWordWrap(True)
             dtl.setFont(QFont("Courier New", 8))
             dtl.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
-            lay.addWidget(dtl)
+            dtl.setTextFormat(Qt.TextFormat.PlainText)
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(dtl)
+            scroll.setMaximumHeight(180)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            lay.addWidget(scroll)
 
         row = QHBoxLayout(); row.setSpacing(8)
 
@@ -6623,7 +6629,7 @@ class JarvisUI:
     def show_confirm(self, title: str, detail: str) -> None:
         """Thread-safe: raise the irreversible-action gate. Called from action
         handlers running in executor threads, so it goes through a signal."""
-        self._win._confirm_sig.emit(str(title)[:120], str(detail)[:300])
+        self._win._confirm_sig.emit(str(title)[:120], str(detail)[:4000])
         if self._apex_bridge is not None:
             self._apex_bridge.push_confirm(title, detail)
 

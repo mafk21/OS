@@ -2,32 +2,28 @@
 core/social_hub.py — Silent Background Socials Engine + Live Interactive HUD Social Viewport
 (Instagram, Snapchat, TikTok, X, WhatsApp, Reddit).
 
-Architecture (v3 — Zero-Window Silent Background + Embedded HUD Viewport):
-  1. **Zero-Window Silent Background Inbox, DM Read & DM Send**:
-     - **Tier 1 (Instant HTTP API — 0 browser processes, ~250ms)**:
-       Uses your AES-256-GCM encrypted session cookies (`sessionid`, `csrftoken`,
-       `ds_user_id` in `~/.jarvis_socials/cookies_instagram.enc`) to query Instagram's
-       first-party Direct Web API (`/api/v1/direct_v2/inbox/`, `/direct_v2/threads/...`,
-       `/direct_v2/threads/broadcast/text/`, `/web/search/topsearch/`, `/news/inbox/`)
-       and Reddit's JSON inbox API directly over `httpx` — ZERO app/browser window ever opens!
-     - **Tier 2 (100% Invisible Headless Background CDP — `--headless=new` + `CREATE_NO_WINDOW`)**:
-       For Snapchat Web, WhatsApp Web, TikTok, X, or rich media inspection, runs strictly
-       in invisible `--headless=new` background mode — NEVER opening or focusing any
-       desktop window when checking inboxes, reading threads, or sending messages.
-  2. **Live Interactive HUD Social Viewport (`open_social_in_hud`, `get_hud_social_frame`, `interact_hud_social`)**:
-     - Renders Instagram (Feed, Reels, Direct DMs, Notifications, Login) and all 6 social
-       platforms directly inside JARVIS's own 3D HUD via live headless CDP frames +
-       real-time click, scroll-wheel, keyboard, and quick-type forwarding (bypassing
-       `X-Frame-Options: DENY` 100% cleanly without opening any external window).
-  3. **Unforgeable Safety Gate + Audit Trail**:
-     - Every outbound DM, Snap reply, or post is gated by `core.confirm.request` in
-       default `ask` mode and recorded in `core.security_vault.log_audit_event`.
+Architecture:
+  * Instagram: reuse the current browser session with same-origin fetch, or use
+    encrypted-cookie HTTP without starting a browser. Safe read failures may
+    recover through headless CDP. A native web-composer fallback runs only if
+    lookup failed BEFORE a send attempt; it verifies the exact profile, preserves
+    existing drafts, and requires a provider-issued send acknowledgment.
+  * Background tasks and HUD interactions use separate tabs in the persistent
+    headless profile. Routine social operations never open a desktop window.
+  * Saved credentials are not proof of live login. API/DOM observations update
+    shared session health; login and security challenges are shown in the HUD.
+  * Outbound actions obey Ask/Full/ReadOnly/Paused policies. Ask approval executes
+    once, rechecks policy/account identity, and reports the actual result.
+    Unknown write outcomes are never retried or presented as successful.
+  * Instagram's web APIs/markup may change. Unsupported operations fail honestly;
+    this is not an official general-purpose personal Instagram messaging API.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 from io import BytesIO
 import json
 import os
@@ -38,11 +34,12 @@ import re
 import shutil
 import socket
 import stat
+import sys
 import subprocess
 import threading
 import time
 from typing import Any, Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 import websockets
@@ -50,6 +47,7 @@ import websockets
 from core import confirm as confirm_gate
 from core import security_vault
 from memory import accounts
+from core.instagram_direct import InstagramSession, RecipientError, SendRejected, DeliveryUnknown, exact_thread, receipt_id
 
 SOCIAL_PLATFORMS: dict[str, dict[str, Any]] = {
     "instagram": {
@@ -247,25 +245,54 @@ def clear_encrypted_cookies(platform: str) -> None:
 # ── Tier 1: Zero-Window Direct Authenticated HTTP API (Instagram & Reddit) ───
 
 
-def _cookie_dict(platform: str) -> dict[str, str]:
-    cookies = load_encrypted_cookies(platform)
-    if not cookies and _CDP._endpoint_alive():
-        plat_domains = SOCIAL_PLATFORMS[platform]["domains"]
-        live = [
-            c
-            for c in _CDP.get_all_cookies()
-            if any(str(c.get("domain") or "").lower().endswith(d) for d in plat_domains)
-        ]
-        if live:
-            save_encrypted_cookies(platform, live)
-            cookies = live
-    out: dict[str, str] = {}
+def _usable_platform_cookies(platform: str, cookies: list) -> list[dict[str, Any]]:
+    domains = SOCIAL_PLATFORMS[platform]["domains"]
+    now = time.time()
+    usable = []
     for c in cookies:
-        k = str(c.get("name") or "").strip()
-        v = str(c.get("value") or "").strip()
-        if k and v:
-            out[k] = v
-    return out
+        if not isinstance(c, dict):
+            continue
+        domain = str(c.get("domain") or "").lower().lstrip(".")
+        if not any(domain == d or domain.endswith("." + d) for d in domains):
+            continue
+        try:
+            expiry = float(c.get("expires") or 0)
+        except (ValueError, TypeError):
+            continue
+        if expiry <= 0 or expiry > now:
+            usable.append(c)
+    return usable
+
+
+def _cookie_dict(platform: str) -> dict[str, str]:
+    cookies = _usable_platform_cookies(platform, load_encrypted_cookies(platform))
+    if _CDP._endpoint_alive():
+        live = _usable_platform_cookies(platform, _CDP.get_all_cookies())
+        auth = set(SOCIAL_PLATFORMS[platform]["auth_cookies"])
+        # A refreshed browser session wins, but don't overwrite a saved login
+        # with anonymous cookies from an unrelated/just-created tab.
+        if any(c.get("name") in auth and c.get("value") for c in live):
+            if live != cookies:
+                save_encrypted_cookies(platform, live)
+            cookies = live
+    return {str(c["name"]): str(c["value"]) for c in cookies if c.get("name") and c.get("value")}
+
+
+def _set_session_health(platform: str, health: str) -> None:
+    previous = (accounts.get_account(platform) or {}).get("session_health")
+    accounts.update_session_health(platform, health)
+    if previous != health:
+        try:
+            from core.apex_bridge import get_active_bridge
+            bridge = get_active_bridge()
+            if bridge is not None:
+                bridge.push_integrations()
+        except Exception:
+            pass
+
+
+def _ig_client(cookies: dict[str, str]) -> InstagramSession:
+    return InstagramSession(sys.modules[__name__], cookies)
 
 
 def _ig_headers(cdict: dict[str, str]) -> dict[str, str]:
@@ -323,12 +350,7 @@ def _ig_api_fetch_inbox(
     my_pk = str(cdict.get("ds_user_id") or "")
 
     try:
-        with httpx.Client(
-            headers=_ig_headers(cdict),
-            cookies=cdict,
-            follow_redirects=True,
-            timeout=10.0,
-        ) as client:
+        with _ig_client(cdict) as client:
             r = client.get(
                 "https://www.instagram.com/api/v1/direct_v2/inbox/",
                 params={
@@ -418,38 +440,31 @@ def _ig_api_read_thread(contact: str) -> dict[str, Any] | None:
     if "sessionid" not in cdict:
         return None
     my_pk = str(cdict.get("ds_user_id") or "")
-    needle = (contact or "").strip().lstrip("@").lower()
-
     try:
-        with httpx.Client(
-            headers=_ig_headers(cdict),
-            cookies=cdict,
-            follow_redirects=True,
-            timeout=10.0,
-        ) as client:
+        with _ig_client(cdict) as client:
             r = client.get(
                 "https://www.instagram.com/api/v1/direct_v2/inbox/",
                 params={"persistentBadging": "true", "limit": "25", "thread_message_limit": "20"},
             )
             if r.status_code != 200:
                 return None
-            threads = ((r.json().get("inbox") or {}).get("threads")) or []
-            chosen = None
-            if not needle and threads:
-                chosen = threads[0]
-            else:
-                for th in threads:
-                    t_title = str(th.get("thread_title") or "").lower()
-                    u_blobs = [
-                        f"{u.get('username','')} {u.get('full_name','')}".lower()
-                        for u in (th.get("users") or [])
-                    ]
-                    if needle in t_title or any(needle in b for b in u_blobs):
-                        chosen = th
-                        break
-
+            inbox = r.json().get("inbox") or {}
+            threads = inbox.get("threads") or []
+            chosen = exact_thread(threads, contact)
+            cursors = set()
+            for _ in range(5):
+                cursor = inbox.get("oldest_cursor")
+                if chosen or not contact or not inbox.get("has_older") or not cursor or cursor in cursors:
+                    break
+                cursors.add(cursor)
+                page = client.get("https://www.instagram.com/api/v1/direct_v2/inbox/",
+                                  params={"limit": "50", "cursor": cursor, "thread_message_limit": "20"})
+                if page.status_code != 200:
+                    return None
+                inbox = page.json().get("inbox") or {}
+                chosen = exact_thread(inbox.get("threads") or [], contact)
             if chosen is None:
-                return None
+                raise RecipientError("Conversation not found. Use the person's exact @username, not a display-name fragment.")
 
             tid = str(chosen.get("thread_id") or "")
             if tid:
@@ -458,7 +473,10 @@ def _ig_api_read_thread(contact: str) -> dict[str, Any] | None:
                     params={"limit": "20"},
                 )
                 if tr.status_code == 200 and isinstance(tr.json().get("thread"), dict):
-                    chosen = tr.json()["thread"]
+                    detail = tr.json()["thread"]
+                    if contact and not exact_thread([detail], contact):
+                        raise RecipientError("Instagram returned a different conversation. No messages were read.")
+                    chosen = detail
 
             user_map: dict[str, str] = {}
             for u in chosen.get("users") or []:
@@ -477,6 +495,8 @@ def _ig_api_read_thread(contact: str) -> dict[str, Any] | None:
                 "contact": title,
                 "messages": f"=== Instagram Chat with {title} ===\n" + ("\n".join(lines) or "(no messages yet)"),
             }
+    except RecipientError:
+        raise
     except Exception:
         return None
 
@@ -488,75 +508,33 @@ def _ig_api_send_dm(recipient: str, message: str) -> str | None:
         return None
     clean_rec = recipient.strip().lstrip("@")
     needle = clean_rec.lower()
+    attempted = False
 
     try:
-        with httpx.Client(
-            headers=_ig_headers(cdict),
-            cookies=cdict,
-            follow_redirects=True,
-            timeout=12.0,
-        ) as client:
-            # Ensure fresh csrftoken if missing
-            if not cdict.get("csrftoken"):
-                probe = client.get("https://www.instagram.com/direct/inbox/")
-                csrf_new = probe.cookies.get("csrftoken") or client.cookies.get("csrftoken") or ""
-                if csrf_new:
-                    cdict["csrftoken"] = csrf_new
-                    client.headers["X-CSRFToken"] = csrf_new
-
-            thread_id = ""
-            user_pk = ""
-
-            # 1. Check active inbox threads first (supports display names + @handles)
-            r_in = client.get(
-                "https://www.instagram.com/api/v1/direct_v2/inbox/",
-                params={"limit": "30", "thread_message_limit": "1"},
-            )
-            if r_in.status_code == 200:
-                for th in ((r_in.json().get("inbox") or {}).get("threads")) or []:
-                    users = th.get("users") or []
-                    for u in users:
-                        if str(u.get("username") or "").lower() == needle:
-                            thread_id = str(th.get("thread_id") or "")
-                            user_pk = str(u.get("pk") or u.get("pk_id") or "")
-                            break
-                    if thread_id:
-                        break
-                    t_title = str(th.get("thread_title") or "").lower()
-                    if needle in t_title or any(
-                        needle in f"{u.get('username','')} {u.get('full_name','')}".lower()
-                        for u in users
-                    ):
-                        thread_id = str(th.get("thread_id") or "")
-                        break
-
-            # 2. If not in top 30 threads, look up exact @handle / search user PK
-            if not thread_id and not user_pk:
-                r_prof = client.get(
-                    "https://www.instagram.com/api/v1/users/web_profile_info/",
-                    params={"username": clean_rec},
-                )
-                if r_prof.status_code == 200:
-                    u_obj = ((r_prof.json().get("data") or {}).get("user")) or {}
-                    user_pk = str(u_obj.get("id") or "")
-
-            if not thread_id and not user_pk:
-                r_srch = client.get(
-                    "https://www.instagram.com/api/v1/web/search/topsearch/",
-                    params={"context": "blended", "query": clean_rec},
-                )
-                if r_srch.status_code == 200:
-                    for entry in r_srch.json().get("users") or []:
-                        u_obj = entry.get("user") or {}
-                        uname = str(u_obj.get("username") or "").lower()
-                        fname = str(u_obj.get("full_name") or "").lower()
-                        if uname == needle or needle in uname or needle in fname:
-                            user_pk = str(u_obj.get("pk") or u_obj.get("pk_id") or "")
-                            if user_pk:
-                                break
-
-            if not thread_id and not user_pk:
+        with _ig_client(cdict) as client:
+            # Exact handles only. Group membership/display-name substrings are
+            # not proof of identity. Resolve before issuing any write.
+            r_in = client.get("https://www.instagram.com/api/v1/direct_v2/inbox/",
+                              params={"limit": "50", "thread_message_limit": "1"})
+            if r_in.status_code != 200:
                 return None
+            inbox = r_in.json().get("inbox")
+            if not isinstance(inbox, dict):
+                return None
+            chosen = exact_thread(inbox.get("threads") or [], clean_rec)
+            thread_id = str((chosen or {}).get("thread_id") or "")
+            user_pk = ""
+            if not chosen:
+                r_prof = client.get("https://www.instagram.com/api/v1/users/web_profile_info/",
+                                    params={"username": clean_rec})
+                if r_prof.status_code != 200:
+                    raise RecipientError("Could not resolve that recipient. Use their exact @username and check the Instagram HUD.")
+                user = ((r_prof.json().get("data") or {}).get("user")) or {}
+                if str(user.get("username") or "").casefold() != needle:
+                    raise RecipientError("Recipient identity could not be verified. Nothing was sent; provide the exact @username.")
+                user_pk = str(user.get("id") or user.get("pk") or "")
+            if not thread_id and not user_pk:
+                raise RecipientError("No verified recipient found. Nothing was sent.")
 
             client_ctx = str((int(time.time() * 1000) << 22) | random.randint(10000, 3999999))
             form_data: dict[str, str] = {
@@ -570,13 +548,27 @@ def _ig_api_send_dm(recipient: str, message: str) -> str | None:
             else:
                 form_data["recipient_users"] = json.dumps([[str(user_pk)]])
 
+            client.prepare_write()
+            current_sender = _cookie_dict("instagram")
+            identity_key = "ds_user_id" if cdict.get("ds_user_id") else "sessionid"
+            if current_sender.get(identity_key) != cdict.get(identity_key):
+                raise RecipientError("The signed-in account changed during lookup. Nothing was sent; request a new confirmation.")
+            attempted = True
             r_send = client.post(
-                "https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/",
-                data=form_data,
-            )
-            if r_send.status_code == 200 and r_send.json().get("status") == "ok":
-                return f"Sent Instagram message to {clean_rec} (silently in the background)."
-    except Exception:
+                "https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/", data=form_data)
+            data = r_send.json()
+            ack = receipt_id(data) if r_send.status_code == 200 else ""
+            if ack:
+                return (f"Sent Instagram message to @{clean_rec} (silently in the background). "
+                        f"Instagram acknowledgment: {ack}. This does not mean the recipient has read it.")
+            if isinstance(data, dict) and data.get("status") == "fail":
+                raise SendRejected("Instagram rejected the send. Open its HUD to check login, challenges or messaging restrictions; no automatic retry was made.")
+            raise DeliveryUnknown("Instagram did not acknowledge the message. Delivery is unknown; check the chat in the HUD before retrying. No automatic retry was made.")
+    except (RecipientError, SendRejected, DeliveryUnknown):
+        raise
+    except Exception as exc:
+        if attempted:
+            raise DeliveryUnknown("The send was attempted but no reliable receipt was received. Delivery is unknown; check the HUD before retrying. No automatic retry was made.") from exc
         return None
     return None
 
@@ -742,7 +734,7 @@ def import_cookies_from_browser(
             found_names: set[str] = set()
             for c in jar:
                 dom = str(getattr(c, "domain", "") or "").lower()
-                if not any(dom == d or dom.endswith("." + d) or dom.endswith(d) for d in domains):
+                if not any(dom.lstrip(".") == d or dom.endswith("." + d) for d in domains):
                     continue
                 name = str(getattr(c, "name", "") or "")
                 val = str(getattr(c, "value", "") or "")
@@ -1018,7 +1010,7 @@ class _NativeCdpSocialBrowser:
                 args.extend(["--headless=new", "--mute-audio", "--disable-gpu"])
             else:
                 args.append("--new-window")
-            args.append(start_url or "about:blank")
+            args.append("about:blank")  # hydrate cookies before navigating to authenticated pages
 
             self._proc = _spawn_visible_or_hidden(args, visible=not headless)
             self._port = port
@@ -1034,8 +1026,13 @@ class _NativeCdpSocialBrowser:
                 raise RuntimeError("Timed out waiting for Chrome/Edge social session port.")
 
             all_saved: list[dict[str, Any]] = []
-            for pk in SOCIAL_PLATFORMS:
-                all_saved.extend(load_encrypted_cookies(pk))
+            live_cookies = self.get_all_cookies()
+            for pk, spec in SOCIAL_PLATFORMS.items():
+                live = _usable_platform_cookies(pk, live_cookies)
+                if any(c.get("name") in spec["auth_cookies"] and c.get("value") for c in live):
+                    save_encrypted_cookies(pk, live)
+                else:
+                    all_saved.extend(_usable_platform_cookies(pk, load_encrypted_cookies(pk)))
             if all_saved:
                 try:
                     self.inject_cookies(all_saved)
@@ -1066,6 +1063,7 @@ class _NativeCdpSocialBrowser:
         *,
         headless: bool = True,
         force_navigate: bool = True,
+        purpose: str = "interactive",
     ) -> dict[str, Any]:
         self.ensure_browser(headless=headless, start_url=url)
         spec = SOCIAL_PLATFORMS[platform]
@@ -1074,21 +1072,24 @@ class _NativeCdpSocialBrowser:
         pages = self._list_page_targets()
         chosen: dict[str, Any] | None = None
 
-        tid = self._tab_ids.get(platform)
+        tab_key = platform if purpose == "interactive" else f"{platform}:{purpose}"
+        tid = self._tab_ids.get(tab_key)
         if tid:
             chosen = next((p for p in pages if p.get("id") == tid), None)
 
-        if chosen is None:
+        if chosen is None and purpose == "interactive":
             for p in pages:
                 u_low = str(p.get("url") or "").lower()
-                if any(d in u_low for d in domains):
+                if (p.get("id") not in [v for k, v in self._tab_ids.items() if k != tab_key]
+                        and any((urlsplit(u_low).hostname or "") == d or
+                                (urlsplit(u_low).hostname or "").endswith("." + d) for d in domains)):
                     chosen = p
                     break
 
         if chosen is None:
             for p in pages:
                 u_low = str(p.get("url") or "").lower()
-                if u_low in ("about:blank", "") or "newtab" in u_low:
+                if p.get("id") not in self._tab_ids.values() and (u_low in ("about:blank", "") or "newtab" in u_low):
                     chosen = p
                     break
 
@@ -1103,7 +1104,7 @@ class _NativeCdpSocialBrowser:
             force_navigate = False
 
         assert chosen is not None
-        self._tab_ids[platform] = str(chosen.get("id") or "")
+        self._tab_ids[tab_key] = str(chosen.get("id") or "")
         ws_url = str(chosen["webSocketDebuggerUrl"])
         cur_url = str(chosen.get("url") or "")
 
@@ -1170,7 +1171,7 @@ class _NativeCdpSocialBrowser:
             res = await conn.send_cmd(ws, "Network.getAllCookies")
             for c in res.get("cookies") or []:
                 dom = str(c.get("domain") or "").lower()
-                if any(dom == d or dom.endswith("." + d) or dom.endswith(d) for d in domains):
+                if any(dom.lstrip(".") == d or dom.endswith("." + d) for d in domains):
                     await conn.send_cmd(
                         ws,
                         "Network.deleteCookies",
@@ -1181,12 +1182,14 @@ class _NativeCdpSocialBrowser:
             self.run_on_tab(ws_url, _wipe, timeout=10.0)
         except Exception:
             pass
-        tid = self._tab_ids.pop(platform, None)
-        if tid:
-            try:
-                httpx.get(f"http://127.0.0.1:{self._port}/json/close/{tid}", timeout=2.0)
-            except Exception:
-                pass
+        keys = [k for k in self._tab_ids if k == platform or k.startswith(platform + ":")]
+        for key in keys:
+            tid = self._tab_ids.pop(key, None)
+            if tid:
+                try:
+                    httpx.get(f"http://127.0.0.1:{self._port}/json/close/{tid}", timeout=2.0)
+                except Exception:
+                    pass
 
     def run_on_tab(
         self,
@@ -1349,31 +1352,27 @@ def _probe_platform_authenticated(platform: str, ws_url: str | None = None) -> t
     domains = spec["domains"]
     auth_names = set(spec["auth_cookies"])
 
-    cookies = _CDP.get_all_cookies()
-    plat_cookies = [
-        c
-        for c in cookies
-        if any(
-            str(c.get("domain") or "").lower().endswith(d)
-            or str(c.get("domain") or "").lower() == d
-            for d in domains
-        )
-    ]
+    plat_cookies = _usable_platform_cookies(platform, _CDP.get_all_cookies())
     found_names = {str(c.get("name") or "") for c in plat_cookies if c.get("value")}
-    if auth_names and (found_names & auth_names):
+    has_cookie = bool(found_names & auth_names)
+    if has_cookie:
         save_encrypted_cookies(platform, plat_cookies)
-        return True, ""
-
-    # Platforms with strict server auth cookies MUST have them present (prevents logged-out DOM false positives)
-    if auth_names and platform in ("instagram", "x", "tiktok", "reddit"):
-        return False, ""
+        if platform != "instagram":
+            return True, ""
+    if auth_names and platform in ("instagram", "x", "tiktok", "reddit") and not has_cookie:
+        return False, "No usable authentication cookie"
+    if platform == "instagram" and not ws_url:
+        for page in _CDP._list_page_targets():
+            if urlsplit(str(page.get("url") or "")).hostname in ("instagram.com", "www.instagram.com"):
+                ws_url = page.get("webSocketDebuggerUrl")
+                break
 
     if ws_url:
         sels_json = json.dumps(list(spec["logged_in_selectors"]))
         probe_js = f"""
         (() => {{
           const u = (location.href || '').toLowerCase();
-          if (u.includes('/accounts/login') || u.includes('/i/flow/login') || u.includes('/login')) return false;
+          if (u.includes('/accounts/login') || u.includes('/i/flow/login') || u.includes('/login') || u.includes('/challenge') || u.includes('/checkpoint')) return false;
           const sels = {sels_json};
           return Boolean(sels.some((s) => document.querySelector(s) !== null));
         }})()
@@ -1387,6 +1386,7 @@ def _probe_platform_authenticated(platform: str, ws_url: str | None = None) -> t
             if res_dom is True:
                 if plat_cookies:
                     save_encrypted_cookies(platform, plat_cookies)
+                _set_session_health(platform, "authenticated")
                 return True, ""
         except Exception:
             pass
@@ -1485,11 +1485,12 @@ def open_social_in_hud(
         "wide" if plat == "whatsapp" else "mobile"
     )
 
-    if not accounts.is_service_connected(plat) and not load_encrypted_cookies(plat):
-        import_cookies_from_browser(plat, "auto")
-
-    is_conn = accounts.is_service_connected(plat) or bool(load_encrypted_cookies(plat))
-    initial_view = view if is_conn or view == "login" else "login"
+    rec = accounts.get_account(plat) or {}
+    if not rec.get("ignored") and not accounts.is_service_connected(plat) and not _cookie_dict(plat):
+        import_cookies_from_browser(plat, "auto", permission=str(rec.get("permission") or "ask"))
+    # Navigate to what the user asked for. Instagram itself may redirect to
+    # login; never redirect away from DMs based only on stale local metadata.
+    initial_view = view
     url = _resolve_view_url(plat, initial_view, target=target)
 
     width, height = (1024, 680) if mode == "wide" else (430, 760)
@@ -1507,8 +1508,17 @@ def open_social_in_hud(
     except Exception as exc:
         return {"ok": False, "error": f"Could not initialize HUD viewport for {spec['label']}: {exc}"}
 
-    if not accounts.is_service_connected(plat):
-        _start_login_watcher(plat, close_visible_on_success=False)
+    authenticated, _ = _probe_platform_authenticated(plat, ws_url)
+    health = "authenticated" if authenticated else str((accounts.get_account(plat) or {}).get("session_health") or "unverified")
+    if any(part in live_url.lower() for part in ("/accounts/login", "/i/flow/login")):
+        health = "login_required"
+    elif any(part in live_url.lower() for part in ("/challenge", "/checkpoint")):
+        health = "challenge_required"
+    if authenticated and not rec:
+        accounts.connect_account(plat, session_connected=True, auth_mode="web_session", permission="ask")
+    _set_session_health(plat, health)
+    if not authenticated:
+        _start_login_watcher(plat, perm=str(rec.get("permission") or "ask"), close_visible_on_success=False)
 
     hud_payload = {
         "active": True,
@@ -1519,7 +1529,8 @@ def open_social_in_hud(
         "width": width,
         "height": height,
         "url": live_url,
-        "connected": bool(accounts.is_service_connected(plat)),
+        "connected": authenticated,
+        "session_health": health,
         "opened_at": int(time.time() * 1000),
     }
     with _HUD_SOCIAL_LOCK:
@@ -1572,12 +1583,14 @@ def get_hud_social_frame(platform: str = "") -> dict[str, Any]:
         tab = _CDP.get_or_open_tab(plat, spec["home_url"], headless=True, force_navigate=False)
         ws_url = str(tab["webSocketDebuggerUrl"])
 
-        async def _grab(conn: _CdpConnection, ws: Any) -> tuple[str, str, str]:
+        async def _grab(conn: _CdpConnection, ws: Any) -> tuple[str, str, str, bool]:
             await _cdp_apply_hud_viewport(conn, ws, layout)
             meta = await _cdp_eval_json(
                 conn,
                 ws,
-                "({ url: location.href || '', title: document.title || '' })",
+                "({ url: location.href || '', title: document.title || '', authenticated: "
+                + "Boolean(" + json.dumps(list(spec["logged_in_selectors"]))
+                + ".some(s => document.querySelector(s))) })",
             )
             shot = await conn.send_cmd(
                 ws,
@@ -1585,9 +1598,17 @@ def get_hud_social_frame(platform: str = "") -> dict[str, Any]:
                 {"format": "jpeg", "quality": 70},
             )
             m = meta if isinstance(meta, dict) else {}
-            return str(shot.get("data") or ""), str(m.get("url") or ""), str(m.get("title") or "")
+            return str(shot.get("data") or ""), str(m.get("url") or ""), str(m.get("title") or ""), m.get("authenticated") is True
 
-        b64, cur_url, cur_title = _CDP.run_on_tab(ws_url, _grab, timeout=10.0)
+        b64, cur_url, cur_title, live_auth = _CDP.run_on_tab(ws_url, _grab, timeout=10.0)
+        health = str((accounts.get_account(plat) or {}).get("session_health") or "unverified")
+        if any(v in cur_url.lower() for v in ("/accounts/login", "/i/flow/login")):
+            health, live_auth = "login_required", False
+        elif any(v in cur_url.lower() for v in ("/challenge", "/checkpoint")):
+            health, live_auth = "challenge_required", False
+        elif live_auth:
+            health = "authenticated"
+        _set_session_health(plat, health)
         return {
             "ok": bool(b64),
             "platform": plat,
@@ -1598,7 +1619,8 @@ def get_hud_social_frame(platform: str = "") -> dict[str, Any]:
             "width": width,
             "height": height,
             "layout": layout,
-            "connected": bool(accounts.is_service_connected(plat)),
+            "connected": live_auth,
+            "session_health": health,
         }
     except Exception as exc:
         return {"ok": False, "platform": plat, "error": str(exc)}
@@ -1612,7 +1634,13 @@ def interact_hud_social(payload: dict[str, Any]) -> dict[str, Any]:
     if not plat or plat not in SOCIAL_PLATFORMS:
         return {"ok": False, "error": "Unsupported platform"}
 
+    if not cur or cur.get("platform") != plat:
+        return {"ok": False, "error": "This social HUD is no longer active. Open it again before interacting."}
+    if payload.get("opened_at") is not None and payload["opened_at"] != cur.get("opened_at"):
+        return {"ok": False, "error": "This interaction belongs to an older HUD session; it was not applied."}
     kind = str(payload.get("kind") or "").strip().lower()
+    if kind not in {"close", "popout", "layout", "navigate", "click", "wheel", "type", "key"}:
+        return {"ok": False, "error": f"Unknown HUD interaction: {kind}"}
     layout = str(payload.get("layout") or cur.get("layout") or ("wide" if plat == "whatsapp" else "mobile"))
     width, height = (1024, 680) if layout == "wide" else (430, 760)
     spec = SOCIAL_PLATFORMS[plat]
@@ -1641,12 +1669,12 @@ def interact_hud_social(payload: dict[str, Any]) -> dict[str, Any]:
         async def _act(conn: _CdpConnection, ws: Any) -> None:
             await _cdp_apply_hud_viewport(conn, ws, layout)
             if kind == "click":
-                nx = max(0.0, min(1.0, float(payload.get("nx") or 0.5)))
-                ny = max(0.0, min(1.0, float(payload.get("ny") or 0.5)))
+                nx = max(0.0, min(1.0, float(payload.get("nx", 0.5))))
+                ny = max(0.0, min(1.0, float(payload.get("ny", 0.5))))
                 await _cdp_trusted_click(conn, ws, nx * width, ny * height)
             elif kind == "wheel":
                 dx = float(payload.get("deltaX") or 0.0)
-                dy = float(payload.get("deltaY") or 360.0)
+                dy = float(payload.get("deltaY", 360.0))
                 await conn.send_cmd(
                     ws,
                     "Input.dispatchMouseEvent",
@@ -1671,7 +1699,9 @@ def interact_hud_social(payload: dict[str, Any]) -> dict[str, Any]:
                     "ArrowLeft": 37,
                     "ArrowRight": 39,
                 }
-                await _cdp_press_key(conn, ws, key_name, vk_map.get(key_name, 13))
+                if key_name not in vk_map:
+                    raise ValueError("Unsupported key")
+                await _cdp_press_key(conn, ws, key_name, vk_map[key_name])
 
         _CDP.run_on_tab(ws_url, _act, timeout=12.0)
         return {"ok": True}
@@ -1684,6 +1714,7 @@ def interact_hud_social(payload: dict[str, Any]) -> dict[str, Any]:
 
 _WATCHERS_ACTIVE: set[str] = set()
 _WATCHERS_LOCK = threading.Lock()
+_WATCHERS_CANCEL: dict[str, threading.Event] = {}
 
 
 def _start_login_watcher(
@@ -1698,6 +1729,8 @@ def _start_login_watcher(
         if plat in _WATCHERS_ACTIVE:
             return
         _WATCHERS_ACTIVE.add(plat)
+        cancelled = threading.Event()
+        _WATCHERS_CANCEL[plat] = cancelled
 
     spec = SOCIAL_PLATFORMS[plat]
 
@@ -1705,23 +1738,32 @@ def _start_login_watcher(
         try:
             deadline = time.monotonic() + 240.0
             while time.monotonic() < deadline:
-                time.sleep(1.2)
+                if cancelled.wait(1.2):
+                    return
                 if not _CDP._endpoint_alive():
                     return
                 pages = _CDP._list_page_targets()
                 tab_ws = None
                 for p in pages:
-                    if any(d in str(p.get("url") or "").lower() for d in spec["domains"]):
+                    if any((urlsplit(str(p.get("url") or "")).hostname or "") == d or
+                           (urlsplit(str(p.get("url") or "")).hostname or "").endswith("." + d)
+                           for d in spec["domains"]):
                         tab_ws = p.get("webSocketDebuggerUrl")
                         break
                 ok_in, _ = _probe_platform_authenticated(plat, tab_ws)
                 if ok_in:
+                    if cancelled.is_set():
+                        return
+                    current_rec = accounts.get_account(plat) or {}
+                    if current_rec.get("ignored"):
+                        return
                     accounts.connect_account(
                         plat,
                         handle=handle.lstrip("@"),
                         session_connected=True,
                         auth_mode="web_session",
-                        permission=perm,
+                        permission=str(current_rec.get("permission") or perm),
+                        session_health="authenticated",
                     )
                     security_vault.log_audit_event(
                         "user",
@@ -1755,7 +1797,7 @@ def _start_login_watcher(
                     with _HUD_SOCIAL_LOCK:
                         if "current" in _HUD_SOCIAL_SESSIONS and _HUD_SOCIAL_SESSIONS["current"].get("platform") == plat:
                             _HUD_SOCIAL_SESSIONS["current"]["connected"] = True
-                            _HUD_SOCIAL_SESSIONS["current"]["view"] = "feed"
+                            _HUD_SOCIAL_SESSIONS["current"]["session_health"] = "authenticated"
                             try:
                                 from core.apex_bridge import get_active_bridge
 
@@ -1779,7 +1821,9 @@ def _start_login_watcher(
                     return
         finally:
             with _WATCHERS_LOCK:
-                _WATCHERS_ACTIVE.discard(plat)
+                if _WATCHERS_CANCEL.get(plat) is cancelled:
+                    _WATCHERS_ACTIVE.discard(plat)
+                    _WATCHERS_CANCEL.pop(plat, None)
 
     threading.Thread(target=_watch, daemon=True, name=f"social-watch-{plat}").start()
 
@@ -1847,6 +1891,7 @@ def start_social_login(
             session_connected=True,
             auth_mode="web_session",
             permission=perm,
+            session_health="authenticated",
         )
         if _CDP._headless is False:
             _CDP.shutdown()
@@ -1880,6 +1925,11 @@ def disconnect_social_account(platform: str) -> dict[str, Any]:
     plat = normalize_social_platform(platform)
     if not plat or plat not in SOCIAL_PLATFORMS:
         return {"ok": False, "error": f"Unknown social platform '{platform}'."}
+    with _WATCHERS_LOCK:
+        cancellation = _WATCHERS_CANCEL.pop(plat, None)
+        if cancellation:
+            cancellation.set()
+        _WATCHERS_ACTIVE.discard(plat)
     clear_encrypted_cookies(plat)
     _CDP.clear_platform_cookies(plat)
     accounts.disconnect_account(plat)
@@ -1907,6 +1957,7 @@ def get_social_hub_status() -> dict[str, Any]:
                 "ignored": bool(st.get("ignored")),
                 "handle": str(st.get("handle") or ""),
                 "permission": str(st.get("permission") or "ask"),
+                "session_health": str(st.get("session_health") or "unverified"),
                 "auth_mode": str(st.get("auth_mode") or ""),
                 "cookies_browser": str(st.get("cookies_browser") or ""),
             }
@@ -1925,23 +1976,32 @@ def _ensure_platform_ready(
 ) -> tuple[bool, str]:
     """Ensure `platform` is authenticated — NEVER popping open an external desktop window during background checks!"""
     rec = accounts.get_account(platform)
-    if rec and not rec.get("ignored"):
+    if rec:
         allowed, reason = accounts.check_permission(platform, "read")
         if not allowed:
             return False, reason
-        if bool(rec.get("session_connected") or rec.get("cookies_browser")):
-            cb = str(rec.get("cookies_browser") or "").strip()
-            if cb and not load_encrypted_cookies(platform):
-                import_cookies_from_browser(
-                    platform,
-                    cb,
-                    handle=str(rec.get("handle") or ""),
-                    permission=str(rec.get("permission") or "ask"),
-                )
-            return True, "ok"
+    # A saved or live session can exist without an accounts.json entry. Restore
+    # the record, but never silently upgrade an existing permission policy.
+    cookies = _cookie_dict(platform)
+    if any(cookies.get(n) for n in SOCIAL_PLATFORMS[platform]["auth_cookies"]):
+        if not rec:
+            accounts.connect_account(platform, session_connected=True, auth_mode="web_session", permission="ask")
+        return True, "session available; authentication will be checked by the operation"
+    if rec and rec.get("session_connected"):
+        # Older connections can have a persistent Chromium profile but no vault
+        # export. Hydrate that session BEFORE approval captures sending identity.
+        if (socials_root_dir() / "browser_profile").exists() or os.environ.get("JARVIS_SOCIALS_CDP_PORT"):
+            try:
+                _CDP.ensure_browser(headless=True)
+                _cookie_dict(platform)
+            except Exception:
+                pass
+        return True, "saved browser session; authentication will be checked by the operation"
 
     # 1. Silent browser cookie import (0 windows)
-    imp = import_cookies_from_browser(platform, "auto")
+    imp = import_cookies_from_browser(platform, str((rec or {}).get("cookies_browser") or "auto"),
+                                      handle=str((rec or {}).get("handle") or ""),
+                                      permission=str((rec or {}).get("permission") or "ask"))
     if imp.get("ok"):
         return True, "ok"
 
@@ -1955,7 +2015,7 @@ def _ensure_platform_ready(
                     platform,
                     session_connected=True,
                     auth_mode="web_session",
-                    permission="ask",
+                    permission=str((rec or {}).get("permission") or "ask"),
                 )
                 return True, "ok"
     except Exception:
@@ -1989,7 +2049,7 @@ def _inspect_url_in_session(
     headless: bool = True,
 ) -> tuple[bytes | None, dict[str, Any], bool]:
     # ALWAYS `headless=True` for background inspection — never open an external window!
-    tab = _CDP.get_or_open_tab(platform, url, headless=True, force_navigate=True)
+    tab = _CDP.get_or_open_tab(platform, url, headless=True, force_navigate=True, purpose="automation")
     ws_url = str(tab["webSocketDebuggerUrl"])
 
     async def _inspect(conn: _CdpConnection, ws: Any) -> tuple[bytes | None, dict[str, Any]]:
@@ -2062,6 +2122,10 @@ def check_social_inbox(
                 )
                 continue
 
+            if not logged_in:
+                reports.append(f"• {spec['label']}: Could not verify a signed-in inbox. Check the HUD for login or a security challenge.")
+                continue
+
             # If Instagram headless CDP just refreshed cookies, try fast API again or summarize via Vision+DOM
             if plat == "instagram":
                 api_retry = _ig_api_fetch_inbox(include_notifications=include_notifications)
@@ -2115,7 +2179,23 @@ async def _cdp_open_contact_thread(
     clean_contact: str,
 ) -> bool:
     if not clean_contact:
-        return True
+        if platform != "instagram":
+            return False
+        point = await _cdp_eval_json(conn, ws, """
+        (() => {
+          for (const a of document.querySelectorAll('a[href^="/direct/t/"]')) {
+            const r = a.getBoundingClientRect();
+            if (r.width > 30 && r.height > 20 && r.top >= 0 && r.bottom <= innerHeight)
+              return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+          }
+          return null;
+        })()
+        """)
+        if not isinstance(point, dict):
+            return False
+        await _cdp_trusted_click(conn, ws, point["x"], point["y"])
+        await asyncio.sleep(1.3)
+        return await _cdp_eval_json(conn, ws, "location.pathname.startsWith('/direct/t/')") is True
 
     target_json = json.dumps(clean_contact.lower())
 
@@ -2127,7 +2207,7 @@ async def _cdp_open_contact_thread(
       );
       for (const el of candidates) {{
         const txt = (el.innerText || el.getAttribute('aria-label') || '').toLowerCase();
-        if (!txt || !txt.includes(needle)) continue;
+        if (!txt || !txt.split('\\n').some(line => line.trim().replace(/^@/, '') === needle)) continue;
         const r = el.getBoundingClientRect();
         if (r.width > 30 && r.height > 20 && r.top >= 0 && r.bottom <= window.innerHeight) {{
           return {{ x: r.left + Math.min(120, r.width / 2), y: r.top + r.height / 2 }};
@@ -2184,7 +2264,7 @@ async def _cdp_open_contact_thread(
                       const rows = document.querySelectorAll('div[role="dialog"] div[role="button"], div[role="dialog"] label');
                       for (const el of rows) {{
                         const t = (el.innerText || '').toLowerCase();
-                        if (t.includes(needle)) {{
+                        if (t.split('\\n').some(line => line.trim().replace(/^@/, '') === needle)) {{
                           const r = el.getBoundingClientRect();
                           if (r.width > 20 && r.height > 20) return {{ x: r.left + r.width / 2, y: r.top + r.height / 2 }};
                         }}
@@ -2258,25 +2338,43 @@ def read_social_messages(platform: str, contact: str = "") -> dict[str, Any]:
 
     # Tier 1: Instant zero-window Instagram Direct HTTP API
     if plat == "instagram":
-        api_th = _ig_api_read_thread(clean_contact)
+        try:
+            api_th = _ig_api_read_thread(clean_contact)
+        except RecipientError as exc:
+            return {"ok": False, "error": str(exc)}
         if api_th and api_th.get("ok"):
             return api_th
 
     # Tier 2: 100% invisible `--headless=new` background CDP (NEVER opens a desktop window!)
     try:
-        tab = _CDP.get_or_open_tab(plat, spec["inbox_url"], headless=True, force_navigate=True)
+        tab = _CDP.get_or_open_tab(plat, spec["inbox_url"], headless=True, force_navigate=True, purpose="automation")
         ws_url = str(tab["webSocketDebuggerUrl"])
 
         async def _open_and_read(conn: _CdpConnection, ws: Any) -> tuple[bytes | None, dict[str, Any]]:
             await _cdp_wait_settled(conn, ws, 1.8)
             await _cdp_dismiss_popups(conn, ws)
+            if not await _cdp_open_contact_thread(conn, ws, plat, clean_contact):
+                raise RecipientError(f"Could not open the exact conversation with {clean_contact or 'the latest contact'}; no other chat was read.")
             if clean_contact:
-                await _cdp_open_contact_thread(conn, ws, plat, clean_contact)
+                if plat == "instagram":
+                    expected_path = json.dumps("/" + clean_contact.lower() + "/")
+                    verified = await _cdp_eval_json(conn, ws, r"""
+                    (() => {
+                      if (!/^\/direct\/t\/[^/]+\//.test(location.pathname)) return false;
+                      const links = document.querySelectorAll('main header a[href], [role="main"] header a[href]');
+                      return Array.from(links).some(a => new URL(a.href).pathname.toLowerCase() === EXPECTED);
+                    })()
+                    """.replace("EXPECTED", expected_path))
+                    if verified is not True:
+                        raise RecipientError("Instagram did not expose a verifiable exact recipient. Open the intended chat in the HUD; no conversation was summarized.")
             return await _cdp_capture_snapshot(conn, ws)
 
         shot, dom_data = _CDP.run_on_tab(ws_url, _open_and_read, timeout=45.0)
     except Exception as exc:
         return {"ok": False, "error": f"Could not read {spec['label']} conversation: {exc}"}
+
+    if not _probe_platform_authenticated(plat, ws_url)[0]:
+        return {"ok": False, "error": f"Could not verify a signed-in {spec['label']} conversation. Check the HUD for login or a challenge."}
 
     who = f"with '{clean_contact}'" if clean_contact else "(latest visible thread)"
     transcript = _analyze_with_vision_and_dom(
@@ -2301,9 +2399,14 @@ def read_social_messages(platform: str, contact: str = "") -> dict[str, Any]:
 
 def _execute_send_message_now(platform: str, recipient: str, message: str, actor: str) -> str:
     spec = SOCIAL_PLATFORMS[platform]
+    allowed, reason = accounts.check_permission(platform, "send")
+    if not allowed:
+        raise RuntimeError(f"Send blocked by current permission policy: {reason}")
     clean_rec = recipient.strip().lstrip("@")
 
-    # Tier 1: Instant zero-window Instagram Direct HTTP API (~250ms, 0 browser processes!)
+    original_sender = _cookie_dict(platform)
+
+    # Tier 1: Session-backed Instagram Direct API (same-origin browser or cookie HTTP).
     if platform == "instagram":
         api_sent = _ig_api_send_dm(clean_rec, message)
         if api_sent:
@@ -2316,8 +2419,17 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
             )
             return api_sent
 
+        # API lookup failed before a POST. Instagram's own composer also
+        # supports chat variants the undocumented API may not expose.
+        from core.instagram_web import send_instagram_message
+        result = send_instagram_message(sys.modules[__name__], clean_rec, message, expected_sender=original_sender)
+        security_vault.log_audit_event(actor, f"social_send_message:{platform}",
+            {"platform": platform, "recipient": clean_rec, "length": len(message), "transport": "instagram_web_ui"},
+            result_summary=result, status="ok")
+        return result
+
     # Tier 2: 100% invisible `--headless=new` background CDP (`headless=True` ALWAYS — NEVER opens a visible window!)
-    tab = _CDP.get_or_open_tab(platform, spec["inbox_url"], headless=True, force_navigate=True)
+    tab = _CDP.get_or_open_tab(platform, spec["inbox_url"], headless=True, force_navigate=True, purpose="automation")
     ws_url = str(tab["webSocketDebuggerUrl"])
 
     async def _send_coro(conn: _CdpConnection, ws: Any) -> str:
@@ -2386,7 +2498,7 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
             await _cdp_press_key(conn, ws, "Enter", 13)
 
         await asyncio.sleep(1.0)
-        return f"Sent {spec['label']} message to {clean_rec} (silently in the background)."
+        raise DeliveryUnknown(f"The send control was activated on {spec['label']}, but delivery could not be verified. Check the HUD before retrying; no automatic retry was made.")
 
     res_msg = _CDP.run_on_tab(ws_url, _send_coro, timeout=50.0)
     security_vault.log_audit_event(
@@ -2403,6 +2515,7 @@ def stage_or_send_social_message(
     platform: str,
     recipient: str,
     message: str,
+    on_result: Callable[[str], None] | None = None,
 ) -> str:
     """Enforce `memory/accounts.py` permissions and `core.confirm` HUD gate before sending any DM/Snap."""
     plat = normalize_social_platform(platform)
@@ -2413,6 +2526,10 @@ def stage_or_send_social_message(
     if not (message or "").strip():
         return "Please specify the message text."
 
+    if len(message) > 3800:
+        return "The message is too long to fully preview in the confirmation panel. Please shorten it or send smaller parts; nothing was sent."
+    if plat == "instagram" and not re.fullmatch(r"@?[A-Za-z0-9_.]{1,30}", recipient.strip()):
+        return "Please provide the recipient's exact Instagram @username, not a display name. Nothing was sent."
     spec = SOCIAL_PLATFORMS[plat]
     ready, reason = _ensure_platform_ready(plat, auto_open_hud_login_if_needed=True)
     if not ready:
@@ -2425,23 +2542,47 @@ def stage_or_send_social_message(
     rec = accounts.get_account(plat) or {}
     perm = str(rec.get("permission") or "ask").lower()
 
-    if perm == "full":
+    staged_cookies = _cookie_dict(plat)
+    staged_identity = staged_cookies.get("ds_user_id") or hashlib.sha256(staged_cookies.get("sessionid", "").encode()).hexdigest()
+
+    def execute(actor: str) -> str:
         try:
-            return _execute_send_message_now(plat, recipient, message, actor="jarvis_full_perm")
+            current_cookies = _cookie_dict(plat)
+            current_identity = current_cookies.get("ds_user_id") or hashlib.sha256(current_cookies.get("sessionid", "").encode()).hexdigest()
+            if current_identity != staged_identity:
+                raise RuntimeError("The signed-in account changed after confirmation was requested. Nothing was sent; request a new confirmation.")
+            result = _execute_send_message_now(plat, recipient, message, actor=actor)
         except Exception as exc:
-            return f"Failed to send {spec['label']} message: {exc}"
+            result = f"{spec['label']} send not confirmed: {exc}"
+            security_vault.log_audit_event(actor, f"social_send_message:{plat}",
+                {"platform": plat, "recipient": recipient, "length": len(message)},
+                result_summary=result, status="unknown" if isinstance(exc, DeliveryUnknown) else "error")
+        if on_result:
+            try:
+                on_result(result)
+            except Exception:
+                pass
+        return result
+
+    if perm == "full":
+        return execute("jarvis_full_perm")
 
     title = f"Send {spec['label']} message to {recipient.strip()}"
-    detail = f"Message: \"{message.strip()[:220]}\""
+    detail = f"Message: \"{message}\""
     return confirm_gate.request(
         key=f"social-msg-{plat}",
         title=title,
         detail=detail,
-        run=lambda: _execute_send_message_now(plat, recipient, message, actor="user_confirmed"),
+        run=lambda: execute("user_confirmed"),
     )
 
 
 def _execute_publish_post_now(platform: str, text: str, actor: str) -> str:
+    allowed, reason = accounts.check_permission(platform, "write")
+    if not allowed:
+        raise RuntimeError(reason)
+    if platform == "instagram":
+        raise RuntimeError("Instagram posts require photo/video media. Text-only publishing is not supported; use Create in the HUD. Nothing was published.")
     spec = SOCIAL_PLATFORMS[platform]
     tab = _CDP.get_or_open_tab(platform, spec["compose_post_url"], headless=True, force_navigate=True)
     ws_url = str(tab["webSocketDebuggerUrl"])
@@ -2489,7 +2630,7 @@ def _execute_publish_post_now(platform: str, text: str, actor: str) -> str:
         if isinstance(btn_pt, dict):
             await _cdp_trusted_click(conn, ws, btn_pt["x"], btn_pt["y"])
             await asyncio.sleep(1.2)
-            return f"Published post on {spec['label']} (silently in the background)."
+            raise DeliveryUnknown(f"The publish control was activated on {spec['label']}, but publication was not verified. Check the HUD before retrying.")
         raise RuntimeError(f"Could not submit post automatically on {spec['label']}.")
 
     res_msg = _CDP.run_on_tab(ws_url, _post_coro, timeout=50.0)
@@ -2509,6 +2650,8 @@ def stage_or_publish_social_post(platform: str, text: str) -> str:
         return f"Unsupported social platform '{platform}'."
     if not (text or "").strip():
         return "Please provide the text to post."
+    if plat == "instagram":
+        return "Instagram posts require photo/video media; this tool does not support text-only Instagram publishing. Use Create in the HUD. Nothing was published."
 
     spec = SOCIAL_PLATFORMS[plat]
     ready, reason = _ensure_platform_ready(plat, auto_open_hud_login_if_needed=True)
@@ -2555,8 +2698,9 @@ def control_social_feed(
     headless_env = os.environ.get("QT_QPA_PLATFORM", "").strip().lower() in ("offscreen", "minimal")
     use_headless = True if (in_hud or headless_env) else False
 
-    if not accounts.is_service_connected(plat):
-        import_cookies_from_browser(plat, "auto")
+    record = accounts.get_account(plat) or {}
+    if not record.get("ignored") and not accounts.is_service_connected(plat):
+        import_cookies_from_browser(plat, "auto", permission=str(record.get("permission") or "ask"))
 
     try:
         if cmd in ("open_feed", "home", "feed", "open", "open_hud"):
@@ -2616,10 +2760,9 @@ def control_social_feed(
             return {"ok": True, "message": f"Moved back to the previous post/reel on {spec['label']}."}
 
         if cmd == "like":
-            if accounts.get_account(plat):
-                allowed, rsn = accounts.check_permission(plat, "write")
-                if not allowed:
-                    return {"ok": False, "error": rsn}
+            allowed, rsn = accounts.check_permission(plat, "write")
+            if not allowed:
+                return {"ok": False, "error": rsn}
 
             async def _like(conn: _CdpConnection, ws: Any) -> bool:
                 pt = await _cdp_eval_json(
@@ -2644,6 +2787,7 @@ def control_social_feed(
                           const d = Math.abs((r.top + r.height / 2) - cy);
                           if (d < bestDist) {
                             bestDist = d;
+                            window.__jarvisSocialActionTarget = target;
                             best = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
                           }
                         }
@@ -2654,6 +2798,16 @@ def control_social_feed(
                 )
                 if isinstance(pt, dict):
                     await _cdp_trusted_click(conn, ws, pt["x"], pt["y"])
+                    await asyncio.sleep(0.35)
+                    verified = await _cdp_eval_json(conn, ws, """
+                    (() => { // jarvisVerifyLike
+                      const el = window.__jarvisSocialActionTarget;
+                      return Boolean(el && el.isConnected && (el.getAttribute('aria-pressed') === 'true' ||
+                        el.getAttribute('aria-label') === 'Unlike' || el.querySelector('[aria-label="Unlike"], [data-testid="unlike"]')));
+                    })()
+                    """)
+                    if verified is not True:
+                        raise RuntimeError("Like was clicked but its state change was not verified. Check the HUD before retrying; it was not clicked again.")
                     return True
                 return False
 
@@ -2662,6 +2816,9 @@ def control_social_feed(
             return {"ok": False, "error": f"Could not find an unliked Like button on {spec['label']}."}
 
         if cmd in ("save", "bookmark"):
+            allowed, reason = accounts.check_permission(plat, "write")
+            if not allowed:
+                return {"ok": False, "error": reason}
             async def _save(conn: _CdpConnection, ws: Any) -> bool:
                 pt = await _cdp_eval_json(
                     conn,
@@ -2679,6 +2836,7 @@ def control_social_feed(
                           const target = el.closest('button, [role="button"]') || el;
                           const r = target.getBoundingClientRect();
                           if (r.width >= 10 && r.top >= 0 && r.bottom <= window.innerHeight) {
+                            window.__jarvisSocialActionTarget = target;
                             return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
                           }
                         }
@@ -2689,6 +2847,17 @@ def control_social_feed(
                 )
                 if isinstance(pt, dict):
                     await _cdp_trusted_click(conn, ws, pt["x"], pt["y"])
+                    await asyncio.sleep(0.35)
+                    verified = await _cdp_eval_json(conn, ws, """
+                    (() => { // jarvisVerifySave
+                      const el = window.__jarvisSocialActionTarget;
+                      return Boolean(el && el.isConnected && (el.getAttribute('aria-pressed') === 'true' ||
+                        /^(Unsave|Remove|Remove bookmark)$/i.test(el.getAttribute('aria-label') || '') ||
+                        el.querySelector('[aria-label="Remove"], [aria-label="Unsave"], [data-testid="removeBookmark"]')));
+                    })()
+                    """)
+                    if verified is not True:
+                        raise RuntimeError("Save was clicked but its state change was not verified. Check the HUD before retrying; it was not clicked again.")
                     return True
                 return False
 

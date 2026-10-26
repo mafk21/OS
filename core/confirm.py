@@ -94,6 +94,9 @@ def request(key: str, title: str, detail: str, run: Callable[[], str]) -> str:
                 f"not available, so I have not done it.")
 
     with _lock:
+        if _pending is not None and time.monotonic() - _pending.at <= TIMEOUT_SECONDS:
+            return (f"A confirmation is already pending for '{_pending.title}'. "
+                    "Confirm or cancel that action first; the new action has not been staged or executed.")
         _pending = _Pending(key=key, title=title, detail=detail,
                             run=run, at=time.monotonic())
 

@@ -10,7 +10,7 @@
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **335 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **432 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -140,6 +140,16 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
 
 ---
+
+### Instagram / Socials reliability
+
+- **Chats really open in the HUD:** “open my Instagram chats” uses `social_hub(action="open_inbox", platform="instagram")`. `check_inbox` remains a background digest. Background operations have separate browser tabs so they cannot navigate the visible HUD away from your chats.
+- **One session, honest status:** current browser cookies take precedence over stale encrypted cookies. Saved credentials are shown as *not live-verified* until Instagram API/DOM evidence verifies the login. Expired logins and security challenges update LINKS/Settings and can be completed inside the HUD. Recovery preserves Ask / Full / ReadOnly / Paused and Ignore choices.
+- **More than one transport:** Instagram reuses the signed-in browser through same-origin requests (fresh cookies/CSRF), or uses encrypted-cookie HTTP without starting a browser. If API lookup fails **before any send attempt**, a native headless Instagram web-composer fallback verifies the exact profile, preserves existing drafts, and uses Instagram's own Message/Send controls. Routine use never opens an external browser/app.
+- **Exact recipient and real approval:** personal DMs use exact @usernames, never name fragments or group membership. Ask mode previews the message, waits for the real HUD Confirm click, rechecks permissions and sending-account identity, then displays the result. A second action cannot silently replace a pending confirmation.
+- **No fake “sent”:** a provider-issued message acknowledgment is required. A click, HTTP 200 alone, optimistic text, or timeout is not proof. Ambiguous sends are reported as **delivery unknown** and are **not automatically retried**, avoiding duplicates. An acknowledgment is not a recipient read receipt. Like/Save controls also require an observable state change before claiming success.
+- **Visible HUD failures:** interaction errors remain visible even with a stale screenshot; input is serialized, stale-session interactions are rejected, and quick text is retained when forwarding fails.
+- **Limits:** Instagram's personal web endpoints and markup are undocumented and can change; login/2FA, rate limits, recipient restrictions, some encrypted-chat receipts, and unsupported UI layouts can still require manual review in the HUD. Text-only Instagram publishing is explicitly unsupported; use Instagram's own media creation UI. Tests simulate HTTP/CDP/browser flows and never send real DMs; an actual signed-in account still needs a local smoke test.
 
 ## 🔥 The 9 Architectural Pillars
 
