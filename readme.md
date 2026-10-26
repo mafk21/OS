@@ -10,7 +10,7 @@
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **531 passing automated `pytest` tests (1 skipped)** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | **Last full regression: 553 passed, 1 skipped** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -144,41 +144,58 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 ### Brag launch videos inside JARVIS
 
 Say **“make a 20-second launch video for this project”** or **“let’s /brag about JARVIS”**.
-The new `brag` skill uses the auto-discovered `brag_video` action to inspect public
-project metadata, plan factual copy, and render a real local H.264/AAC MP4 in the
-background. It uses a model-independent adaptation of upstream
-[Brag-slim](https://github.com/latent-spaces/brag), pinned and MIT-attributed under
-`skills/brag/`. **This adapter uses Pillow + FFmpeg, not Hyperframes or Claude Code.**
+The `brag_video` action now defaults to the **full upstream Brag + real Hyperframes**
+workflow. JARVIS’s configured OpenAI-compatible/Gemini provider directs it—no
+Claude CLI, separate Claude subscription, or silent fallback to motion cards.
+Full upstream guidance/scripts/media are pinned and attributed in `skills/brag/`.
 
-- **Deliverables:** `brag.mp4`, a settled-frame `brag.jpg` baked as frame zero,
-  `brag-plan.md`, `composition-brief.md`, editable `plan.json`, `share-copy.txt`,
-  scene stills and logs in ignored `memory/generated_videos/<job_id>/`.
-- **Formats/options:** landscape, vertical, square; 5–30 seconds (default 20);
-  draft or final (1920×1080 landscape), seven tone presets, optional selected
-  product screenshots. Without images, it makes **source-copy motion cards**,
-  not captured footage or an interactive reconstruction of the app.
-- **Audio:** original synthesized music and soft cues, independently switchable.
-  Narration is off by default; explicit `voice=true` uses JARVIS’s configured
-  OpenAI-compatible speech adapter, not upstream Kokoro. Voice can incur provider
-  charges. Missing/too-long speech fails explicitly; it is never silently dropped.
-- **Lifecycle:** `doctor`, `inspect`, `generate`, `status`, `cancel`; live progress
-  cards, terminal transcript/speech notification, optional existing HUD playback.
-  A queued job is not a completed video. Cancellation kills active media commands;
-  a restart marks unfinished jobs interrupted. Completed means full MP4 decode
-  succeeded, not merely that a filename exists.
-- **Safety:** no automatic installers, no website browsing, no source-script
-  execution, no upload/publication. Inspector reads only root public README or
-  package description, respects ignored metadata and rejects symlinked metadata.
-  Product images must remain inside the selected project. Review stills/copy for
-  privacy and factual accuracy before public sharing.
-- **Setup:** existing `Pillow`, `numpy`, `imageio-ffmpeg` requirements; no Node,
-  browser or separate Claude subscription. Run `brag_video(action="doctor")` first.
-  Local projects only; website capture, custom HTML/Hyperframes compositions and
-  arbitrary generative cinema are not supported by this adapter.
+- **Creative pipeline:** selected real public product UI/copy → nine-question
+  rubric/storyboard → custom editable HTML/GSAP compositions → actual Hyperframes
+  check (nonzero contrast coverage) → snapshots of every scene/transition →
+  provider visual critique/repair (up to three attempts) → render/whole-file decode.
+  Provider/model quality still matters; these checks do **not** promise perfect
+  films or identical results to Claude. Failed checks/reviews stop delivery.
+- **Input:** public local project + selected UI `source_files`, screenshots
+  `image_paths`, logos/fonts/video `asset_paths`; or an explicit user-selected
+  public website `url` captured through Hyperframes. No unrelated image search.
+  Selected source and visual references are sent to the configured provider;
+  planning/authoring/vision calls may incur provider charges.
+- **Audio:** bundled upstream licensed music and motion-matched CC0 SFX by
+  default, independently disabled. Cue/beat metadata guides timing/reactivity;
+  model compliance is not proven by codec checks. Keep the delivered music credit:
+  **Music: Sascha Ende, ende.app (CC BY 4.0)**. Optional explicit narration uses
+  upstream Kokoro; requires separately installed packages and cached model/voice
+  weights (~338 MB). No automatic browser/voice-model download or cloud substitution.
+- **Deliverables:** verified `brag.mp4`, settled `brag.jpg` also baked as frame
+  zero (without extending duration), `creative-plan.json`, `brag-plan.md`,
+  `composition-brief.md`, `share-copy.txt`, `CREDITS.txt`, `visual-review.json`,
+  `REVIEW.md`, editable `composition/`, snapshots and logs. All in ignored
+  `memory/generated_videos/<job_id>/`. Landscape/vertical/square, 5–30 seconds
+  (normally 15–25), seven tones plus freeform direction, draft/final quality.
+- **Controls:** `doctor`, `setup`, `inspect`, `generate`, `status`, `cancel`,
+  `preview`, `stop_preview`, `revise`. Queued is not completed. Media cancellation
+  kills browser/encoder descendants; an in-flight provider call may finish or
+  timeout first. Revision creates a new reviewed/rendered job, preserving the old
+  one. Preview starts the real local Hyperframes editor; hosted installations need
+  an authenticated proxy. No automatic publication, upload, or Git merge.
+- **Setup:** Node.js 22+, installed Chrome/Edge/Chromium, FFmpeg, FFprobe and pinned
+  Hyperframes 0.8.205. `brag_video(action="setup")` requests **real HUD approval**
+  before installing the runtime lockfile. Manual equivalent:
+  `npm --prefix tools/brag-runtime ci`. `doctor` reports missing prerequisites.
+  See `tools/brag-runtime/README.md` for executable overrides and tests.
+- **Safety/limits:** public selected source only; hidden/config/ignored files
+  excluded and common credentials scrubbed, but not a comprehensive secret
+  scanner. Browser composition paths/types are restricted, vendor/media assets
+  protected and local-only CSP added; this is **not** an OS hostile-code sandbox.
+  Review public inputs/code/claims before exposing or sharing. Existing social
+  browser sessions are not reused. No app build scripts or model-written shell run.
+- **Explicit lightweight option:** `engine="simple"` retains the earlier
+  Pillow/FFmpeg source-copy card renderer with synthesized audio and optional
+  OpenAI-compatible speech. It is never silently selected and is not full Brag.
 
-Example tool request after inspection:
+Example after inspecting the product:
 ```json
-{"action":"generate","project_path":"/path/to/project","title":"My Project","hook":"A factual product hook","highlights":["A real feature","Another real feature"],"format":"vertical","duration":20,"tone":"polished","music":true,"voice":false,"autoplay":true}
+{"action":"generate","project_path":"/path/to/project","source_files":["src/App.tsx","src/index.css"],"title":"My Project","hook":"A factual product hook","highlights":["A real feature"],"creative_direction":"A clean product-led launch with visible real UI","format":"vertical","duration":20,"tone":"polished","music":true,"voice":false,"autoplay":true}
 ```
 
 ### Instagram / Socials reliability
