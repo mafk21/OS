@@ -534,8 +534,8 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
         assert accounts.is_service_connected("instagram") is True
         assert sh.load_encrypted_cookies("instagram")[0]["value"] == "live_cdp_ig_session_777"
 
-        # Step B: Check Instagram inbox over real CDP + Vision
-        with patch(
+        # Step B: Check Instagram inbox over real CDP + Vision (Tier 2 headless fallback)
+        with patch("core.social_hub._ig_api_fetch_inbox", return_value=None), patch(
             "core.gemini.call",
             return_value=SimpleNamespace(text="1 unread DM from Sarah: 'Are you free tonight?'"),
         ):
@@ -543,20 +543,151 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
         assert inbox["ok"] is True
         assert "Sarah" in inbox["summary"]
 
-        # Step C: Send Instagram DM via trusted CDP mouse click + `Input.insertText` (Meta Lexical!)
-        sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
+        # Step C: Send Instagram DM via trusted CDP mouse click + `Input.insertText` (headless — 0 visible windows!)
+        with patch("core.social_hub._ig_api_send_dm", return_value=None):
+            sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
         assert "Sent Instagram message to sarah" in sent
+        assert sh._CDP._headless is True
         typed_texts = [p.get("text") for m, p in cdp_events if m == "Input.insertText"]
         assert "Yes see you at 8!" in typed_texts
 
-        # Step D: Hands-free Instagram Reels scroll & Like over real CDP
+        # Step D: Open & interact with Instagram right inside JARVIS's HUD (`HudSocialModal` endpoints!)
+        bridge = ApexHudBridge(None)
+        app = bridge._build_app()
+        with TestClient(app) as client:
+            r_open = client.post(
+                "/api/hud/action",
+                json={"action": "social_open_hud", "platform": "instagram", "view": "reels"},
+            )
+            assert r_open.status_code == 200
+            assert r_open.json()["ok"] is True
+            assert bridge.snapshot()["social_hud"]["platform"] == "instagram"
+            assert bridge.snapshot()["social_hud"]["view"] == "reels"
+
+            r_frame = client.get("/api/hud/social/frame?platform=instagram")
+            assert r_frame.status_code == 200
+            fdata = r_frame.json()
+            assert fdata["ok"] is True
+            assert fdata["image_b64"] == jpg_b64
+
+            assert client.post(
+                "/api/hud/social/interact",
+                json={"platform": "instagram", "kind": "click", "nx": 0.5, "ny": 0.4},
+            ).json()["ok"] is True
+            assert client.post(
+                "/api/hud/social/interact",
+                json={"platform": "instagram", "kind": "wheel", "deltaY": 420},
+            ).json()["ok"] is True
+            assert client.post(
+                "/api/hud/social/interact",
+                json={"platform": "instagram", "kind": "type", "text": "hello hud", "submit": True},
+            ).json()["ok"] is True
+            assert client.post(
+                "/api/hud/social/interact",
+                json={"platform": "instagram", "kind": "close"},
+            ).json()["ok"] is True
+            assert bridge.snapshot()["social_hud"] is None
+
+        # Step E: Hands-free Instagram Reels scroll & Like over real CDP
         assert sh.control_social_feed("insta", "open_reels")["ok"] is True
         assert sh.control_social_feed("insta", "next")["ok"] is True
         assert sh.control_social_feed("insta", "like")["ok"] is True
         methods_called = {m for m, _ in cdp_events}
-        assert {"Input.dispatchKeyEvent", "Input.dispatchMouseEvent", "Input.insertText"} <= methods_called
+        assert {
+            "Emulation.setDeviceMetricsOverride",
+            "Input.dispatchKeyEvent",
+            "Input.dispatchMouseEvent",
+            "Input.insertText",
+        } <= methods_called
     finally:
         http_srv.shutdown()
         if "loop" in ws_stop and "fut" in ws_stop:
             ws_stop["loop"].call_soon_threadsafe(ws_stop["fut"].set_result, True)
+
+
+def test_zero_window_instagram_direct_http_api_inbox_read_and_send(isolated_socials_env):
+    """Verify Instagram inbox check, thread read, and DM send run via pure HTTP API with ZERO browser windows!"""
+    import httpx
+
+    accounts.connect_account("instagram", session_connected=True, handle="mafk", permission="full")
+    sh.save_encrypted_cookies(
+        "instagram",
+        [
+            {"name": "sessionid", "value": "ig_sess_zero_win", "domain": ".instagram.com"},
+            {"name": "csrftoken", "value": "csrf_zero_win", "domain": ".instagram.com"},
+            {"name": "ds_user_id", "value": "1001", "domain": ".instagram.com"},
+        ],
+    )
+
+    fake_inbox_json = {
+        "inbox": {
+            "unseen_count": 1,
+            "threads": [
+                {
+                    "thread_id": "th_sarah_99",
+                    "thread_title": "Sarah",
+                    "read_state": 1,
+                    "users": [{"pk": "2002", "username": "sarah", "full_name": "Sarah K"}],
+                    "items": [
+                        {"user_id": "2002", "item_type": "text", "text": "Did you see the designs?", "timestamp": 200},
+                        {"user_id": "1001", "item_type": "text", "text": "Checking them soon!", "timestamp": 100},
+                    ],
+                }
+            ],
+        }
+    }
+    sent_payloads: list[dict] = []
+
+    class _MockTransport(httpx.BaseTransport):
+        def handle_request(self, request: httpx.Request) -> httpx.Response:
+            u = str(request.url)
+            if "/direct_v2/inbox/" in u:
+                return httpx.Response(200, json=fake_inbox_json)
+            if "/direct_v2/threads/th_sarah_99/" in u:
+                return httpx.Response(200, json={"thread": fake_inbox_json["inbox"]["threads"][0]})
+            if "/news/inbox/" in u:
+                return httpx.Response(
+                    200,
+                    json={"new_stories": [{"args": {"text": "omar liked your reel."}}]},
+                )
+            if "/direct_v2/threads/broadcast/text/" in u:
+                from urllib.parse import parse_qs
+
+                parsed = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+                sent_payloads.append(parsed)
+                return httpx.Response(200, json={"status": "ok"})
+            return httpx.Response(404, json={})
+
+    orig_client = httpx.Client
+
+    def _patched_client(*args, **kwargs):
+        kwargs["transport"] = _MockTransport()
+        return orig_client(*args, **kwargs)
+
+    # Ensure `_CDP.ensure_browser` would explode if ANY browser were touched!
+    with patch("httpx.Client", side_effect=_patched_client), patch.object(
+        sh._CDP,
+        "ensure_browser",
+        side_effect=AssertionError("Browser MUST NOT be launched for silent HTTP API calls!"),
+    ):
+        # 1. Silent Inbox + Notifications check (0 browser processes!)
+        in_res = sh.check_social_inbox("insta", include_notifications=True)
+        assert in_res["ok"] is True
+        assert "[UNREAD] Sarah" in in_res["summary"]
+        assert "Did you see the designs?" in in_res["summary"]
+        assert "omar liked your reel." in in_res["summary"]
+
+        # 2. Silent Thread Read (0 browser processes!)
+        rd_res = sh.read_social_messages("insta", "@sarah")
+        assert rd_res["ok"] is True
+        assert "You: Checking them soon!" in rd_res["messages"]
+        assert "@sarah: Did you see the designs?" in rd_res["messages"]
+
+        # 3. Silent DM Send (0 browser processes!)
+        send_out = sh.stage_or_send_social_message("insta", "@sarah", "Looks awesome, ship it!")
+        assert "silently in the background" in send_out
+        assert len(sent_payloads) == 1
+        assert sent_payloads[0]["text"] == "Looks awesome, ship it!"
+        assert "th_sarah_99" in sent_payloads[0]["thread_ids"]
+
 

@@ -169,6 +169,19 @@ export type TerminalSession = {
   output: string;
 };
 
+export type SocialHudState = {
+  active: boolean;
+  platform: string;
+  label: string;
+  view: string;
+  layout: "mobile" | "wide";
+  width: number;
+  height: number;
+  url: string;
+  connected: boolean;
+  opened_at: number;
+};
+
 export type JarvisContextValue = {
   connected: boolean;
   ready: boolean;
@@ -208,6 +221,7 @@ export type JarvisContextValue = {
   confirm: ConfirmBanner | null;
   content: ContentCard | null;
   video: HudVideoState | null;
+  socialHud: SocialHudState | null;
   consoleOpen: boolean;
   settingsOpen: boolean;
   setupOpen: boolean;
@@ -299,6 +313,12 @@ export type JarvisContextValue = {
   nextVideo: () => Promise<void>;
   prevVideo: () => Promise<void>;
   jumpVideo: (index: number) => Promise<void>;
+  openSocialHud: (
+    platform: string,
+    view?: string,
+    layout?: "mobile" | "wide"
+  ) => Promise<{ ok: boolean; error?: string }>;
+  closeSocialHud: () => Promise<void>;
 };
 
 const JarvisContext = createContext<JarvisContextValue | null>(null);
@@ -394,6 +414,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
   const [confirm, setConfirm] = useState<ConfirmBanner | null>(null);
   const [content, setContent] = useState<ContentCard | null>(null);
   const [video, setVideo] = useState<HudVideoState | null>(null);
+  const [socialHud, setSocialHud] = useState<SocialHudState | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -655,6 +676,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       } else if (d.video === null) {
         setVideo(null);
       }
+      if (d.social_hud && typeof d.social_hud === "object") {
+        setSocialHud(d.social_hud as SocialHudState);
+      } else if (d.social_hud === null) {
+        setSocialHud(null);
+      }
     },
     []
   );
@@ -738,6 +764,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
               break;
             case "video":
               setVideo((msg.video as HudVideoState) || null);
+              break;
+            case "social_hud":
+              setSocialHud((msg.social_hud as SocialHudState) || null);
               break;
             case "activity":
               if (Array.isArray(msg.workers)) {
@@ -1373,6 +1402,51 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     [sendAction]
   );
 
+  const openSocialHud = useCallback(
+    async (
+      platform: string,
+      view = "feed",
+      layout?: "mobile" | "wide"
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "social_open_hud",
+            platform,
+            view,
+            layout: layout || "",
+          }),
+        });
+        const data = await r.json();
+        if (data.social_hud && typeof data.social_hud === "object") {
+          setSocialHud(data.social_hud as SocialHudState);
+        }
+        if (data.summary && typeof data.summary === "object") {
+          setIntegrations(data.summary as IntegrationsSummary);
+        }
+        return data;
+      } catch {
+        return { ok: false, error: "Could not open HUD social viewport." };
+      }
+    },
+    []
+  );
+
+  const closeSocialHud = useCallback(async () => {
+    setSocialHud(null);
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "social_close_hud" }),
+      });
+    } catch {
+      sendAction({ action: "social_close_hud" });
+    }
+  }, [sendAction]);
+
   const value = useMemo<JarvisContextValue>(
     () => ({
       connected,
@@ -1413,6 +1487,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       confirm,
       content,
       video,
+      socialHud,
       consoleOpen,
       settingsOpen,
       setupOpen,
@@ -1474,6 +1549,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       nextVideo,
       prevVideo,
       jumpVideo,
+      openSocialHud,
+      closeSocialHud,
     }),
     [
       connected,
@@ -1515,6 +1592,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       confirm,
       content,
       video,
+      socialHud,
       consoleOpen,
       settingsOpen,
       setupOpen,
@@ -1562,6 +1640,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       nextVideo,
       prevVideo,
       jumpVideo,
+      openSocialHud,
+      closeSocialHud,
     ]
   );
 
