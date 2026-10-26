@@ -35,6 +35,7 @@ export default function IntegrationsModal() {
     startGoogleOAuth,
     connectSocialWeb,
     importSocialCookies,
+    openSocialHud,
   } = useJarvis();
 
   const PRIMARY = theme.primary;
@@ -1157,14 +1158,21 @@ export default function IntegrationsModal() {
                         onClick={async () => {
                           setSocialMsg((p) => ({
                             ...p,
-                            [soc.key]: "Opening persistent sign-in window…",
+                            [soc.key]: "Opening inside JARVIS HUD…",
                           }));
-                          const r = await connectSocialWeb(soc.key, curHandle, curPerm);
-                          setSocialMsg((p) => ({
-                            ...p,
-                            [soc.key]:
-                              r.message || r.error || "Sign-in window launched.",
-                          }));
+                          const r = await openSocialHud(
+                            soc.key,
+                            isConn ? "feed" : "login"
+                          );
+                          if (r.ok && integrationsReady && personaChosen) {
+                            setIntegrationsModalOpen(false);
+                          } else {
+                            setSocialMsg((p) => ({
+                              ...p,
+                              [soc.key]:
+                                r.error || "Opened inside JARVIS HUD.",
+                            }));
+                          }
                         }}
                         style={{
                           display: "inline-flex",
@@ -1173,7 +1181,7 @@ export default function IntegrationsModal() {
                           padding: "6px 12px",
                           borderRadius: 999,
                           border: `1px solid ${PRIMARY}`,
-                          background: `${PRIMARY}22`,
+                          background: `${PRIMARY}26`,
                           color: "#ffffff",
                           fontFamily: "var(--font-mono)",
                           fontSize: 10,
@@ -1181,13 +1189,44 @@ export default function IntegrationsModal() {
                           cursor: "pointer",
                         }}
                       >
-                        <ExternalLink size={11} />
-                        {isConn
-                          ? `OPEN ${soc.title.split("·").pop()?.trim() || "SESSION"}`
-                          : soc.key === "whatsapp"
-                          ? "SCAN QR / SIGN IN"
-                          : "SIGN IN WINDOW"}
+                        <Sparkles size={11} />
+                        OPEN IN HUD
                       </button>
+
+                      {!isConn && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSocialMsg((p) => ({
+                              ...p,
+                              [soc.key]: "Opening one-time sign-in popup…",
+                            }));
+                            const r = await connectSocialWeb(soc.key, curHandle, curPerm);
+                            setSocialMsg((p) => ({
+                              ...p,
+                              [soc.key]:
+                                r.message || r.error || "Sign-in window launched.",
+                            }));
+                          }}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "6px 12px",
+                            borderRadius: 999,
+                            border: `1px solid ${PRIMARY}66`,
+                            background: "rgba(255,255,255,0.04)",
+                            color: "rgba(240,237,232,0.92)",
+                            fontFamily: "var(--font-mono)",
+                            fontSize: 10,
+                            letterSpacing: "0.10em",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <ExternalLink size={11} />
+                          {soc.key === "whatsapp" ? "SCAN QR POPUP" : "ONE-TIME SIGN IN"}
+                        </button>
+                      )}
 
                       {soc.canImportCookies && !isConn && (
                         <button

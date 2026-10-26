@@ -128,6 +128,13 @@ def _pick_port(host: str = "127.0.0.1", preferred: int = 8765) -> int:
     raise RuntimeError("Could not bind any local port for APEX-UI bridge")
 
 
+_ACTIVE_BRIDGE: "ApexHudBridge | None" = None
+
+
+def get_active_bridge() -> "ApexHudBridge | None":
+    return _ACTIVE_BRIDGE
+
+
 class ApexHudBridge:
     """Thread-safe local HTTP + WebSocket server driving the APEX-UI desktop HUD."""
 
@@ -140,6 +147,8 @@ class ApexHudBridge:
         on_all_windows_closed: Callable[[], None] | None = None,
         auto_close_on_disconnect: bool = False,
     ) -> None:
+        global _ACTIVE_BRIDGE
+        _ACTIVE_BRIDGE = self
         self._ui = ui_ref
         self.host = host or os.environ.get("JARVIS_HUD_HOST", "127.0.0.1")
         env_port = int(os.environ.get("JARVIS_HUD_PORT", "0") or "0")
@@ -162,6 +171,7 @@ class ApexHudBridge:
         self._confirm: dict[str, str] | None = None
         self._content: dict[str, str] | None = None
         self._video: dict[str, Any] | None = None
+        self._social_hud: dict[str, Any] | None = None
         self._media_streams: dict[str, dict[str, Any]] = {}
         self._last_level_push = 0.0
         self._tool_tasks: dict[str, dict[str, Any]] = {}
@@ -255,6 +265,7 @@ class ApexHudBridge:
             confirm_obj = dict(self._confirm) if self._confirm else None
             content_obj = dict(self._content) if self._content else None
             video_obj = dict(self._video) if self._video else None
+            social_hud_obj = dict(self._social_hud) if self._social_hud else None
             raw_state = self._raw_state
             offline = self._offline
             offline_reason = self._offline_reason
@@ -323,6 +334,7 @@ class ApexHudBridge:
             "confirm": confirm_obj,
             "content": content_obj,
             "video": video_obj,
+            "social_hud": social_hud_obj,
             "background_mode": bool(self._background_mode),
         }
 
@@ -504,6 +516,12 @@ class ApexHudBridge:
     def video_is_playing(self) -> bool:
         with self._lock:
             return self._video is not None
+
+    def set_social_hud(self, payload: dict[str, Any] | None) -> None:
+        with self._lock:
+            self._social_hud = dict(payload) if payload else None
+            snap = dict(self._social_hud) if self._social_hud else None
+        self._broadcast_threadsafe({"type": "social_hud", "social_hud": snap})
 
     def notify_background_mode(self, active: bool, native_dock: bool = False) -> None:
         self._background_mode = bool(active)
@@ -872,6 +890,21 @@ class ApexHudBridge:
                     threading.Thread(target=cb, daemon=True).start()
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "social_open_hud":
+            from core.social_hub import open_social_in_hud
+
+            plat = str(data.get("platform") or "instagram").strip().lower()
+            view = str(data.get("view") or "feed").strip().lower()
+            layout = str(data.get("layout") or "").strip().lower()
+            res_hud = open_social_in_hud(plat, view=view, layout=layout or "mobile")
+            return {**res_hud, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "social_close_hud":
+            from core.social_hub import close_social_hud
+
+            close_social_hud()
+            return {"ok": True}
 
         if action == "social_connect_web":
             from core.social_hub import start_social_login
@@ -1780,6 +1813,25 @@ class ApexHudBridge:
             except Exception:
                 body = {}
             res = await asyncio.to_thread(self.handle_action, body)
+            return JSONResponse(res)
+
+        @app.get("/api/hud/social/frame")
+        async def _social_frame(req: Request):
+            from core.social_hub import get_hud_social_frame
+
+            plat = req.query_params.get("platform", "")
+            res = await asyncio.to_thread(get_hud_social_frame, plat)
+            return JSONResponse(res)
+
+        @app.post("/api/hud/social/interact")
+        async def _social_interact(req: Request):
+            from core.social_hub import interact_hud_social
+
+            try:
+                body = await req.json()
+            except Exception:
+                body = {}
+            res = await asyncio.to_thread(interact_hud_social, body)
             return JSONResponse(res)
 
         @app.get("/api/hud/media/{token}")

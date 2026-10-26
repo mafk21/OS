@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from core.social_hub import (
     check_social_inbox,
+    close_social_hud,
     control_social_feed,
     disconnect_social_account,
     get_social_hub_status,
@@ -93,8 +94,9 @@ def social_hub(
                     except Exception:
                         pass
                 return msg
-            # Fall through to interactive login window if cookie import found nothing
-        res_login = start_social_login(plat, handle=handle, permission=permission)
+            # Fall through to interactive login if cookie import found nothing
+        in_hud_login = bool(params.get("in_hud", False))
+        res_login = start_social_login(plat, handle=handle, permission=permission, in_hud=in_hud_login)
         return str(res_login.get("message") or res_login.get("error") or "Done.")
 
     # ── 3. SET PERMISSION OR DISCONNECT ───────────────────────────────────────
@@ -166,9 +168,14 @@ def social_hub(
         text = str(params.get("text") or params.get("message") or "").strip()
         return stage_or_publish_social_post(raw_platform, text)
 
-    # ── 8. HANDS-FREE FEED, REELS & STORY CONTROL ─────────────────────────────
+    if action in ("close_hud", "close"):
+        close_social_hud()
+        return "Closed the HUD social panel."
+
+    # ── 8. HUD-EMBEDDED FEED, REELS & STORY CONTROL ───────────────────────────
     if action in (
         "feed",
+        "open_hud",
         "open_feed",
         "open_reels",
         "open_inbox",
@@ -180,9 +187,13 @@ def social_hub(
         "look",
     ):
         plat = raw_platform or "instagram"
-        cmd = str(params.get("command") or (action if action != "feed" else "open_feed")).strip()
+        cmd = str(
+            params.get("command")
+            or ("open_feed" if action in ("feed", "open_hud") else action)
+        ).strip()
         target = str(params.get("target") or params.get("handle") or params.get("contact") or "").strip()
-        res_fd = control_social_feed(plat, cmd, target=target)
+        in_hud = bool(params.get("in_hud", True))
+        res_fd = control_social_feed(plat, cmd, target=target, in_hud=in_hud)
         if not res_fd.get("ok"):
             return str(res_fd.get("error"))
         msg = str(res_fd.get("message") or "Done.")
@@ -195,7 +206,7 @@ def social_hub(
 
     return (
         f"Unknown social_hub action '{action}'. Supported actions: "
-        "status, connect, disconnect, permission, check_inbox, read_messages, send_message, post, feed."
+        "status, connect, disconnect, permission, check_inbox, read_messages, send_message, post, feed, open_hud, close_hud."
     )
 
 
@@ -203,27 +214,29 @@ TOOL = {
     "name": "social_hub",
     "description": (
         "Accesses and controls the user's personal social accounts across Instagram, Snapchat Web "
-        "(web.snapchat.com), TikTok, X / Twitter, WhatsApp Web, and Reddit using a persistent "
-        "encrypted local session. Use to: "
-        "• Check unread DMs, Snaps, & notifications ('check_inbox') across one or all socials. "
-        "• Read a specific DM or Snapchat chat thread ('read_messages' with `contact`). "
-        "• Reply to a DM / Snap chat ('send_message') or publish a post ('post') — automatically "
-        "guarded by JARVIS's on-screen HUD CONFIRM/CANCEL banner when permission is 'ask'. "
-        "• Control feeds & Reels hands-free ('feed' with command='open_reels'|'next'|'previous'|'like'|'save'|'open_profile'|'look'). "
-        "• Connect ('connect') or check status ('status') of personal social accounts."
+        "(web.snapchat.com), TikTok, X / Twitter, WhatsApp Web, and Reddit. "
+        "• SILENT BACKGROUND (NO APP WINDOW OPENED): 'check_inbox', 'read_messages', 'send_message', "
+        "and 'post' run 100% silently in the background via encrypted cookies & headless transport — "
+        "NEVER opening any desktop browser/app window. Outbound DMs/posts are guarded by JARVIS's HUD "
+        "CONFIRM/CANCEL banner when permission is 'ask'. "
+        "• OPEN IN JARVIS'S HUD: 'feed' or 'open_hud' (with command='open_feed'|'open_reels'|'open_inbox'|"
+        "'open_profile'|'next'|'previous'|'like'|'save'|'look') opens and controls the live interactive "
+        "social app directly inside JARVIS's own HUD!"
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "'check_inbox', 'read_messages', 'send_message', 'post', 'feed', 'connect', 'disconnect', 'permission', or 'status'.",
+                "description": "'check_inbox', 'read_messages', 'send_message', 'post', 'feed', 'open_hud', 'close_hud', 'connect', 'disconnect', 'permission', or 'status'.",
                 "enum": [
                     "check_inbox",
                     "read_messages",
                     "send_message",
                     "post",
                     "feed",
+                    "open_hud",
+                    "close_hud",
                     "connect",
                     "disconnect",
                     "permission",
@@ -248,11 +261,15 @@ TOOL = {
             },
             "command": {
                 "type": "STRING",
-                "description": "For action='feed': 'open_feed', 'open_reels', 'open_inbox', 'open_profile', 'next', 'previous', 'like', 'save', or 'look'.",
+                "description": "For action='feed'/'open_hud': 'open_feed', 'open_reels', 'open_inbox', 'open_profile', 'next', 'previous', 'like', 'save', or 'look'.",
             },
             "target": {
                 "type": "STRING",
                 "description": "Optional @username for command='open_profile'.",
+            },
+            "in_hud": {
+                "type": "BOOLEAN",
+                "description": "Open inside JARVIS's own HUD viewport instead of an external desktop window (default true).",
             },
             "cookies_browser": {
                 "type": "STRING",
