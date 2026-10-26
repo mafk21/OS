@@ -210,6 +210,21 @@ def get_persona() -> str:
     return "male"
 
 
+def get_ui_color() -> str:
+    """Return a valid saved #RRGGBB accent, or the inferred edition's default.
+
+    Read-only: startup must not reset custom colours, overwrite credentials, or
+    mark a first-run persona as chosen merely to obtain an accent.
+    """
+    data = load_api_keys()
+    saved = data.get("ui_color")
+    if isinstance(saved, str):
+        color = saved.strip().lower()
+        if len(color) == 7 and color.startswith("#") and all(c in "0123456789abcdef" for c in color[1:]):
+            return color
+    return FEMALE_UI_COLOR if get_persona() == "female" else MALE_UI_COLOR
+
+
 def is_persona_chosen() -> bool:
     """Return True once the user has chosen Male or Female at least once."""
     data = load_api_keys()

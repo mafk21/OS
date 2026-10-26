@@ -3286,7 +3286,8 @@ class MainWindow(QMainWindow):
         _display = self._assistant_name.upper()
 
         # Apply the saved UI colour BEFORE panels/stylesheets are built
-        _ui_color = (_cfg.get("ui_color") or "").strip()
+        from memory.config_manager import get_ui_color
+        _ui_color = get_ui_color()
         if _ui_color and _ui_color.lower() != DEFAULT_UI_COLOR:
             apply_ui_accent(_ui_color)
 
