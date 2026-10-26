@@ -22,6 +22,7 @@ Architecture:
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import base64
 import hashlib
 from io import BytesIO
@@ -938,11 +939,10 @@ class _NativeCdpSocialBrowser:
                 v = httpx.get(f"http://127.0.0.1:{self._port}/json/version", timeout=1.0).json()
                 b_ws = v.get("webSocketDebuggerUrl")
                 if b_ws:
-                    asyncio.run(
-                        _CdpConnection(b_ws).call_many(
-                            lambda c, ws: c.send_cmd(ws, "Browser.close", timeout=2.0),
-                            timeout=3.0,
-                        )
+                    self.run_on_tab(
+                        b_ws,
+                        lambda c, ws: c.send_cmd(ws, "Browser.close", timeout=2.0),
+                        timeout=3.0,
                     )
             except Exception:
                 pass
@@ -1198,8 +1198,25 @@ class _NativeCdpSocialBrowser:
         *,
         timeout: float = 40.0,
     ) -> Any:
-        with self._ws_io_lock:
-            return asyncio.run(_CdpConnection(ws_url).call_many(fn, timeout=timeout))
+        # Sync Playwright keeps an asyncio loop running on its calling thread
+        # (including the confirmation worker). CDP must not nest asyncio.run()
+        # on that thread. Build/await the coroutine on a separate thread only
+        # when necessary; keep Playwright objects on their owning thread.
+        def execute() -> Any:
+            # Acquire this INSIDE the executing thread. A worker cannot acquire
+            # an RLock held by the caller that is waiting for that worker.
+            with self._ws_io_lock:
+                return asyncio.run(_CdpConnection(ws_url).call_many(fn, timeout=timeout))
+
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return execute()
+
+        # No retry: the original result/exception, including an ambiguous
+        # write timeout, crosses this boundary exactly once.
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="social-cdp") as worker:
+            return worker.submit(execute).result()
 
 
 _CDP = _NativeCdpSocialBrowser()

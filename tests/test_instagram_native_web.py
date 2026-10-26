@@ -171,3 +171,102 @@ def test_native_send_without_receipt_is_unknown_and_never_repeated(native, fault
 ])
 def test_only_send_mutation_server_receipts_count(payload, path, operation, expected):
     assert web._send_ack(response(payload, path=path, operation=operation)) == expected
+
+
+@pytest.mark.parametrize("approved,acknowledged", [(True, True), (True, False), (False, True)])
+def test_hud_confirmation_native_send_with_real_playwright_loop(native, monkeypatch, tmp_path, approved, acknowledged):
+    """Approval -> real Playwright loop -> real sync CDP bridge -> fake send.
+
+    Only the driver/event-loop machinery is real. All page/transport operations
+    stay local and simulated; this must never launch Chromium or send a DM.
+    """
+    import asyncio
+    import threading
+    from playwright.sync_api import sync_playwright
+    from core import confirm, security_vault, social_hub as sh
+    from memory import accounts
+
+    monkeypatch.setattr(accounts, "ACCOUNTS_FILE", tmp_path / "accounts.json")
+    monkeypatch.setattr(security_vault, "AUDIT_DB_PATH", tmp_path / "audit.db")
+    monkeypatch.setattr(security_vault, "VAULT_KEY_FILE", tmp_path / "vault.key")
+    accounts.connect_account("instagram", session_connected=True, permission="ask")
+    monkeypatch.setattr(confirm, "_pending", None)
+    monkeypatch.setattr(confirm, "_show_cb", Mock())
+    monkeypatch.setattr(confirm, "_hide_cb", Mock())
+    monkeypatch.setattr(confirm, "_log_cb", Mock())
+    monkeypatch.setattr(sh, "_ensure_platform_ready", lambda *_a, **_k: (True, "ok"))
+    api = Mock(return_value=None)  # safe failure BEFORE any API write
+    monkeypatch.setattr(sh, "_ig_api_send_dm", api)
+    native.page.ack = acknowledged
+
+    cdp = sh._NativeCdpSocialBrowser()
+    cdp._port = 1234
+    monkeypatch.setattr(sh, "_CDP", cdp)
+    loop_handoffs = []
+
+    async def call_many(connection, fn, *, timeout):
+        return await fn(connection, None)
+
+    monkeypatch.setattr(sh._CdpConnection, "call_many", call_many)
+
+    def rpc(value):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            in_loop = False
+        else:
+            in_loop = True
+        caller_thread = threading.get_ident()
+        async def operation(_conn, _ws):
+            if in_loop:
+                loop_handoffs.append((caller_thread, threading.get_ident()))
+            await asyncio.sleep(0)
+            return value
+        return cdp.run_on_tab("ws://simulated-only", operation, timeout=2)
+
+    monkeypatch.setattr(cdp, "get_or_open_tab", lambda *_a, **_kw: rpc({"id": "background-target"}))
+    monkeypatch.setattr(sh, "_cookie_dict", lambda _: rpc(dict(native.cookies)))
+    session = SimpleNamespace(send=lambda _: {"targetInfo": {"targetId": "background-target"}}, detach=Mock())
+    context = SimpleNamespace(pages=[native.page], new_cdp_session=lambda _: session)
+    fake_browser = SimpleNamespace(contexts=[context])
+
+    def manager():
+        actual = sync_playwright()
+        def start():
+            playwright = actual.start()
+            assert asyncio.get_running_loop().is_running()
+            monkeypatch.setattr(playwright.chromium, "connect_over_cdp", lambda *_a, **_kw: fake_browser)
+            return playwright
+        return SimpleNamespace(start=start)
+
+    start_factory = Mock(side_effect=manager)
+    monkeypatch.setattr(web, "_playwright", start_factory)
+    complete = threading.Event()
+    results = []
+    def report(result):
+        results.append(result)
+        complete.set()
+
+    pending = sh.stage_or_send_social_message("instagram", "sarah", "simulated only", on_result=report)
+    assert "CONFIRMATION_PENDING" in pending
+    assert native.page.attempts == 0
+    api.assert_not_called()
+    confirm.resolve(approved)
+    confirm.resolve(approved)  # a repeated UI click cannot execute it again
+    if not approved:
+        assert native.page.attempts == 0 and not results
+        start_factory.assert_not_called()
+        api.assert_not_called()
+        return
+    assert complete.wait(10), "Confirmation worker did not report its execution result"
+    assert len(results) == 1 and native.page.attempts == 1
+    assert len(loop_handoffs) == 3  # tab preparation + both sending-account checks
+    assert all(caller != worker for caller, worker in loop_handoffs)
+    assert "asyncio.run()" not in results[0]
+    if acknowledged:
+        assert "Instagram acknowledgment: native-server-id" in results[0]
+    else:
+        assert "send not confirmed" in results[0]
+        assert "No automatic retry" in results[0]
+    start_factory.assert_called_once()
+    api.assert_called_once()
