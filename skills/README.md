@@ -32,14 +32,3 @@ skills/
 Rules enforced by the loader: lowercase-hyphen name ≤64 chars matching the
 folder, non-empty description, non-empty body. Folders starting with `_` are
 ignored (that's the template).
-
-## Brag video workflow
-
-`brag/` defaults to the full upstream Brag/Hyperframes workflow through the
-executable `brag_video` action, directed by JARVIS's configured provider (not
-Claude CLI). Includes pinned full guidance, licensed music/CC0 SFX, custom
-compositions, real checks, sampled visual critique/repair, verified MP4/poster,
-website capture, editable studio preview, revision jobs and delivery credits.
-Setup uses a real approval gate. See SKILL.md for dependencies, privacy/cost,
-limits, controls, tests and explicit `engine="simple"` lightweight mode. Original
-workflow/assets/licenses and provenance are preserved under upstream/ and UPSTREAM.md.

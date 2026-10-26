@@ -5,12 +5,12 @@
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **65,000+ lines** across **159 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **52 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **12 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Execution Surface** | **51 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
 | **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
 | **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
-| **Verification** | **Last full regression: 553 passed, 1 skipped** + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
+| **Verification** | Automated `pytest` coverage for core workflows + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
 
@@ -140,63 +140,6 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
 
 ---
-
-### Brag launch videos inside JARVIS
-
-Say **“make a 20-second launch video for this project”** or **“let’s /brag about JARVIS”**.
-The `brag_video` action now defaults to the **full upstream Brag + real Hyperframes**
-workflow. JARVIS’s configured OpenAI-compatible/Gemini provider directs it—no
-Claude CLI, separate Claude subscription, or silent fallback to motion cards.
-Full upstream guidance/scripts/media are pinned and attributed in `skills/brag/`.
-
-- **Creative pipeline:** selected real public product UI/copy → nine-question
-  rubric/storyboard → custom editable HTML/GSAP compositions → actual Hyperframes
-  check (nonzero contrast coverage) → snapshots of every scene/transition →
-  provider visual critique/repair (up to three attempts) → render/whole-file decode.
-  Provider/model quality still matters; these checks do **not** promise perfect
-  films or identical results to Claude. Failed checks/reviews stop delivery.
-- **Input:** public local project + selected UI `source_files`, screenshots
-  `image_paths`, logos/fonts/video `asset_paths`; or an explicit user-selected
-  public website `url` captured through Hyperframes. No unrelated image search.
-  Selected source and visual references are sent to the configured provider;
-  planning/authoring/vision calls may incur provider charges.
-- **Audio:** bundled upstream licensed music and motion-matched CC0 SFX by
-  default, independently disabled. Cue/beat metadata guides timing/reactivity;
-  model compliance is not proven by codec checks. Keep the delivered music credit:
-  **Music: Sascha Ende, ende.app (CC BY 4.0)**. Optional explicit narration uses
-  upstream Kokoro; requires separately installed packages and cached model/voice
-  weights (~338 MB). No automatic browser/voice-model download or cloud substitution.
-- **Deliverables:** verified `brag.mp4`, settled `brag.jpg` also baked as frame
-  zero (without extending duration), `creative-plan.json`, `brag-plan.md`,
-  `composition-brief.md`, `share-copy.txt`, `CREDITS.txt`, `visual-review.json`,
-  `REVIEW.md`, editable `composition/`, snapshots and logs. All in ignored
-  `memory/generated_videos/<job_id>/`. Landscape/vertical/square, 5–30 seconds
-  (normally 15–25), seven tones plus freeform direction, draft/final quality.
-- **Controls:** `doctor`, `setup`, `inspect`, `generate`, `status`, `cancel`,
-  `preview`, `stop_preview`, `revise`. Queued is not completed. Media cancellation
-  kills browser/encoder descendants; an in-flight provider call may finish or
-  timeout first. Revision creates a new reviewed/rendered job, preserving the old
-  one. Preview starts the real local Hyperframes editor; hosted installations need
-  an authenticated proxy. No automatic publication, upload, or Git merge.
-- **Setup:** Node.js 22+, installed Chrome/Edge/Chromium, FFmpeg, FFprobe and pinned
-  Hyperframes 0.8.205. `brag_video(action="setup")` requests **real HUD approval**
-  before installing the runtime lockfile. Manual equivalent:
-  `npm --prefix tools/brag-runtime ci`. `doctor` reports missing prerequisites.
-  See `tools/brag-runtime/README.md` for executable overrides and tests.
-- **Safety/limits:** public selected source only; hidden/config/ignored files
-  excluded and common credentials scrubbed, but not a comprehensive secret
-  scanner. Browser composition paths/types are restricted, vendor/media assets
-  protected and local-only CSP added; this is **not** an OS hostile-code sandbox.
-  Review public inputs/code/claims before exposing or sharing. Existing social
-  browser sessions are not reused. No app build scripts or model-written shell run.
-- **Explicit lightweight option:** `engine="simple"` retains the earlier
-  Pillow/FFmpeg source-copy card renderer with synthesized audio and optional
-  OpenAI-compatible speech. It is never silently selected and is not full Brag.
-
-Example after inspecting the product:
-```json
-{"action":"generate","project_path":"/path/to/project","source_files":["src/App.tsx","src/index.css"],"title":"My Project","hook":"A factual product hook","highlights":["A real feature"],"creative_direction":"A clean product-led launch with visible real UI","format":"vertical","duration":20,"tone":"polished","music":true,"voice":false,"autoplay":true}
-```
 
 ### Instagram / Socials reliability
 
