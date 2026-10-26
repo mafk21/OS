@@ -41,12 +41,26 @@ def browser_env(tmp_path, monkeypatch):
                 return request_route.fulfill(status=302, headers={"Location": "https://www.instagram.com/accounts/login/"})
             meta = '<link rel="canonical" href="https://www.instagram.com/sarah/">' if state["mode"] != "header" else ''
             control = '<a href="/direct/t/test-thread/">Message</a>' if state["mode"] == "link" else '<button onclick="location.href=\'/direct/t/test-thread/\'">Message</button>'
+            if state["mode"] == "encrypted":
+                control = '<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Message</button>'
+            if state["mode"] in ("stuck", "wrong_recipient", "ambiguous_recipient", "preselected_recipient"):
+                control = '<button>Message</button>'
+            if state["mode"] == "hidden_copy":
+                control = '<button style="display:none">Message</button>' + control
             if state["mode"] == "modal":
                 chat = '<div role="dialog"><a href="/sarah/">sarah</a>' + composer() + '</div>'
                 control = '<button id="open">Message</button><script>document.querySelector("#open").onclick=()=>{document.querySelector("main").insertAdjacentHTML("beforeend", '+json.dumps(chat)+'); setup();}</script>'
             return request_route.fulfill(content_type="text/html", body='<html><head>'+meta+'</head><body><main><header><h2>sarah</h2></header>'+control+'</main>'+script()+'</body></html>')
-        if path.startswith("/direct/t/"):
+        if path.startswith(("/direct/t/", "/direct/e2ee/t/")):
             return request_route.fulfill(content_type="text/html", body='<html><body><main>'+composer()+'</main>'+script()+'<script>setup()</script></body></html>')
+        if path == "/direct/new/":
+            username = 'someoneelse' if state['mode'] == 'wrong_recipient' else 'sarah'
+            row = '<label><span>'+username+'</span><br><span>Display name</span><input type="checkbox"></label>'
+            if state['mode'] == 'ambiguous_recipient':
+                row += row
+            if state['mode'] == 'preselected_recipient':
+                row += '<label>someoneelse<input type="checkbox" checked></label>'
+            return request_route.fulfill(content_type="text/html", body='<html><body><input name="queryBox" placeholder="Search">'+row+'<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Chat</button></body></html>')
         if path == "/accounts/login/":
             return request_route.fulfill(content_type="text/html", body='<input type="password">Sign in')
         return request_route.fulfill(status=404, body="simulated only")
@@ -105,7 +119,7 @@ def browser_env(tmp_path, monkeypatch):
         assert not thread.is_alive(), "Browser controller leaked"
 
 
-@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal"])
+@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal", "encrypted", "hidden_copy", "stuck"])
 def test_actual_confirmed_native_send_variants(browser_env, mode):
     browser_env["mode"] = mode
     completed = threading.Event()
@@ -127,5 +141,13 @@ def test_actual_confirmed_native_send_variants(browser_env, mode):
 def test_actual_browser_blocks_draft_or_login_without_sending(browser_env, mode):
     browser_env["mode"] = mode
     with pytest.raises(RuntimeError, match=r"\[IG:"):
+        instagram_web.send_instagram_message(hub, "sarah", "must not send", expected_sender={"ds_user_id": "123"})
+    assert not browser_env["posts"]
+
+
+@pytest.mark.parametrize("mode", ["wrong_recipient", "ambiguous_recipient", "preselected_recipient"])
+def test_compose_recovery_never_selects_wrong_or_ambiguous_recipient(browser_env, mode):
+    browser_env["mode"] = mode
+    with pytest.raises(RuntimeError, match=r"IG:compose_recipient_lookup"):
         instagram_web.send_instagram_message(hub, "sarah", "must not send", expected_sender={"ds_user_id": "123"})
     assert not browser_env["posts"]
