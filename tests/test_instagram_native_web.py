@@ -18,6 +18,15 @@ class Locator:
     def first(self):
         return self
 
+    def nth(self, _):
+        return self
+
+    def or_(self, _):
+        return self
+
+    def press(self, _):
+        Locator(self.page, "send").click()
+
     def wait_for(self, **_):
         pass
 
@@ -48,6 +57,7 @@ class Locator:
 
     def fill(self, text):
         self.page.filled.append(text)
+        self.page.draft = text
         if self.page.on_fill:
             self.page.on_fill()
 
@@ -76,8 +86,16 @@ class Page:
     def wait_for_load_state(self, _):
         pass
 
+    def evaluate(self, *_):
+        return self.canonical == "https://www.instagram.com/sarah/"
+
+    def wait_for_function(self, *_a, **_kw):
+        return SimpleNamespace(json_value=lambda: "thread")
+
     def wait_for_url(self, url):
-        if isinstance(url, str):
+        if callable(url):
+            assert url(self.url)
+        elif isinstance(url, str):
             assert url == self.url
         else:
             assert url.match(self.url)
@@ -260,7 +278,7 @@ def test_hud_confirmation_native_send_with_real_playwright_loop(native, monkeypa
         return
     assert complete.wait(10), "Confirmation worker did not report its execution result"
     assert len(results) == 1 and native.page.attempts == 1
-    assert len(loop_handoffs) == 3  # tab preparation + both sending-account checks
+    assert len(loop_handoffs) == 2  # both sending-account checks; tab prepared before Playwright startup
     assert all(caller != worker for caller, worker in loop_handoffs)
     assert "asyncio.run()" not in results[0]
     if acknowledged:

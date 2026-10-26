@@ -162,20 +162,40 @@ def social_hub(
         recipient = str(params.get("recipient") or params.get("contact") or "").strip()
         message = str(params.get("message") or params.get("text") or "").strip()
         def report_result(result: str) -> None:
-            # This callback runs AFTER the user's approval, on the gate worker.
-            # A pending tool result is not evidence that sending completed.
+            # Never let one broken display channel swallow the execution result.
+            displayed = False
             if player is not None and hasattr(player, "show_content"):
-                player.show_content("Social message result", result)
-            else:
-                from core.apex_bridge import get_active_bridge
-                bridge = get_active_bridge()
-                if bridge is not None:
-                    bridge.push_content("Social message result", result)
+                try:
+                    player.show_content("Social message result", result)
+                    displayed = True
+                except Exception:
+                    pass
+            if not displayed:
+                try:
+                    from core.apex_bridge import get_active_bridge
+                    bridge = get_active_bridge()
+                    if bridge is not None:
+                        bridge.push_content("Social message result", result)
+                except Exception:
+                    pass
             if callable(speak):
-                speak("Report this social-message execution result accurately in the user's language. "
-                      "Do not claim delivery unless the result contains an Instagram acknowledgment. Result: " + result)
+                try:
+                    speak("Report the following social-message execution result accurately in the user's language, "
+                          "including its IG step code and recovery action if present. Do not replace it with a generic "
+                          "system problem, and do not claim delivery without an Instagram acknowledgment. Result: " + result)
+                except Exception:
+                    pass
 
-        return stage_or_send_social_message(raw_platform, recipient, message, on_result=report_result)
+        try:
+            return stage_or_send_social_message(raw_platform, recipient, message, on_result=report_result)
+        except Exception as exc:
+            # Readiness/vault/UI failures can occur before the gate is staged.
+            # Do not leak raw exception logs (they may contain private input).
+            result = (f"Social message execution stopped [IG:prepare:{type(exc).__name__}]. "
+                      "Open Instagram DMs in the HUD to check login or security prompts. "
+                      "Check the chat before retrying; no automatic resend was made.")
+            report_result(result)
+            return result
 
     # ── 7. PUBLISH POST / TWEET (HUD CONFIRMATION GATED!) ─────────────────────
     if action in ("post", "tweet", "publish"):

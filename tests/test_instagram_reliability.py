@@ -483,3 +483,33 @@ def test_legacy_persistent_profile_is_hydrated_before_confirmation(monkeypatch):
     assert "CONFIRMATION_PENDING" in output
     assert hub._cookie_dict("instagram")["ds_user_id"] == "123"
     ensure.assert_called_once_with(headless=True)
+
+
+def test_send_result_survives_broken_hud_display(monkeypatch):
+    connected("ask")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", Mock(return_value="Instagram acknowledgment: safe-id"))
+    completed = threading.Event()
+    spoken = []
+    def speak(text):
+        spoken.append(text)
+        completed.set()
+    player = SimpleNamespace(show_content=Mock(side_effect=RuntimeError("display unavailable")))
+    pending = social_hub({"action": "send_message", "platform": "instagram", "recipient": "sarah", "message": "hello"}, player=player, speak=speak)
+    assert "CONFIRMATION_PENDING" in pending
+    confirm.resolve(True)
+    assert completed.wait(3)
+    assert len(spoken) == 1 and "safe-id" in spoken[0]
+
+
+def test_native_session_does_not_issue_speculative_api_write(monkeypatch):
+    from core import instagram_web
+    connected("full")
+    monkeypatch.setattr(hub._CDP, "_endpoint_alive", lambda: True)
+    api = Mock(side_effect=AssertionError("Must not write to private API first"))
+    native = Mock(return_value="Instagram acknowledgment: native-id")
+    monkeypatch.setattr(hub, "_ig_api_send_dm", api)
+    monkeypatch.setattr(instagram_web, "send_instagram_message", native)
+    result = hub.stage_or_send_social_message("instagram", "sarah", "hello")
+    assert "native-id" in result
+    api.assert_not_called()
+    native.assert_called_once()

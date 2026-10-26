@@ -585,7 +585,7 @@ def test_real_cdp_websocket_instagram_login_inbox_lexical_dm_and_reels(
 
         # Step C: Send once through same-origin browser fetch, require a real
         # protocol receipt; no guessed coordinates or composer-click success.
-        sent = sh.stage_or_send_social_message("insta", "@sarah", "Yes see you at 8!")
+        sent = sh._ig_api_send_dm("sarah", "Yes see you at 8!")
         assert "Instagram acknowledgment: server-cdp-message-1" in sent
         assert sh._CDP._headless is True
         fetches = [p["expression"] for m, p in cdp_events if m == "Runtime.evaluate" and "const response = await fetch" in p.get("expression", "")]
