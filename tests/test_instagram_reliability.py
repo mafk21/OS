@@ -571,3 +571,17 @@ def test_audit_failure_does_not_swallow_execution_failure_callback(monkeypatch):
     results = []
     result = hub.stage_or_send_social_message("instagram", "sarah", "hello", on_result=results.append)
     assert "Missing row" in result and results == [result]
+
+
+def test_failure_hud_adopts_exact_target_without_navigating_it(monkeypatch):
+    connected("full")
+    monkeypatch.setattr(hub._CDP, "_list_page_targets", lambda: [
+        {"id":"failed", "url":"https://www.instagram.com/direct/new/"},
+        {"id":"unrelated", "url":"https://example.org/"},
+    ])
+    hub._CDP._tab_ids = {"instagram:send":"failed", "instagram":"old-hud"}
+    assert not hub.show_social_failure_in_hud("instagram", "unrelated")
+    assert hub.show_social_failure_in_hud("instagram", "failed")
+    assert hub._CDP._tab_ids == {"instagram":"failed"}
+    assert hub._HUD_SOCIAL_SESSIONS["current"]["failure_review"] is True
+    assert hub._HUD_SOCIAL_SESSIONS["current"]["layout"] == "wide"

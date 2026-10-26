@@ -106,6 +106,68 @@ def _wait_chat(page, username: str, *, timeout: int = 12000):
     return page.locator('[data-jarvis-verified-chat="true"]') if state == "dialog" else page
 
 
+_PAGE_STATE_JS = r"""() => {
+  // Only an enum leaves the browser. Never export the text we inspect here.
+  const visible = e => e.getBoundingClientRect().width > 0;
+  const controls = [...document.querySelectorAll('button, [role="button"], [role="option"], label')].filter(visible);
+  const sparse = controls.length <= 3 && !document.querySelector('textarea, [role="textbox"], input, a[href*="/direct/t/"], a[href*="/direct/e2ee/t/"]');
+  // Do not classify from message previews or arbitrary chat text. Use visible
+  // interstitial semantics, or the entire document only on a sparse screen.
+  const text = (sparse ? document.body?.innerText || '' : [...document.querySelectorAll(
+    '[role="dialog"], [role="alert"], h1, h2, h3, [role="heading"]'
+  )].filter(visible).map(e=>e.innerText || '').join(' ')).toLowerCase();
+  const path = location.pathname;
+  if (/\/(challenge|checkpoint)(\/|$)/.test(path)) return 'security_check';
+  if (/\/accounts\/login/.test(path) || document.querySelector('input[type="password"]')) return 'login';
+  if (/enter your pin|enter.*6.digit pin|restore your chat|secure storage|أدخل.*رمز.*pin|أدخل رقم التعريف/.test(text)) return 'encrypted_storage';
+  if (/try again later|we restrict certain activity|automated behavior|too many requests|حاول مرة أخرى لاحق/.test(text)) return 'restricted';
+  if (/allow.*cookies|decline optional cookies|cookie settings|ملفات تعريف الارتباط/.test(text) && document.querySelector('[role="dialog"], button')) return 'cookie_consent';
+  if (/something went wrong|couldn.t load|could not load|حدث خطأ/.test(text)) return 'load_error';
+  if (/use the instagram app|open.*instagram app|استخدم تطبيق/.test(text)) return 'app_interstitial';
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')].filter(d=>d.getBoundingClientRect().width);
+  if (dialogs.some(d=>/turn on notifications|save your login|save your login info|تشغيل الإشعارات|حفظ معلومات تسجيل/.test((d.innerText || '').toLowerCase()))) return 'optional_prompt';
+  return 'unclassified';
+}"""
+_PAGE_STATES = {"security_check", "login", "encrypted_storage", "restricted", "cookie_consent", "load_error", "app_interstitial", "optional_prompt", "unclassified"}
+
+
+def _page_state(page):
+    try:
+        result = page.evaluate(_PAGE_STATE_JS)
+        return result if isinstance(result, str) and result in _PAGE_STATES else "unclassified"
+    except Exception:
+        return "unclassified"
+
+
+def _prepare_inbox(page, progress):
+    """Bounded recovery of known non-message UI, never security/consent bypass."""
+    state = _page_state(page)
+    if state == "load_error":
+        progress("inbox_reload")
+        page.reload(wait_until="domcontentloaded")  # safe navigation, exactly once
+        state = _page_state(page)
+    if state == "optional_prompt":
+        progress("inbox_optional_prompt")
+        dialogs = page.get_by_role("dialog").filter(has_text=re.compile(
+            r"turn on notifications|save your login|تشغيل الإشعارات|حفظ معلومات تسجيل", re.I))
+        dismiss = dialogs.get_by_role("button", name=re.compile(r"^(Not now|ليس الآن|لاحقًا|لاحقا)$", re.I))
+        if dismiss.count() == 1:
+            dismiss.click()
+            state = _page_state(page)
+    blockers = {
+        "security_check": "Instagram is displaying a security checkpoint. Complete that screen in the HUD; it cannot be bypassed.",
+        "login": "Instagram is displaying its login screen. Sign in on that screen in the HUD.",
+        "encrypted_storage": "Instagram is asking to unlock encrypted chat storage. Complete its PIN/recovery screen in the HUD; JARVIS cannot bypass it.",
+        "restricted": "Instagram is displaying an activity restriction or rate limit. Sending is blocked by Instagram; do not repeatedly retry.",
+        "cookie_consent": "Instagram is displaying cookie consent, not the inbox. Choose your privacy preference on that screen in the HUD.",
+        "app_interstitial": "Instagram is displaying an app-opening interstitial instead of its web inbox. The actual page is available in the HUD.",
+        "load_error": "Instagram's inbox still displays a load error after one safe reload. No message retry was attempted.",
+    }
+    if state in blockers:
+        progress("inbox_" + state)
+        raise RecipientError(blockers[state])
+
+
 def _open_from_compose(page, username: str, progress=lambda _: None):
     """Recover only pre-submission navigation, never retry a message write.
 
@@ -115,6 +177,8 @@ def _open_from_compose(page, username: str, progress=lambda _: None):
     """
     progress("compose_search")
     page.goto("https://www.instagram.com/direct/new/", wait_until="domcontentloaded")
+    _prepare_inbox(page, progress)
+    progress("compose_search")
     searches = page.locator('input[name="queryBox"]:visible, input[placeholder*="Search" i]:visible, '
                             'input[placeholder*="بحث"]:visible, input[aria-label*="Search" i]:visible')
     try:
@@ -265,6 +329,7 @@ class InstagramMessageRun:
         self.stage = "browser_start"
         self.history = []
         self.page = None
+        self.target_id = ""
         self.playwright = None
         self.attempted = False
         self.acknowledgments = []
@@ -280,6 +345,7 @@ class InstagramMessageRun:
         url = f"https://www.instagram.com/{self.username}/"
         tab = self.hub._CDP.get_or_open_tab("instagram", url, headless=True,
                     force_navigate=True, purpose="send")
+        self.target_id = str(tab.get("id") or "")
         self.progress("playwright_driver_start")
         self.playwright = _playwright().start()
         self.progress("browser_attach")
@@ -425,7 +491,8 @@ class InstagramMessageRun:
 
     def failure_diagnostic(self):
         """Strict allowlist: never serialize DOM text, cookies, URLs or messages."""
-        report = {"version": 2, "stage": self.stage, "history": self.history[-20:], "attempted": self.attempted}
+        report = {"version": 3, "stage": self.stage, "history": self.history[-20:], "attempted": self.attempted,
+                  "page_state": "unavailable"}
         if self.page is not None:
             try:
                 observed = self.page.evaluate("""() => ({
@@ -441,6 +508,8 @@ class InstagramMessageRun:
                             report[key] = observed[key]
             except Exception:
                 pass
+        if self.page is not None:
+            report["page_state"] = _page_state(self.page)
         try:
             directory = self.hub.socials_root_dir()
             target = directory / "instagram_last_failure.json"
@@ -458,10 +527,19 @@ class InstagramMessageRun:
 
     def fail(self, exc):
         diagnostic = self.failure_diagnostic()
+        # Surface the SAME failed tab, not a freshly navigated inbox that hides
+        # the blocker. This does not click/type/submit anything on that page.
+        shown = False
+        if not self.attempted and self.target_id:
+            try:
+                shown = self.hub.show_social_failure_in_hud("instagram", self.target_id)
+            except Exception:
+                pass
+        suffix = " The actual failed page is open in the HUD." if shown else ""
         if self.attempted:
             raise DeliveryUnknown(f"[IG:{self.stage}] The send was attempted but its result is unknown. Check the chat before retrying. No automatic retry was made.") from exc
         if isinstance(exc, (RecipientError, RuntimeError)) and not type(exc).__module__.startswith("playwright"):
-            raise type(exc)(f"[IG:{self.stage}] {exc}") from exc
+            raise type(exc)(f"[IG:{self.stage}] {exc}{suffix}") from exc
         explanations = {
             "compose_search": "Instagram's recipient search input did not appear.",
             "compose_launcher": "The inbox did not expose an accessible New Message control.",
@@ -472,13 +550,15 @@ class InstagramMessageRun:
             "session_thread_lookup": "The read-only session lookup could not resolve the recipient.",
         }
         reason = explanations.get(self.stage, "Instagram did not complete this operation state.")
+        if self.stage == "compose_launcher":
+            reason = "The current page has no accessible New Message control; it has not been verified as a loaded inbox."
         if self.stage in ("browser_start", "background_tab_prepare", "playwright_driver_start", "browser_attach"):
             reason = "The dedicated browser control could not start or attach; this is not an Instagram login error."
         if diagnostic.get("login_form"):
             reason += " A login form is actually visible in the browser."
         counts = ", ".join(f"{k}={diagnostic[k]}" for k in ("visible_inputs", "selectable_rows", "exact_rows") if k in diagnostic)
         raise RuntimeError(f"[IG:{self.stage}] {reason} Nothing was submitted. "
-                           f"Diagnostic v2: {counts or 'page unavailable'}. Details: ~/.jarvis_socials/instagram_last_failure.json (or JARVIS_SOCIALS_DIR).") from exc
+                           f"Page state: {diagnostic['page_state']}.{suffix} Diagnostic v3: {counts or 'page unavailable'}. Details: ~/.jarvis_socials/instagram_last_failure.json (or JARVIS_SOCIALS_DIR).") from exc
 
     def run(self):
         try:

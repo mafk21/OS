@@ -1644,6 +1644,43 @@ def open_social_in_hud(
     }
 
 
+def show_social_failure_in_hud(platform: str, target_id: str) -> bool:
+    """Adopt a failed automation target without navigating away from evidence.
+
+    Only pre-submission failures call this. Relinquish its automation mapping so
+    the next operation cannot navigate the page while the user is inspecting it.
+    """
+    plat = normalize_social_platform(platform)
+    if plat not in SOCIAL_PLATFORMS or not target_id:
+        return False
+    spec = SOCIAL_PLATFORMS[plat]
+    with _CDP._lock:
+        page = next((p for p in _CDP._list_page_targets() if p.get("id") == target_id), None)
+        host = urlsplit(str((page or {}).get("url") or "")).hostname or ""
+        if not page or not any(host == domain or host.endswith("." + domain) for domain in spec["domains"]):
+            return False
+        for key in list(_CDP._tab_ids):
+            if _CDP._tab_ids[key] == target_id:
+                del _CDP._tab_ids[key]
+        _CDP._tab_ids[plat] = target_id
+    rec = accounts.get_account(plat) or {}
+    payload = {"active": True, "platform": plat, "label": spec["label"],
+               "view": "inbox", "layout": "wide", "width": 1024, "height": 680,
+               "url": str(page.get("url") or ""), "connected": False,
+               "session_health": str(rec.get("session_health") or "unverified"),
+               "opened_at": int(time.time() * 1000), "failure_review": True}
+    with _HUD_SOCIAL_LOCK:
+        _HUD_SOCIAL_SESSIONS["current"] = dict(payload)
+    try:
+        from core.apex_bridge import get_active_bridge
+        bridge = get_active_bridge()
+        if bridge is not None:
+            bridge.set_social_hud(payload)
+    except Exception:
+        pass
+    return True
+
+
 def close_social_hud() -> dict[str, Any]:
     with _HUD_SOCIAL_LOCK:
         _HUD_SOCIAL_SESSIONS.pop("current", None)
