@@ -211,13 +211,17 @@ class ApexHudBridge:
         return cfg.is_configured()
 
     def _is_persona_chosen(self) -> bool:
+        if os.environ.get("JARVIS_HUD_PREVIEW_READY") == "1":
+            return True
         if os.environ.get("JARVIS_SKIP_PERSONA_PROMPT", "").strip().lower() in (
             "1", "true", "yes",
         ):
             return True
         if self._ui is not None and hasattr(self._ui, "_persona_selected"):
             return bool(self._ui._persona_selected)
-        return True
+        if self._ui is not None:
+            return True
+        return cfg.is_persona_chosen()
 
     def _is_integrations_ready(self) -> bool:
         if os.environ.get("JARVIS_HUD_PREVIEW_READY") == "1":
