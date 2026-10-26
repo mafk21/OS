@@ -14,6 +14,32 @@
 
 ---
 
+## Male Figure-of-Light visual preview (unmerged)
+
+The Male stage now waits at **ENTER** before starting its particle assembly. That click
+unlocks procedural Web Audio first, so the rising assembly sound and completion
+shockwave can play on the first birth, not just on replays. The stage includes
+**Idle / Listening / Thinking / Speaking** visual previews, **Return to Live**,
+**Rebirth**, **Shockwave**, **3D Orbit**, density selection and independent **SFX**.
+Visual state previews expire after eight seconds and yield immediately to real
+assistant state changes; they never send a command or alter the microphone.
+The Female orb components are unchanged.
+
+```bash
+python tools/humanoid_preview.py --port 3000
+```
+
+This serves the rebuilt HUD on `0.0.0.0:3000` for visual review **without API keys**.
+It is deliberately read-only: no AI responses, live microphone, desktop actions,
+credential writes or skill execution. Use `python main.py` for the actual assistant.
+
+Reference: <https://apex-humanoid.vercel.app/>. Its entry-screen text was verified;
+direct browser navigation to the reference is blocked in this development environment.
+Exact post-entry visual, interaction and audio parity is **not yet verified**.
+No reference imagery was searched for or downloaded for this update.
+
+---
+
 ## 🧠 System Architecture
 
 ```text

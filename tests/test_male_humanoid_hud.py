@@ -304,3 +304,44 @@ def test_male_humanoid_shader_and_bridge_serving(tmp_path: Path, monkeypatch) ->
         )
         assert r_male.status_code == 200
         assert client.get("/api/hud/bootstrap").json()["persona"] == "male"
+
+
+def test_birth_is_click_gated_and_visual_previews_do_not_change_live_engine() -> None:
+    src = (REPO_ROOT / "apex_ui/components/ApexMaleHumanoid.tsx").read_text()
+    assert 'useState(false)' in src
+    assert '{entered && particleData && (' in src
+    assert 'await ensureAudioContext()' in src
+    assert 'if (ctx) playAssemblySound(ctx)' in src
+    assert 'role="dialog" aria-modal="true"' in src
+    assert 'ready && integrationsReady && personaChosen && !setupOpen' in src
+    assert 'mounted && (entered || entryAllowed) && createPortal' in src
+    assert 'state={demoState ?? state}' in src
+    assert 'setDemoState(null); }, [state]' in src
+    assert 'window.setTimeout(() => setDemoState(null), 8000)' in src
+    assert 'pulseSeq={pulseSignal + manualPulse}' in src
+    assert 'audioOutputRef.current.gain.setTargetAtTime' in src
+    assert 'if (reducedMotion && assemblyClock.current.completedRun !== assemblyRun)' in src
+    assert 'sendText(' not in src
+    assert 'toggleMute(' not in src
+
+
+def test_visual_preview_server_cannot_run_device_actions() -> None:
+    from tools.humanoid_preview import app
+
+    with TestClient(app) as client:
+        assert client.get('/').status_code == 200
+        boot = client.get('/api/hud/bootstrap').json()
+        assert boot['raw_state'] == 'VISUAL PREVIEW'
+        assert boot['muted'] is True
+        for action in ('text_command', 'save_api_key', 'spawn_worker', 'toggle_mute'):
+            result = client.post('/api/hud/action', json={'action': action, 'text': 'open powershell'})
+            assert result.status_code == 403
+            assert result.json()['ok'] is False
+        with client.websocket_connect('/ws/hud') as ws:
+            assert ws.receive_json()['type'] == 'bootstrap'
+            ws.send_json({'action': 'text_command', 'text': 'open powershell'})
+            assert 'Visual preview only' in ws.receive_json()['line']
+            ws.send_json({'action': 'set_persona', 'persona': 'female'})
+            assert ws.receive_json()['persona'] == 'female'
+        # Connection-local edition switching must not change boot defaults or disk settings.
+        assert client.get('/api/hud/bootstrap').json()['persona'] == 'male'

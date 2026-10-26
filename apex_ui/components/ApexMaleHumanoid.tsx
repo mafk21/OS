@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom";
 import * as THREE from "three";
 import type { OrbState } from "./ApexHeroOrb";
-import { useJarvisAudioLevel, type TraceEvent } from "./JarvisBridge";
+import { useJarvis, useJarvisAudioLevel, type TraceEvent } from "./JarvisBridge";
 
 const PORTRAIT_URL = "/hologram/male_portrait.png";
 const DEPTH_URL = "/hologram/male_depth.png";
@@ -1299,7 +1299,7 @@ function HumanoidPointCloud({
 
   useEffect(() => () => material.dispose(), [material]);
 
-  useFrame(({ clock, gl, camera }, rawDt) => {
+  useFrame(({ clock, gl, camera, size }, rawDt) => {
     const dt = Math.min(rawDt, 0.05);
     const t = clock.elapsedTime;
     const dpr = gl.getPixelRatio();
@@ -1455,9 +1455,11 @@ function HumanoidPointCloud({
 
     // Update actual Three.js 3D PerspectiveCamera along spherical orbit around LOOK_TARGET
     const cosEl = Math.cos(sp.camEl);
-    const camX = LOOK_TARGET.x + sp.camDist * Math.sin(sp.camAz) * cosEl;
-    const camY = LOOK_TARGET.y + sp.camDist * Math.sin(sp.camEl);
-    const camZ = LOOK_TARGET.z + sp.camDist * Math.cos(sp.camAz) * cosEl;
+    // Back the camera away on narrow displays instead of cropping the skull.
+    const viewDistance = sp.camDist * Math.max(1, Math.min(1.8, 0.9 * size.height / size.width));
+    const camX = LOOK_TARGET.x + viewDistance * Math.sin(sp.camAz) * cosEl;
+    const camY = LOOK_TARGET.y + viewDistance * Math.sin(sp.camEl);
+    const camZ = LOOK_TARGET.z + viewDistance * Math.cos(sp.camAz) * cosEl;
     camera.position.set(camX, camY, camZ);
     camera.lookAt(LOOK_TARGET);
 
@@ -1494,6 +1496,10 @@ function HumanoidPointCloud({
 
     let assemblyProgress = 1;
     let assemblyEnabled = 0;
+    if (reducedMotion && assemblyClock.current.completedRun !== assemblyRun) {
+      assemblyClock.current.completedRun = assemblyRun;
+      onAssemblyStateChange(false);
+    }
     if (!reducedMotion) {
       if (assemblyClock.current.run !== assemblyRun) {
         assemblyClock.current.run = assemblyRun;
@@ -1596,6 +1602,8 @@ export default function ApexMaleHumanoid({
   onToggleConstellation?: () => void;
   pulseSignal?: number;
 }) {
+  const { ready, integrationsReady, personaChosen, setupOpen, integrationsModalOpen, personaModalOpen } = useJarvis();
+  const entryAllowed = ready && integrationsReady && personaChosen && !setupOpen && !integrationsModalOpen && !personaModalOpen;
   const audioLevelRef = useRef(0);
   const [qualityMode, setQualityMode] = useState<HumanoidQualityMode>("auto");
   const [autoFallback, setAutoFallback] = useState(false);
@@ -1605,6 +1613,19 @@ export default function ApexMaleHumanoid({
   const [sfxEnabled, setSfxEnabled] = useState(true);
   const [turntable, setTurntable] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [entered, setEntered] = useState(false);
+  const [entering, setEntering] = useState(false);
+  const [demoState, setDemoState] = useState<OrbState | null>(null);
+  const [manualPulse, setManualPulse] = useState(0);
+
+  // Previewing an animation never changes the real assistant/microphone state.
+  // A live state change always takes priority, and previews expire automatically.
+  useEffect(() => { setDemoState(null); }, [state]);
+  useEffect(() => {
+    if (!demoState) return;
+    const timer = window.setTimeout(() => setDemoState(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [demoState]);
 
   useEffect(() => {
     setMounted(true);
@@ -1612,6 +1633,22 @@ export default function ApexMaleHumanoid({
 
   const sfxEnabledRef = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioOutputRef = useRef<GainNode | null>(null);
+  const entryButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (mounted && entryAllowed && !entered && particleData) entryButtonRef.current?.focus();
+  }, [mounted, entryAllowed, entered, particleData]);
+
+  useEffect(() => {
+    if (!mounted || !entryAllowed || entered) return;
+    const siblings = Array.from(document.body.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement && !el.classList.contains("humanoid-entry")
+    );
+    const previous = siblings.map((el) => el.inert);
+    siblings.forEach((el) => { el.inert = true; });
+    return () => siblings.forEach((el, i) => { el.inert = previous[i]; });
+  }, [mounted, entryAllowed, entered]);
   const pointerRef = useRef<PointerState>({
     x: 0,
     y: 0,
@@ -1624,6 +1661,10 @@ export default function ApexMaleHumanoid({
 
   useEffect(() => {
     sfxEnabledRef.current = sfxEnabled;
+    const ctx = audioCtxRef.current;
+    if (ctx && audioOutputRef.current) {
+      audioOutputRef.current.gain.setTargetAtTime(sfxEnabled ? 1 : 0, ctx.currentTime, 0.025);
+    }
   }, [sfxEnabled]);
 
   const effectiveTier: RenderTier = useMemo(() => {
@@ -1719,7 +1760,7 @@ export default function ApexMaleHumanoid({
     };
 
     const onKeyReset = (e: KeyboardEvent) => {
-      if (e.key === "0" || e.key === "Home") {
+      if (!isInteractiveElement(e.target) && (e.key === "0" || e.key === "Home")) {
         pointerRef.current.dragAzimuth = 0;
         pointerRef.current.dragElevation = 0;
         pointerRef.current.zoomDist = CAM_Z;
@@ -1817,6 +1858,10 @@ export default function ApexMaleHumanoid({
     if (!ctx) {
       ctx = new Ctor();
       audioCtxRef.current = ctx;
+      const output = ctx.createGain();
+      output.gain.value = sfxEnabledRef.current ? 1 : 0;
+      output.connect(ctx.destination);
+      audioOutputRef.current = output;
     }
     if (ctx.state === "suspended") {
       try {
@@ -1841,7 +1886,7 @@ export default function ApexMaleHumanoid({
     master.gain.setValueAtTime(0.0001, now);
     master.gain.exponentialRampToValueAtTime(0.65, now + 0.03);
     master.gain.exponentialRampToValueAtTime(0.0001, now + 2.05);
-    master.connect(compressor).connect(ctx.destination);
+    master.connect(compressor).connect(audioOutputRef.current ?? ctx.destination);
 
     const sub = ctx.createOscillator();
     const subGain = ctx.createGain();
@@ -1888,19 +1933,40 @@ export default function ApexMaleHumanoid({
     noise.connect(filter).connect(noiseGain).connect(master);
     noise.start(now + 0.1);
     noise.stop(now + 1.56);
+    shimmer.onended = () => {
+      sub.disconnect(); subGain.disconnect(); shimmer.disconnect(); shimmerGain.disconnect();
+      noise.disconnect(); filter.disconnect(); noiseGain.disconnect();
+    };
+    // The gain envelope has a longer tail than the sources; it is silent after they stop.
+    noise.onended = () => { master.disconnect(); compressor.disconnect(); };
   }, []);
 
-  useEffect(() => {
-    const unlock = () => {
-      if (sfxEnabledRef.current) void ensureAudioContext();
+  // ENTER is the only initial audio unlock. Do not start a silent birth on mount.
+  const playAssemblySound = useCallback((ctx: AudioContext) => {
+    if (!sfxEnabledRef.current || ctx.state !== "running") return;
+    const now = ctx.currentTime;
+    const duration = ASSEMBLY_DURATION_SECONDS;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.055, now + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.10, now + duration - 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    gain.connect(audioOutputRef.current ?? ctx.destination);
+    const voices = [98, 147, 196].map((frequency) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(frequency * 0.5, now);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 2, now + duration);
+      osc.connect(gain);
+      osc.start(now);
+      osc.stop(now + duration);
+      return osc;
+    });
+    voices[voices.length - 1].onended = () => {
+      voices.forEach((osc) => osc.disconnect());
+      gain.disconnect();
     };
-    window.addEventListener("pointerdown", unlock, { once: true, capture: true });
-    window.addEventListener("keydown", unlock, { once: true, capture: true });
-    return () => {
-      window.removeEventListener("pointerdown", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
-    };
-  }, [ensureAudioContext]);
+  }, []);
 
   useEffect(
     () => () => {
@@ -1927,22 +1993,26 @@ export default function ApexMaleHumanoid({
     pointerRef.current.dragElevation = 0;
     pointerRef.current.zoomDist = CAM_Z;
     const ctx = await ensureAudioContext();
-    if (ctx && ctx.state === "running" && sfxEnabledRef.current) {
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(196, now);
-      osc.frequency.exponentialRampToValueAtTime(392, now + 0.42);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.09, now + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.5);
-    }
+    if (ctx) playAssemblySound(ctx);
+    setAssembling(!reducedMotion);
     setAssemblyRun((r) => r + 1);
-  }, [ensureAudioContext]);
+  }, [ensureAudioContext, playAssemblySound, reducedMotion]);
+
+  const enterStage = useCallback(async () => {
+    if (entering || entered || !particleData) return;
+    setEntering(true);
+    try {
+      // Audio creation/resume occurs inside this user gesture, before the Canvas mounts.
+      const ctx = await ensureAudioContext();
+      if (ctx) playAssemblySound(ctx);
+    } catch {
+      // Audio unavailable/denied must never prevent the visual experience.
+    } finally {
+      setAssembling(!reducedMotion);
+      setEntered(true);
+      setEntering(false);
+    }
+  }, [entering, entered, particleData, ensureAudioContext, playAssemblySound, reducedMotion]);
 
   const cycleQuality = useCallback(() => {
     setQualityMode((prev) =>
@@ -1952,7 +2022,7 @@ export default function ApexMaleHumanoid({
 
   const formattedPts = particleData
     ? `${Math.round(particleData.count / 1000)}K 3D`
-    : "270K 3D";
+    : "LOADING";
 
   return (
     <div
@@ -1975,7 +2045,7 @@ export default function ApexMaleHumanoid({
         }}
       />
 
-      {particleData && (
+      {entered && particleData && (
         <div style={{ position: "absolute", inset: 0, zIndex: 2 }}>
           <Canvas
             style={{ width: "100%", height: "100%", display: "block" }}
@@ -1995,13 +2065,13 @@ export default function ApexMaleHumanoid({
           >
             <HumanoidPointCloud
               data={particleData}
-              state={state}
+              state={demoState ?? state}
               reducedMotion={reducedMotion}
               turntable={turntable}
               audioLevelRef={audioLevelRef}
               pointerRef={pointerRef}
               assemblyRun={assemblyRun}
-              pulseSeq={pulseSignal}
+              pulseSeq={pulseSignal + manualPulse}
               brainEvent={brainEvent}
               onAssemblyStateChange={setAssembling}
               onShockwaveTrigger={playBirthShockwaveSound}
@@ -2011,157 +2081,49 @@ export default function ApexMaleHumanoid({
         </div>
       )}
 
-      {mounted &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              left: 16,
-              bottom: 14,
-              zIndex: 34,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: "rgba(3, 8, 15, 0.50)",
-              border: "1px solid rgba(79, 210, 255, 0.12)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              pointerEvents: "auto",
-              fontFamily: "var(--font-mono)",
-              fontSize: 8.5,
-              letterSpacing: "0.14em",
-              color: "rgba(180, 222, 248, 0.66)",
-            }}
-          >
-            <span
-              title="Active 3D volumetric GPU particle count (drag empty space to orbit in 3D, scroll to zoom)"
-              style={{
-                padding: "2px 6px",
-                color: assembling ? "#ffb347" : "#4fd2ff",
-                fontWeight: 600,
-              }}
-            >
-              {assembling ? "ASSEMBLING" : formattedPts}
-            </span>
-
-            <button
-              type="button"
-              onClick={() => void triggerRebirth()}
-              title="Replay 3D figure-of-light birth assembly & spherical shockwave"
-              style={{
-                appearance: "none",
-                border: "1px solid rgba(79, 210, 255, 0.24)",
-                background: "rgba(79, 210, 255, 0.08)",
-                color: "#d7f1ff",
-                borderRadius: 999,
-                padding: "3px 8px",
-                fontSize: 9,
-                letterSpacing: "0.14em",
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              REBIRTH
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setTurntable((v) => !v)}
-              title="Toggle continuous 3D camera orbit showcase (or drag empty space anytime to orbit manually)"
-              style={{
-                appearance: "none",
-                border: turntable
-                  ? "1px solid rgba(79, 210, 255, 0.36)"
-                  : "1px solid transparent",
-                background: turntable ? "rgba(79, 210, 255, 0.14)" : "transparent",
-                color: turntable ? "#4fd2ff" : "rgba(165, 212, 240, 0.76)",
-                borderRadius: 999,
-                padding: "3px 6px",
-                fontSize: 9,
-                letterSpacing: "0.12em",
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              3D ORBIT
-            </button>
-
-            <button
-              type="button"
-              onClick={cycleQuality}
-              title="Cycle 3D particle density (AUTO / 340K / BALANCED)"
-              style={{
-                appearance: "none",
-                border: "1px solid transparent",
-                background: "transparent",
-                color: "rgba(165, 212, 240, 0.76)",
-                borderRadius: 999,
-                padding: "3px 6px",
-                fontSize: 9,
-                letterSpacing: "0.12em",
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              {qualityMode === "auto"
-                ? "AUTO"
-                : qualityMode === "high"
-                ? "340K"
-                : "BAL"}
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
+      {mounted && (entered || entryAllowed) && createPortal(
+        !entered ? (
+          <div className="humanoid-entry" role="dialog" aria-modal="true" aria-labelledby="humanoid-title">
+            <div className="humanoid-entry-content">
+              <h1 id="humanoid-title">APEX HUMANOID</h1>
+              <p>a figure of light that assembles itself</p>
+              <button ref={entryButtonRef} type="button" autoFocus onKeyDown={(e) => {
+                if (e.key === "Tab") e.preventDefault();
+              }} disabled={!particleData || entering} onClick={() => void enterStage()}>
+                {entering ? "ENTERING" : particleData ? "ENTER" : "PREPARING LIGHT"}
+              </button>
+              <small>the click opens the audio - the birth has a sound</small>
+            </div>
+          </div>
+        ) : (
+          <div className="humanoid-controls" aria-label="Humanoid visual controls">
+            <div className="humanoid-state-row" role="group" aria-label="Preview visual states">
+              <span className="humanoid-state-label">{demoState ? "VISUAL PREVIEW" : "LIVE"}</span>
+              {(["idle", "listening", "thinking", "speaking"] as OrbState[]).map((mode) => (
+                <button key={mode} type="button" aria-pressed={(demoState ?? state) === mode}
+                  onClick={() => setDemoState(mode)}>{mode.toUpperCase()}</button>
+              ))}
+              {demoState && <button type="button" onClick={() => setDemoState(null)}>↩ LIVE</button>}
+            </div>
+            <div className="humanoid-utility-row" role="group" aria-label="Figure of light settings">
+              <span className="humanoid-count" role="status">{assembling ? "ASSEMBLING" : formattedPts}</span>
+              <button type="button" disabled={assembling} onClick={() => void triggerRebirth()}>REBIRTH</button>
+              <button type="button" disabled={assembling} onClick={() => setManualPulse((n) => n + 1)}>SHOCKWAVE</button>
+              <button type="button" aria-pressed={turntable} onClick={() => setTurntable((v) => !v)}>3D ORBIT</button>
+              <button type="button" onClick={cycleQuality} title="Cycle automatic, high and balanced particle density">
+                {qualityMode === "auto" ? "AUTO" : qualityMode === "high" ? "HIGH" : "BAL"}
+              </button>
+              <button type="button" aria-pressed={sfxEnabled} onClick={async () => {
                 const next = !sfxEnabled;
                 setSfxEnabled(next);
-                if (next) await ensureAudioContext();
-              }}
-              title="Toggle birth & shockwave sound synthesis"
-              style={{
-                appearance: "none",
-                border: "1px solid transparent",
-                background: "transparent",
-                color: sfxEnabled ? "#4fd2ff" : "rgba(148, 163, 184, 0.55)",
-                borderRadius: 999,
-                padding: "3px 6px",
-                fontSize: 9,
-                letterSpacing: "0.12em",
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
-            >
-              {sfxEnabled ? "SFX ON" : "SFX OFF"}
-            </button>
-
-            {onToggleConstellation && (
-              <button
-                type="button"
-                onClick={onToggleConstellation}
-                title="Toggle surrounding 18-agent constellation visibility"
-                style={{
-                  appearance: "none",
-                  border: "1px solid transparent",
-                  background: "transparent",
-                  color: constellationVisible
-                    ? "#4fd2ff"
-                    : "rgba(148, 163, 184, 0.55)",
-                  borderRadius: 999,
-                  padding: "3px 6px",
-                  fontSize: 9,
-                  letterSpacing: "0.12em",
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                }}
-              >
-                {constellationVisible ? "WEB ON" : "PURE"}
-              </button>
-            )}
-          </div>,
-          document.body
-        )}
+                if (next) { try { await ensureAudioContext(); } catch {} }
+              }}>{sfxEnabled ? "SFX ON" : "SFX OFF"}</button>
+              {onToggleConstellation && <button type="button" aria-pressed={constellationVisible}
+                onClick={onToggleConstellation}>{constellationVisible ? "WEB ON" : "PURE"}</button>}
+            </div>
+            <p className="humanoid-hint">move to look · drag to orbit · scroll to zoom · double-click to reset</p>
+          </div>
+        ), document.body)}
     </div>
   );
 }
