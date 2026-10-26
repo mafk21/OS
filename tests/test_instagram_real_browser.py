@@ -43,7 +43,7 @@ def browser_env(tmp_path, monkeypatch):
             control = '<a href="/direct/t/test-thread/">Message</a>' if state["mode"] == "link" else '<button onclick="location.href=\'/direct/t/test-thread/\'">Message</button>'
             if state["mode"] == "encrypted":
                 control = '<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Message</button>'
-            if state["mode"] in ("stuck", "wrong_recipient", "ambiguous_recipient", "preselected_recipient"):
+            if state["mode"] in ("stuck", "wrong_recipient", "ambiguous_recipient", "preselected_recipient", "aria_option", "inbox_launcher"):
                 control = '<button>Message</button>'
             if state["mode"] == "hidden_copy":
                 control = '<button style="display:none">Message</button>' + control
@@ -60,7 +60,12 @@ def browser_env(tmp_path, monkeypatch):
                 row += row
             if state['mode'] == 'preselected_recipient':
                 row += '<label>someoneelse<input type="checkbox" checked></label>'
-            return request_route.fulfill(content_type="text/html", body='<html><body><input name="queryBox" placeholder="Search">'+row+'<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Chat</button></body></html>')
+            if state['mode'] == 'aria_option':
+                row = '<div role="option" onclick="this.setAttribute(\'aria-selected\', \'true\')">sarah<br>Display name</div>'
+            search = '<input name="queryBox" placeholder="Search">'
+            if state['mode'] == 'inbox_launcher':
+                search = '<button onclick="this.outerHTML=\'<input name=&quot;queryBox&quot; placeholder=&quot;Search&quot;>\'"><svg aria-label="New message"></svg></button>'
+            return request_route.fulfill(content_type="text/html", body='<html><body>'+search+row+'<button onclick="location.href=\'/direct/e2ee/t/test-thread/\'">Chat</button></body></html>')
         if path == "/accounts/login/":
             return request_route.fulfill(content_type="text/html", body='<input type="password">Sign in')
         return request_route.fulfill(status=404, body="simulated only")
@@ -119,7 +124,7 @@ def browser_env(tmp_path, monkeypatch):
         assert not thread.is_alive(), "Browser controller leaked"
 
 
-@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal", "encrypted", "hidden_copy", "stuck"])
+@pytest.mark.parametrize("mode", ["button", "link", "header", "editable", "enter", "send_label", "modal", "encrypted", "hidden_copy", "stuck", "aria_option", "inbox_launcher"])
 def test_actual_confirmed_native_send_variants(browser_env, mode):
     browser_env["mode"] = mode
     completed = threading.Event()
@@ -148,6 +153,17 @@ def test_actual_browser_blocks_draft_or_login_without_sending(browser_env, mode)
 @pytest.mark.parametrize("mode", ["wrong_recipient", "ambiguous_recipient", "preselected_recipient"])
 def test_compose_recovery_never_selects_wrong_or_ambiguous_recipient(browser_env, mode):
     browser_env["mode"] = mode
-    with pytest.raises(RuntimeError, match=r"IG:compose_recipient_lookup"):
+    with pytest.raises(RuntimeError, match=r"IG:compose_(exact_recipient|selection)"):
         instagram_web.send_instagram_message(hub, "sarah", "must not send", expected_sender={"ds_user_id": "123"})
     assert not browser_env["posts"]
+
+
+
+def test_actual_send_without_extra_confirmation(browser_env, monkeypatch):
+    monkeypatch.delenv("JARVIS_INSTAGRAM_CONFIRM_SEND", raising=False)
+    browser_env["mode"] = "aria_option"
+    result = hub.stage_or_send_social_message("instagram", "sarah", "explicit no-prompt test")
+    assert "Instagram acknowledgment: real-browser-simulated-id" in result, result
+    assert "CONFIRMATION_PENDING" not in result
+    assert confirm._pending is None
+    assert len(browser_env["posts"]) == 1
