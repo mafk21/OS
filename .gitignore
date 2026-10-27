@@ -37,6 +37,7 @@ memory/*.tmp
 memory/*.invalid
 memory/*.quarantine/
 memory/soul.quarantine/
+memory/soul.migrations/
 memory/*.db
 memory/*.db-*
 memory/*.sqlite*

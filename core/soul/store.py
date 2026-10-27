@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from .events import SoulAuditEvent
+from .migrations import migrate_raw
 from .models import SoulState, ValidationError, utc_now_iso
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -67,17 +68,22 @@ class SoulStore:
         """Load current state, recover backup, or return safe unsaved defaults."""
         with self._lock:
             self.last_recovery = None
-            current, current_error = self._read_state(self.path)
+            current, current_error, current_migrations = self._read_state(self.path)
             if current is not None:
+                if current_migrations:
+                    self._persist_migrated_state(self.path, current, current_migrations)
                 self._repair_missing_audit(current)
                 return current
 
             if current_error is not None and self.path.exists():
                 self._quarantine(self.path, current_error)
 
-            backup, backup_error = self._read_state(self.backup_path)
+            backup, backup_error, backup_migrations = self._read_state(self.backup_path)
             if backup is not None:
+                if backup_migrations:
+                    self._archive_pre_migration(self.backup_path, backup_migrations)
                 self._atomic_write_json(self.path, backup.to_dict(), prefix="recover")
+                self._atomic_write_json(self.backup_path, backup.to_dict(), prefix="recover-backup")
                 self.last_recovery = "Recovered Soul state from the last known-good backup."
                 self._append_event(SoulAuditEvent(
                     event="soul.recovered", timestamp=self._clock(), revision=backup.revision,
@@ -205,14 +211,44 @@ class SoulStore:
                 raise
             raise SoulStoreError(f"Unable to initialize Soul state: {exc}") from exc
 
-    def _read_state(self, path: Path) -> tuple[SoulState | None, Exception | None]:
+    def _read_state(self, path: Path) -> tuple[SoulState | None, Exception | None, tuple[str, ...]]:
         if not path.exists():
-            return None, None
+            return None, None, ()
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            return SoulState.from_dict(raw), None
+            result = migrate_raw(raw)
+            return result.state, None, result.applied
         except (OSError, json.JSONDecodeError, ValidationError, UnicodeError) as exc:
-            return None, exc
+            return None, exc, ()
+
+    def _persist_migrated_state(self, source: Path, state: SoulState, migrations: tuple[str, ...]) -> None:
+        self._archive_pre_migration(source, migrations)
+        self._atomic_write_json(source, state.to_dict(), prefix="migration")
+        self._atomic_write_json(self.backup_path, state.to_dict(), prefix="migration-backup")
+        self._append_event(SoulAuditEvent(
+            event="soul.migrated", timestamp=self._clock(), revision=state.revision,
+            reason=f"applied sequential migrations: {', '.join(migrations)}",
+            source="store", mutation_id=f"migration-{uuid.uuid4().hex[:12]}",
+        ))
+        self.last_recovery = f"Migrated Soul state using {', '.join(migrations)}."
+
+    def _archive_pre_migration(self, source: Path, migrations: tuple[str, ...]) -> None:
+        """Preserve the exact valid source bytes before the only copy is rewritten."""
+        archive_dir = self.path.parent / f"{self.path.stem}.migrations"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        stamp = self._clock().replace(":", "-").replace("+", "_")
+        label = "_".join(migrations)
+        destination = archive_dir / f"{source.name}.{stamp}.{label}.json"
+        if not destination.exists():
+            with source.open("rb") as incoming, destination.open("xb") as outgoing:
+                while True:
+                    chunk = incoming.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    outgoing.write(chunk)
+                outgoing.flush()
+                os.fsync(outgoing.fileno())
+            self._fsync_directory(archive_dir)
 
     def _write_backup_of(self, state: SoulState) -> None:
         self._atomic_write_json(self.backup_path, state.to_dict(), prefix="backup")
