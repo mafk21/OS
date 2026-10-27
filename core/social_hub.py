@@ -48,7 +48,7 @@ import websockets
 from core import confirm as confirm_gate
 from core import security_vault
 from memory import accounts
-from core.instagram_direct import InstagramSession, RecipientError, SendRejected, DeliveryUnknown, exact_thread, receipt_id
+from core.instagram_direct import InstagramSession, RecipientError, SendRejected, DeliveryUnknown, exact_thread, receipt_id, normalize_username
 
 SOCIAL_PLATFORMS: dict[str, dict[str, Any]] = {
     "instagram": {
@@ -465,7 +465,7 @@ def _ig_api_read_thread(contact: str) -> dict[str, Any] | None:
                 inbox = page.json().get("inbox") or {}
                 chosen = exact_thread(inbox.get("threads") or [], contact)
             if chosen is None:
-                raise RecipientError("Conversation not found. Use the person's exact @username, not a display-name fragment.")
+                raise RecipientError("No existing exact one-to-one conversation was found in the inspected inbox pages. This does not mean the account is missing; a new message uses profile/recipient lookup.")
 
             tid = str(chosen.get("thread_id") or "")
             if tid:
@@ -507,7 +507,7 @@ def _ig_api_send_dm(recipient: str, message: str) -> str | None:
     cdict = _cookie_dict("instagram")
     if "sessionid" not in cdict:
         return None
-    clean_rec = recipient.strip().lstrip("@")
+    clean_rec = normalize_username(recipient)
     needle = clean_rec.lower()
     attempted = False
 
@@ -557,7 +557,7 @@ def _ig_api_send_dm(recipient: str, message: str) -> str | None:
             current_sender = _cookie_dict("instagram")
             identity_key = "ds_user_id" if cdict.get("ds_user_id") else "sessionid"
             if current_sender.get(identity_key) != cdict.get(identity_key):
-                raise RecipientError("The signed-in account changed during lookup. Nothing was sent; request a new confirmation.")
+                raise RecipientError("The signed-in account changed during lookup. Nothing was sent; issue the request again after checking the active account.")
             attempted = True
             r_send = client.post(
                 "https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/", data=form_data)
@@ -2462,7 +2462,10 @@ def read_social_messages(platform: str, contact: str = "") -> dict[str, Any]:
     if not ready:
         return {"ok": False, "error": reason}
 
-    clean_contact = (contact or "").strip().lstrip("@")
+    try:
+        clean_contact = normalize_username(contact) if plat == "instagram" and (contact or "").strip() else (contact or "").strip().lstrip("@")
+    except RecipientError as exc:
+        return {"ok": False, "error": str(exc)}
 
     # Tier 1: Instant zero-window Instagram Direct HTTP API
     if plat == "instagram":
@@ -2540,7 +2543,7 @@ def _execute_send_message_now(platform: str, recipient: str, message: str, actor
     allowed, reason = accounts.check_permission(platform, "send")
     if not allowed:
         raise RuntimeError(f"Send blocked by current permission policy: {reason}")
-    clean_rec = recipient.strip().lstrip("@")
+    clean_rec = normalize_username(recipient) if platform == "instagram" else recipient.strip().lstrip("@")
 
     original_sender = _cookie_dict(platform)
 
@@ -2660,9 +2663,9 @@ def _instagram_send_confirmation_required() -> bool:
         return override.strip().lower() not in ("0", "false", "no", "off")
     try:
         settings = json.loads((accounts._base() / "config" / "social_preferences.json").read_text(encoding="utf-8"))
-        return settings.get("instagram_confirm_send") is not False
+        return settings.get("instagram_confirm_send") is True
     except (OSError, ValueError, AttributeError):
-        return True
+        return False
 
 
 def stage_or_send_social_message(
@@ -2682,8 +2685,11 @@ def stage_or_send_social_message(
 
     if len(message) > 3800:
         return "The message is too long to fully preview in the confirmation panel. Please shorten it or send smaller parts; nothing was sent."
-    if plat == "instagram" and not re.fullmatch(r"@?[A-Za-z0-9_.]{1,30}", recipient.strip()):
-        return "Please provide the recipient's exact Instagram @username, not a display name. Nothing was sent."
+    if plat == "instagram":
+        try:
+            recipient = normalize_username(recipient)
+        except RecipientError as exc:
+            return str(exc)
     spec = SOCIAL_PLATFORMS[plat]
     ready, reason = _ensure_platform_ready(plat, auto_open_hud_login_if_needed=True)
     if not ready:
@@ -2704,7 +2710,7 @@ def stage_or_send_social_message(
             current_cookies = _cookie_dict(plat)
             current_identity = current_cookies.get("ds_user_id") or hashlib.sha256(current_cookies.get("sessionid", "").encode()).hexdigest()
             if current_identity != staged_identity:
-                raise RuntimeError("The signed-in account changed after confirmation was requested. Nothing was sent; request a new confirmation.")
+                raise RuntimeError("The signed-in account changed during this request. Nothing was sent; issue the request again after checking the active account.")
             result = _execute_send_message_now(plat, recipient, message, actor=actor)
         except Exception as exc:
             result = f"{spec['label']} send not confirmed: {exc}"
