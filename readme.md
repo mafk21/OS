@@ -1,15 +1,120 @@
-# ⚡ OS — Full-Duplex 3D AI Operating Companion
+# ⚡ JARVIS OS — The AI Operating Companion
 
-**A local-first desktop AI operating layer with first-class Dual-Engine OpenAI & Google Gemini support (`OpenAI Realtime` + `GPT-4o Vision` + `Gemini 3.8 Live`), combining real-time bidirectional voice (`Male` & `Female` 3D HUD Editions), a Zero-Reset Forever Brain Timeline, orbiting 3D Worker Orbs, Specialist Companions, 17 native SaaS & Mail connectors, a Custom REST/Webhook & MCP Builder, recurring Automations, a live streaming Dev Workspace, Set-of-Mark visual computer use, FTS5 screen memory, an `AES-256-GCM` credential vault with `SHA-256` hash-chained audit logs, revocable Guest Portals, and 100% offline local voice fallback.**
+> **Not another chatbot. Not a voice skin over an API.**<br>
+> **JARVIS is a local-first AI command center that can see, hear, speak, remember, research, operate your desktop, coordinate specialist agents, connect to your services, and show every moving part inside a cinematic 3D HUD.**
+
+## Meet the monster
+
+JARVIS turns a Windows, macOS, or Linux computer into an **AI-operated workspace**.
+Talk naturally, type a command, or use the HUD. JARVIS can hold a full-duplex
+conversation while it works, inspect what is on screen, use applications, search
+and study, write and run code, manage files, control media, call connected
+services, and delegate long jobs to visible worker agents.
+
+This is not one giant prompt pretending to do those things. It is a real system:
+
+- **A live voice and vision kernel** powered by OpenAI or Google Gemini, with
+  interruption, continuous listening, provider failover, and optional offline
+  STT/LLM/TTS components.
+- **A native computer-control layer** for windows, apps, terminals, files,
+  clipboard, keyboard, mouse, screenshots, audio, display settings, and verified
+  process execution.
+- **A durable brain** backed by SQLite timelines, searchable memories, imported
+  documents, learning records, session history, and privacy controls.
+- **An agent runtime** with specialist companions, parallel worker orbs,
+  cancellable jobs, reusable skills, scheduled automations, and a streaming
+  development workspace.
+- **A connector layer** for mail, calendars, cloud drives, developer tools,
+  productivity platforms, messaging, social services, webhooks, REST APIs, and
+  MCP servers.
+- **A security layer** with confirmation gates, reversible actions, encrypted
+  credentials, tamper-evident audit history, scoped tools, and revocable portals.
+- **A real interface**, not a terminal demo: Male and Female animated humanoid
+  editions, live state visualization, activity queues, controls, logs, panels,
+  and an optional compact background mode.
+
+### One request can cross the whole stack
+
+```text
+You speak or type
+       ↓
+Live AI understands the intent and current screen/context
+       ↓
+JARVIS chooses a native action, connector, skill, or specialist worker
+       ↓
+Safety and permission policy checks the operation
+       ↓
+The task runs with live progress in the HUD
+       ↓
+Results, files, sources, traces, and durable memory are returned
+```
+
+Examples:
+
+```text
+“Watch this window, find the error, fix the project, run its tests, and show me the diff.”
+“Study nuclear physics in sourced units, quiz yourself, save the gaps, and continue tomorrow.”
+“Read my calendar and unread mail, prepare a briefing, then schedule the approved follow-ups.”
+“Open the female edition, keep listening in the background, and interrupt immediately when I speak.”
+```
+
+## What “local-first” means
+
+The HUD, orchestration, memory database, automation engine, tools, encrypted vault,
+and action history run on **your machine**. Cloud AI and connected services are
+used only when you configure and invoke them. Offline voice/model components are
+optional; cloud-dependent features naturally still need their provider and an
+internet connection. JARVIS does **not** secretly turn every integration into an
+offline feature.
+
+## Supported operating systems—clearly
+
+The shared application targets **Windows, macOS, and Linux**. Native commands are
+selected from the machine currently running JARVIS, not from a stale copied
+profile. Launch with:
+
+| Platform | Launcher | Important host requirements |
+| :--- | :--- | :--- |
+| **Windows** | `Start_JARVIS.bat` | Python 3.11+; permissions for requested desktop actions |
+| **macOS** | `Start_JARVIS.command` | Python 3.11+; Accessibility, Screen Recording, Microphone, or Automation permission when the relevant feature is used |
+| **Linux** | `Start_JARVIS.sh` | Python 3.11+; graphical X11/Wayland session for GUI control; `pactl` or `wpctl` for volume; desktop-specific utilities for some settings |
+
+Unsupported permissions or missing native utilities must produce an explicit
+limitation rather than a fake success. Hardware behavior—microphones, cameras,
+GPU acceleration, accessibility APIs, window managers, and audio backends—still
+depends on the actual computer and must be verified there.
+
+## Start in three steps
+
+```bash
+# 1. Clone and enter the repository
+git clone https://github.com/mafk21/OS.git
+cd OS
+
+# 2. Create the environment, install OS-filtered dependencies, and launch
+python3 install_jarvis.py --install --launch
+
+# 3. Next time, use your native launcher
+# Windows: Start_JARVIS.bat
+# macOS:   ./Start_JARVIS.command
+# Linux:   ./Start_JARVIS.sh
+```
+
+Then configure at least one supported AI provider in the guided setup. API keys,
+service credentials, and optional local models are **not bundled** with the
+repository. Read the platform notes and security controls before allowing desktop
+or account actions.
+
+## The system at a glance
 
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **65,000+ lines** across **159 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
 | **Execution Surface** | **52 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
-| **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
+| **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male and Female particle-humanoid HUD Editions with distinct palettes and voices (`Charon` / `ash`, `Aoede` / `shimmer`)** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
-| **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`)** |
+| **Dev Workspace & Vault Security** | **Live Streaming Dev Terminal + Codebase Map & Colorized Git Diffs** + **Authenticated Credential Vault (`AES-256-GCM`)** + **SHA-256 Hash-Chained Audit Log** + **Revocable Guest Portals** + **1-Click Native Launchers (`install_jarvis.py`, `Start_JARVIS.bat`, `Start_JARVIS.command`, `Start_JARVIS.sh`)** |
 | **Verification** | Automated `pytest` coverage for core workflows + pre-compiled zero-Node.js static HUD (`apex_ui/static_hud/`) |
 
 ---
