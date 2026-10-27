@@ -16,7 +16,7 @@ const GREEN = "#3be38a";
 const RED = "#ff5d6c";
 
 function liveElapsed(w: WorkerItem, nowSec: number): string {
-  if (w.status === "completed" || w.status === "failed" || w.status === "cancelled") {
+  if (w.status === "completed" || w.status === "failed" || w.status === "cancelled" || w.status === "expired") {
     return `${(w.elapsed_s || 0).toFixed(1)}s`;
   }
   const diff = Math.max(0, nowSec - (w.created_at || nowSec));
@@ -37,7 +37,7 @@ export function WorkerOrbsLayer() {
   const orbitWorkers = useMemo(() => {
     return workers
       .filter((w) => {
-        if (w.status === "in_progress" || w.status === "pending") return true;
+        if (w.status === "in_progress" || w.status === "pending" || w.status === "needs_review") return true;
         return nowSec - (w.updated_at || 0) < 14;
       })
       .slice(0, 8);
@@ -221,7 +221,7 @@ export function WorkerOrbsLayer() {
             >
               WORKER ORB · {inspected.id.toUpperCase()} ({inspected.status.toUpperCase()})
             </span>
-            {(inspected.status === "in_progress" || inspected.status === "pending") && (
+            {(inspected.status === "in_progress" || inspected.status === "pending" || inspected.status === "needs_review") && (
               <button
                 type="button"
                 onClick={() => cancelWorker(inspected.id)}
@@ -308,10 +308,10 @@ export function ActivityTimelineHud() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
 
-  const runningCount = workers.filter((w) => w.status === "in_progress").length;
+  const runningCount = workers.filter((w) => w.status === "in_progress" || w.status === "needs_review").length;
   const queuedCount = workers.filter((w) => w.status === "pending").length;
   const doneCount = workers.filter(
-    (w) => w.status === "completed" || w.status === "failed" || w.status === "cancelled"
+    (w) => w.status === "completed" || w.status === "failed" || w.status === "cancelled" || w.status === "expired"
   ).length;
 
   useEffect(() => {
@@ -322,10 +322,10 @@ export function ActivityTimelineHud() {
 
   const filtered = useMemo(() => {
     return workers.filter((w) => {
-      if (filter === "running") return w.status === "in_progress";
+      if (filter === "running") return w.status === "in_progress" || w.status === "needs_review";
       if (filter === "queued") return w.status === "pending";
       if (filter === "done") {
-        return w.status === "completed" || w.status === "failed" || w.status === "cancelled";
+        return w.status === "completed" || w.status === "failed" || w.status === "cancelled" || w.status === "expired";
       }
       return true;
     });
@@ -578,7 +578,7 @@ export function ActivityTimelineHud() {
                 const statusColor =
                   w.status === "in_progress"
                     ? PRIMARY
-                    : w.status === "pending"
+                    : w.status === "pending" || w.status === "needs_review"
                     ? SECONDARY
                     : w.status === "completed"
                     ? GREEN
@@ -643,7 +643,7 @@ export function ActivityTimelineHud() {
                       >
                         {liveElapsed(w, nowSec)}
                       </span>
-                      {(w.status === "in_progress" || w.status === "pending") && (
+                      {(w.status === "in_progress" || w.status === "pending" || w.status === "needs_review") && (
                         <button
                           type="button"
                           onClick={() => cancelWorker(w.id)}

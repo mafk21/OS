@@ -679,7 +679,7 @@ class ApexHudBridge:
             )
 
         # Sort active/pending first, then newest first
-        rank = {"in_progress": 0, "pending": 1, "completed": 2, "failed": 2, "cancelled": 2}
+        rank = {"in_progress": 0, "needs_review": 0, "pending": 1, "completed": 2, "failed": 2, "cancelled": 2, "expired": 2}
         items.sort(key=lambda w: (rank.get(str(w.get("status")), 3), -float(w.get("created_at") or 0)))
         return items[:36]
 

@@ -107,7 +107,7 @@ export type WorkerItem = {
   kind: "subagent" | "tool";
   title: string;
   goal: string;
-  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+  status: "pending" | "in_progress" | "needs_review" | "completed" | "failed" | "cancelled" | "expired";
   tools: string[];
   nodes?: string[];
   steps: WorkerStep[];

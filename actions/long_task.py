@@ -84,6 +84,35 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
             )
             return f"Long-term task armed: {_format(rec)}"
 
+        if action in ("workflow", "run_workflow", "long_workflow"):
+            raw_steps = params.get("steps")
+            if isinstance(raw_steps, str):
+                try:
+                    raw_steps = json.loads(raw_steps)
+                except json.JSONDecodeError as exc:
+                    return f"long_task: steps must be a JSON array: {exc}"
+            rec = manager.create_workflow(
+                raw_steps if isinstance(raw_steps, list) else [],
+                title=str(params.get("title") or "Long-running workflow"),
+                notify_message=str(params.get("notify_message") or ""),
+                max_wait_hours=float(params.get("max_wait_hours") or 24 * 7),
+            )
+            return (
+                f"Durable workflow started: {rec['id']} with "
+                f"{len((rec.get('target') or {}).get('steps') or [])} checkpointed steps."
+            )
+
+        if action == "resume":
+            task_id = str(params.get("task_id") or "").strip()
+            resolution = str(params.get("resolution") or "").strip()
+            if not resolution:
+                return "long_task resume: choose resolution='retry' or 'mark_done' after reviewing the uncertain step."
+            return (
+                f"Resumed {task_id} with resolution {resolution}."
+                if manager.resolve_uncertain(task_id, resolution)
+                else f"Could not resume '{task_id}'; it is not waiting for crash review or the resolution is invalid."
+            )
+
         if action == "list":
             rows = manager.list(include_finished=bool(params.get("include_finished", True)))
             return "No long-term tasks." if not rows else "Long-term tasks:\n" + "\n".join(_format(x) for x in rows[:30])
@@ -101,7 +130,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
             task_id = str(params.get("task_id") or "").strip()
             return f"Removed long-term task {task_id}." if manager.remove(task_id) else f"Could not remove '{task_id}'; only finished tasks can be removed."
 
-        return "long_task actions: watch_until_end | at_time | file_exists | file_changed | list | status | cancel | remove"
+        return "long_task actions: workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | cancel | remove"
     except (ValueError, OSError) as exc:
         return f"long_task: {exc}"
 
@@ -109,17 +138,32 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
 TOOL = {
     "name": "long_task",
     "description": (
-        "Create and manage REAL durable completion monitors. Use watch_until_end when the user says "
-        "'watch this until the end and notify me'; it binds to the active HUD video/playlist and waits "
-        "for the player's actual ended event instead of guessing from duration. Also supports future "
-        "time notifications and waiting for a file to appear or change. Tasks persist across JARVIS "
-        "restarts, appear in Activity, can be cancelled, and send desktop + in-app completion notices."
+        "Run and manage REAL durable long tasks. Use workflow for a long multi-tool job: each action "
+        "step is persisted before and after execution, outputs can feed later steps, progress survives "
+        "restarts, and a crash during a possibly non-repeatable side effect pauses for explicit review "
+        "instead of silently repeating it. Use watch_until_end when the user says 'watch this until the "
+        "end and notify me'; it waits for the active player's actual ended event. Also supports future "
+        "times and file creation/change. Tasks appear in Activity, can be cancelled between steps, and "
+        "send desktop + in-app completion notices."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "watch_until_end | at_time | file_exists | file_changed | list | status | cancel | remove"},
-            "task_id": {"type": "STRING", "description": "Task ID for status/cancel/remove"},
+            "action": {"type": "STRING", "description": "workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | cancel | remove"},
+            "task_id": {"type": "STRING", "description": "Task ID for status/resume/cancel/remove"},
+            "steps": {
+                "type": "ARRAY",
+                "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "tool": {"type": "STRING", "description": "Discoverable action name"},
+                        "params": {"type": "STRING", "description": "JSON object string of tool parameters; may use ${previous.output} or ${step.N.output}"},
+                    },
+                    "required": ["tool", "params"],
+                },
+                "description": "workflow: ordered durable tool steps",
+            },
+            "resolution": {"type": "STRING", "description": "resume after crash review: retry or mark_done"},
             "scope": {"type": "STRING", "description": "For media: item or queue. Defaults to queue when a playlist is active."},
             "run_at": {"type": "STRING", "description": "ISO local date/time for at_time"},
             "delay_seconds": {"type": "NUMBER", "description": "Alternative relative delay for at_time"},
