@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/RubenM1990/APEX-UI",
+  "commit": "a8732fad1078a809cadfa810cb0d89cf4445dbed",
+  "sha256": {
+    "ApexCore3D.jsx": "3d84ec66e3eb6a5f8b0cbd2da8070852fd04b126a410102278f81df4a84fd8f8",
+    "ApexHeroOrb.tsx": "1a3b429f19c57a9d0079c1c68b1504c6cf8409f62b910d421e4751f2271b3ee7",
+    "ApexOrb.jsx": "0d3bbd55073a6febc9fd54ad3bb89f912e05c6769107c655eeb6a83d0579946b",
+    "ApexOverviewPanel.tsx": "5c2cc28379fcbbc5af67f9c6d667726111da3366f3ab5c1ed9e721c5e9e2e158",
+    "ApexWorld.tsx": "26ec440a37175ff33150260e802e082c8dbc2de2008229b32c7cf3ed6ef467e8",
+    "OrbStatusBar.jsx": "2d75274400f526e116dd9a4dd7195d0d16b2a3271229cb328d540ee0f392bb8e",
+    "ReasoningWeb.jsx": "2e1d94f408c6d23fd37abdf6dfe1b87fb5ac9b2c38e5967b96ff8a6a87c20f64",
+    "ShaderBackground.jsx": "821c339c9170fce4a55bf40af2bed4eb412624bbdaa1ba2eaeb0dda8105551d5",
+    "apex-orb.css": "76f664c8dfbc7436beb301c743ad67c44b0af080d16546e6ffb0deb3cff994ea"
+  }
+}
