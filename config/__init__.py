@@ -19,7 +19,7 @@ def get_config() -> dict:
 
 def get_os() -> str:
     """Returns: 'windows' | 'mac' | 'linux'"""
-    return get_config().get("os_system", _platform_os()).lower()
+    return _platform_os()  # Local OS operations must not follow stale copied settings.
 
 def is_windows() -> bool: return get_os() == "windows"
 def is_mac()     -> bool: return get_os() == "mac"

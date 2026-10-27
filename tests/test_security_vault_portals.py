@@ -148,6 +148,7 @@ def test_one_click_installer_environment_and_launchers(tmp_path):
     assert st["requirements_present"] is True
 
     created = install_jarvis.write_native_launchers(tmp_path)
-    assert len(created) == 2
+    assert len(created) == 3
     assert (tmp_path / "Start_JARVIS.bat").is_file()
     assert (tmp_path / "Start_JARVIS.command").is_file()
+    assert (tmp_path / "Start_JARVIS.sh").is_file()

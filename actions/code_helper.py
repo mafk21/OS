@@ -1,4 +1,6 @@
 import subprocess
+import platform
+import shutil
 import sys
 import json
 import re
@@ -214,7 +216,7 @@ def _run_file(path: Path, args: list, timeout: int) -> str:
         ".js":  ["node"],
         ".ts":  ["ts-node"],
         ".sh":  ["bash"],
-        ".ps1": ["powershell", "-File"],
+        ".ps1": [(shutil.which("pwsh") or shutil.which("powershell") or "powershell") if platform.system() == "Windows" else (shutil.which("pwsh") or "pwsh"), "-NoProfile", "-File"],
         ".rb":  ["ruby"],
         ".php": ["php"],
     }

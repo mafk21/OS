@@ -24,6 +24,7 @@ click_by_id / type_by_id with the chosen ID.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -32,7 +33,7 @@ from typing import Optional
 try:
     import pyautogui  # type: ignore
     _PYAUTOGUI = True
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover
     _PYAUTOGUI = False
 
 try:
@@ -41,10 +42,14 @@ try:
 except ImportError:  # pragma: no cover
     _PIL = False
 
+_before_cv2_path = list(sys.path)
 try:
     import cv2  # type: ignore
     _CV2 = True
-except ImportError:  # pragma: no cover
+except Exception:  # pragma: no cover
+    # OpenCV may prepend its package directory before a native-library failure.
+    # Restore import resolution so its config.py cannot shadow our config package.
+    sys.path[:] = _before_cv2_path
     _CV2 = False
 
 from actions.computer_control import (

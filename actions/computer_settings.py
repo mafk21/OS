@@ -5,6 +5,7 @@ import sys
 import time
 import subprocess
 import platform
+import shutil
 from pathlib import Path
 
 try:
@@ -12,7 +13,8 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
+    # Importing desktop input can fail without X11 or accessibility permissions.
     _PYAUTOGUI = False
 
 try:
@@ -58,6 +60,24 @@ def _get_macos_wifi_interface() -> str:
         pass
     return "en0" 
 
+def _linux_volume(action: str, value: str):
+    if shutil.which("pactl"):
+        args = ["pactl", "set-sink-mute" if action == "mute" else "set-sink-volume", "@DEFAULT_SINK@", value]
+    elif shutil.which("wpctl"):
+        args = ["wpctl", "set-mute" if action == "mute" else "set-volume", "@DEFAULT_AUDIO_SINK@"]
+        # wpctl puts the relative +/- suffix AFTER the percentage.
+        if value.startswith(("+", "-")):
+            value = value[1:] + value[0]
+        args.append(value)
+        if action != "mute":
+            args.extend(["--limit", "1.0"])
+    else:
+        raise RuntimeError("Volume control needs pactl (PulseAudio) or wpctl (PipeWire).")
+    result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+    if result.returncode:
+        raise RuntimeError((result.stderr or "Audio server rejected volume change").strip())
+
+
 def volume_up():
     if _OS == "Windows":
         for _ in range(5): pyautogui.press("volumeup")
@@ -66,8 +86,7 @@ def volume_up():
             "set volume output volume (output volume of (get volume settings) + 10)"],
             capture_output=True)
     else:
-        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+10%"],
-            capture_output=True)
+        _linux_volume("volume", "+10%")
 
 def volume_down():
     if _OS == "Windows":
@@ -77,8 +96,7 @@ def volume_down():
             "set volume output volume (output volume of (get volume settings) - 10)"],
             capture_output=True)
     else:
-        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-10%"],
-            capture_output=True)
+        _linux_volume("volume", "-10%")
 
 def volume_mute():
     if _OS == "Windows":
@@ -87,8 +105,7 @@ def volume_mute():
         subprocess.run(["osascript", "-e", "set volume with output muted"],
             capture_output=True)
     else:
-        subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"],
-            capture_output=True)
+        _linux_volume("mute", "toggle")
 
 def volume_get() -> int | None:
     """Current master volume 0-100, or None if this platform will not say.
@@ -113,6 +130,11 @@ def volume_get() -> int | None:
             r = subprocess.run(["osascript", "-e", "output volume of (get volume settings)"],
                                capture_output=True, text=True, timeout=5)
             return max(0, min(100, int(r.stdout.strip())))
+        if not shutil.which("pactl") and shutil.which("wpctl"):
+            r = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
+                               capture_output=True, text=True, timeout=5)
+            m = re.search(r"Volume:\s*([0-9.]+)", r.stdout)
+            return max(0, min(100, round(float(m.group(1)) * 100))) if m else None
         r = subprocess.run(["pactl", "get-sink-volume", "@DEFAULT_SINK@"],
                            capture_output=True, text=True, timeout=5)
         m = re.search(r"(\d+)%", r.stdout)
@@ -182,8 +204,7 @@ def volume_set(value: int):
             capture_output=True)
         return
     else:
-        subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{value}%"],
-            capture_output=True)
+        _linux_volume("volume", f"{value}%")
         return
 
 def brightness_up():

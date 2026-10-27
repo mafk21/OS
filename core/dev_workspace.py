@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import platform
 import subprocess
+import signal
 import threading
 import time
 import uuid
@@ -153,6 +154,10 @@ class DevTerminalManager:
         if platform.system() == "Windows":
             popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
+        else:
+            # A separate session lets Stop terminate the shell AND its children.
+            popen_kwargs["start_new_session"] = True
+
         proc = subprocess.Popen(
             cmd,
             shell=True,
@@ -226,11 +231,22 @@ class DevTerminalManager:
         if proc is None:
             return False
         try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=1.5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            if proc.poll() is None:
+                if platform.system() == "Windows":
+                    subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                   capture_output=True, timeout=5,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    if proc.poll() is None:
+                        proc.terminate()
+                else:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                try:
+                    proc.wait(timeout=1.5)
+                except subprocess.TimeoutExpired:
+                    if platform.system() == "Windows":
+                        proc.kill()
+                    else:
+                        os.killpg(proc.pid, signal.SIGKILL)
         except Exception:
             pass
         if rec is not None:

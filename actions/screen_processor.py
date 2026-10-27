@@ -10,16 +10,25 @@ from __future__ import annotations
 
 import io
 import json
+import platform
 import sys
 from pathlib import Path
 
 import numpy as np
 
+_before_cv2_path = list(sys.path)
 try:
     import cv2
     _CV2 = True
-except ImportError:
+except Exception:
     _CV2 = False
+finally:
+    # Some OpenCV wheels temporarily prepend their package directory, whose
+    # config.py can otherwise shadow JARVIS' config package after a failed load.
+    sys.path[:] = _before_cv2_path
+    _cv_config = sys.modules.get("config")
+    if "/cv2/" in str(getattr(_cv_config, "__file__", "")).replace("\\", "/"):
+        sys.modules.pop("config", None)
 
 try:
     import mss
@@ -62,7 +71,7 @@ def _save_config_key(key: str, value) -> None:
 
 
 def _get_os() -> str:
-    return _load_config().get("os_system", "windows").lower()
+    return {"Windows": "windows", "Darwin": "mac", "Linux": "linux"}.get(platform.system(), platform.system().lower())
 
 
 _IMG_MAX_W = 1280

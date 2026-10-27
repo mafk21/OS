@@ -12,7 +12,7 @@ from urllib.parse import quote_plus
 try:
     import pyautogui
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
     _PYAUTOGUI = False
 
 try:
@@ -33,7 +33,7 @@ try:
 except ImportError:
     _TRANSCRIPT_OK = False
 
-from config import get_os, is_windows, is_mac, is_linux
+from core.platform_info import get_os, is_windows, is_mac, is_linux
 
 
 def _get_base_dir() -> Path:

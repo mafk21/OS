@@ -20,7 +20,7 @@ import os
 from pathlib import Path
 import webbrowser
 
-from config import is_linux, is_mac, is_windows
+from core.platform_info import is_linux, is_mac, is_windows
 from core.media_engine import (
     classify_mix_or_playlist,
     clean_media_url,
