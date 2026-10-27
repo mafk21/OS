@@ -2,16 +2,15 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import ApexHeroOrb from "./ApexHeroOrb";
 import ReasoningWebJs from "./ReasoningWeb";
-import ShaderBackgroundJs from "./ShaderBackground";
-import OrbStatusBar from "./OrbStatusBar";
 import { useJarvis } from "./JarvisBridge";
 import { WorkerOrbsLayer } from "./WorkerOrbsLayer";
 
 const ApexMaleHumanoid = dynamic(() => import("./ApexMaleHumanoid"), {
   ssr: false,
 });
+
+const ApexFemaleHumanoid = dynamic(() => import("./ApexFemaleHumanoid"), { ssr: false });
 
 export type NodeSel = { name: string; key: string; color: string };
 
@@ -24,18 +23,7 @@ const ReasoningWeb = ReasoningWebJs as unknown as React.ComponentType<{
   onSelect?: (n: NodeSel) => void;
   light?: boolean;
 }>;
-const ShaderBackground = ShaderBackgroundJs as unknown as React.ComponentType<{
-  opacity?: number;
-  voiceActive?: boolean;
-  gold?: boolean;
-  female?: boolean;
-}>;
-const OrbStatusBarComp = OrbStatusBar as unknown as React.ComponentType<{
-  state?: string;
-  rawState?: string;
-  level?: number;
-  subtitle?: { role: string; text: string } | null;
-}>;
+
 
 type AgentInfo = {
   role: string;
@@ -558,11 +546,10 @@ export default function ApexWorld() {
   const [humanoidPulse, setHumanoidPulse] = useState(0);
 
   const isMale = activePersona === "male";
+  const HumanoidFigure = isMale ? ApexMaleHumanoid : ApexFemaleHumanoid;
 
   const handleCoreTap = () => {
-    if (isMale) {
-      setHumanoidPulse((p) => p + 1);
-    }
+    setHumanoidPulse((p) => p + 1);
     tapOrb();
   };
 
@@ -676,24 +663,11 @@ export default function ApexWorld() {
         style={{
           position: "absolute",
           inset: 0,
-          background: isMale ? "#02050a" : theme.worldBg,
+          background: isMale ? "#02050a" : "#08030a",
           transition: "background 0.65s ease",
         }}
       />
 
-      {!reduced && !isMale && (
-        <div
-          aria-hidden="true"
-          style={{ position: "absolute", inset: 0, zIndex: 0 }}
-        >
-          <ShaderBackground
-            opacity={0.14}
-            voiceActive={orbState === "speaking"}
-            gold={false}
-            female={activePersona === "female"}
-          />
-        </div>
-      )}
 
       <div
         aria-hidden="true"
@@ -703,15 +677,9 @@ export default function ApexWorld() {
           zIndex: 1,
           pointerEvents: "none",
           mixBlendMode: "screen",
-          background: isMale
-            ? `radial-gradient(circle at 50% 44%, rgba(${theme.orbGlowRgb},${
-                orbState === "speaking" ? 0.09 : 0.04
-              }) 0%, rgba(8,17,31,0) 56%)`
-            : `radial-gradient(circle at 50% 42%, rgba(${
-                theme.orbGlowRgb
-              },${
-                orbState === "speaking" ? 0.3 : orbState === "listening" ? 0.22 : 0.16
-              }) 0%, rgba(${theme.orbGlow2Rgb},0.09) 30%, rgba(8,17,31,0) 62%)`,
+          background: `radial-gradient(circle at 50% 44%, rgba(${theme.orbGlowRgb},${
+            orbState === "speaking" ? 0.09 : 0.04
+          }) 0%, transparent 56%)`,
           transition: "background 0.6s ease",
         }}
       />
@@ -728,8 +696,7 @@ export default function ApexWorld() {
           transformStyle: "preserve-3d",
         }}
       >
-        {isMale && (
-          <div
+        <div
             style={{
               position: "absolute",
               inset: 0,
@@ -737,7 +704,7 @@ export default function ApexWorld() {
               pointerEvents: "none",
             }}
           >
-            <ApexMaleHumanoid
+            <HumanoidFigure
               state={orbState}
               trace={trace}
               reducedMotion={reduced}
@@ -745,8 +712,7 @@ export default function ApexWorld() {
               onToggleConstellation={() => setMaleWebVisible((v) => !v)}
               pulseSignal={humanoidPulse}
             />
-          </div>
-        )}
+        </div>
 
         {maleWebVisible && (
           <div
@@ -755,8 +721,8 @@ export default function ApexWorld() {
               position: "absolute",
               inset: 0,
               zIndex: 1,
-              opacity: isMale ? 0.72 : 0.78,
-              pointerEvents: isMale ? "none" : undefined,
+              opacity: 0.72,
+              pointerEvents: "none",
             }}
           >
             <ReasoningWeb
@@ -773,29 +739,6 @@ export default function ApexWorld() {
           </div>
         )}
 
-        {!isMale && (
-          <div
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "50%",
-              width: "min(560px, 58vw)",
-              height: "min(500px, 56vw, 70vh)",
-              transform: "translate(-50%, -50%)",
-              zIndex: 3,
-              pointerEvents: "none",
-            }}
-          >
-            <ApexHeroOrb
-              state={orbState}
-              interactive={false}
-              primaryColor={theme.primary}
-              primaryBright={theme.primaryBright}
-              secondaryColor={theme.secondary}
-              secondaryBright={theme.secondaryBright}
-            />
-          </div>
-        )}
 
         <div
           role="button"
@@ -812,10 +755,10 @@ export default function ApexWorld() {
           style={{
             position: "absolute",
             left: "50%",
-            top: isMale ? "46%" : "50%",
+            top: "46%",
             transform: "translate(-50%, -50%)",
-            width: isMale ? "min(250px, 26vw)" : "min(340px, 36vw)",
-            height: isMale ? "min(310px, 40vh)" : "min(340px, 36vw)",
+            width: "min(250px, 26vw)",
+            height: "min(310px, 40vh)",
             borderRadius: "50%",
             zIndex: 4,
             cursor: "pointer",
@@ -835,7 +778,7 @@ export default function ApexWorld() {
           style={{
             position: "fixed",
             left: 16,
-            bottom: isMale ? 54 : 18,
+            bottom: 54,
             zIndex: 35,
             padding: "5px 11px",
             borderRadius: 999,
@@ -877,57 +820,6 @@ export default function ApexWorld() {
           ))}
         </ul>
       </nav>
-
-      {!isMale && (
-        <OrbStatusBarComp
-          state={orbState}
-          rawState={rawState}
-          subtitle={lastSubtitle}
-        />
-      )}
-
-      {!isMale && (
-        <div
-          style={{
-            position: "fixed",
-            left: 16,
-            bottom: 14,
-            zIndex: 34,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "4px 9px",
-            borderRadius: 999,
-            background: "rgba(14, 5, 16, 0.54)",
-            border: `1px solid ${theme.primary}26`,
-            backdropFilter: "blur(8px)",
-            fontFamily: "var(--font-mono)",
-            fontSize: 8.5,
-            letterSpacing: "0.14em",
-            color: "rgba(255, 208, 232, 0.72)",
-          }}
-        >
-          <span style={{ color: theme.primary, fontWeight: 600 }}>CORE 3D</span>
-          <button
-            type="button"
-            onClick={() => setMaleWebVisible((v) => !v)}
-            title="Toggle 18-agent constellation network"
-            style={{
-              appearance: "none",
-              border: "none",
-              background: "transparent",
-              color: maleWebVisible ? theme.primary : "rgba(240, 210, 228, 0.62)",
-              padding: "2px 5px",
-              fontSize: 8.5,
-              letterSpacing: "0.12em",
-              fontFamily: "inherit",
-              cursor: "pointer",
-            }}
-          >
-            {maleWebVisible ? "WEB ON" : "PURE"}
-          </button>
-        </div>
-      )}
 
       {selected && (
         <AgentOverview sel={selected} onClose={() => setSelected(null)} />

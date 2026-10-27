@@ -29,14 +29,12 @@ class FemaleInterfaceTests(unittest.TestCase):
             self.assertTrue(public.exists())
             self.assertEqual(public.read_bytes(),(ROOT/'static_hud/hologram'/name).read_bytes())
 
-    def test_visual_switch_preserves_voice_and_trace_wiring(self):
-        s=(ROOT/'components/ApexReferenceWorld.tsx').read_text()
-        self.assertIn('localStorage.setItem("apex.figure"',s)
-        self.assertNotIn('choosePersona(',s)
-        self.assertNotIn('setVoice(',s)
-        world=(ROOT/'components/reference/ApexWorld.tsx').read_text()
-        self.assertIn('trace={liveTrace as',world)
-        self.assertIn('reducedMotion={reduced}',world)
-        self.assertIn('femaleState={connected ? orbState : undefined}',s)
-        self.assertIn('state={femaleState ?? orbState}',world)
-        self.assertIn('pulseSignal={femalePulse}',world)
+    def test_actual_edition_selector_is_single_source_of_truth(self):
+        page=(ROOT/'app/page.tsx').read_text()
+        world=(ROOT/'components/ApexWorld.tsx').read_text()
+        self.assertIn('@/components/ApexWorld',page)
+        self.assertIn('activePersona',world)
+        self.assertIn('isMale ? ApexMaleHumanoid : ApexFemaleHumanoid',world)
+        self.assertIn('pulseSignal={humanoidPulse}',world)
+        overlays=(ROOT/'components/JarvisHudOverlays.tsx').read_text()
+        self.assertIn('onClick={() => choosePersona(pKey)}',overlays)

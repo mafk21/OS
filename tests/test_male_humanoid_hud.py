@@ -215,8 +215,9 @@ def test_male_and_female_hud_decluttered_and_no_speech_box() -> None:
     # 1. Constellation web & labels off by default in BOTH Male & Female so stage is clean
     assert "const [maleWebVisible, setMaleWebVisible] = useState(false)" in world_src
     assert "{maleWebVisible && (" in world_src
-    # 2. No OrbStatusBar over Male chest, and NO bordered subtitle box in Female OrbStatusBar either
-    assert "{!isMale && (\n        <OrbStatusBarComp" in world_src
+    # 2. Both editions now use humanoids: neither gets an overlaid orb status bar.
+    assert "<OrbStatusBarComp" not in world_src
+    assert "<HumanoidFigure" in world_src
     assert "subtitle.text" not in orb_bar_src
     # 3. Categorized HUD menu + on-demand OUTPUT pill for BOTH Male & Female
     assert "content && maleContentExpanded" in overlays_src
@@ -244,7 +245,11 @@ def test_female_orb_components_strictly_untouched() -> None:
 
     world_src = (REPO_ROOT / "apex_ui" / "components" / "ApexWorld.tsx").read_text(encoding="utf-8")
     assert "ApexMaleHumanoid" in world_src
-    assert "ApexHeroOrb" in world_src
+    # The original orb implementation is preserved, but the approved humanoid
+    # now occupies the Female edition instead of mounting the old orb.
+    assert "ApexFemaleHumanoid" in world_src
+    assert "isMale ? ApexMaleHumanoid : ApexFemaleHumanoid" in world_src
+    assert "<ApexHeroOrb" not in world_src
     assert 'activePersona === "male"' in world_src
 
 

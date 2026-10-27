@@ -1,31 +1,54 @@
-## JARVIS interface integration
+## Actual desktop HUD routing (placement correction)
 
-The main screen uses the actual upstream APEX-UI components pinned at
-`a8732fad1078a809cadfa810cb0d89cf4445dbed`, under `components/reference/`.
-The orb, particle simulation, graph, backdrop, overview, status bar and CSS
-are upstream copies, not a humanoid replacement or visual approximation.
-`upstream.json` records source hashes; only `reference/ApexWorld.tsx` has a
-small transport adapter (controlled state/trace and control-opening callbacks).
-The original persona/orb designs remain available; the male humanoid renderer now
-also accepts the female asset/palette variant.
+`app/page.tsx` mounts the existing persona-aware `components/ApexWorld.tsx`,
+`ApexOverviewPanel` and `JarvisHudOverlays` inside `JarvisProvider`. It also retains
+`?view=console` and the existing background-mode behavior.
 
-- Connected: existing JARVIS state and traces drive the reference visuals.
-  Upstream has three visual states; listening maps to its idle appearance.
-- Disconnected/design preview: upstream's click-to-cycle animation remains.
-  This does not run assistant actions or represent a live voice session.
-- Right-click the orb or press **Ctrl+Enter** to open existing typing/system
-  controls. Escape closes the command console. No permanent custom toolbar
-  or command box is added to the reference layout.
-- Existing confirmation, onboarding, social, video and settings dialogs remain
-  available when requested. Backend, models, voice settings and safety policies
-  are unchanged. The upstream agent descriptions are interface copy, not new
-  backend agent implementations.
-- The existing Python bridge supplies `/api/weather` in the desktop app.
-  A static design-only preview has no weather API or voice connection.
-- Run `npm ci && npm run build` here to rebuild the checked-in `static_hud/`
-  served by the Python desktop bridge; no Node runtime is needed on the desktop.
+The Female humanoid belongs in **the existing Female edition selected through
+`activePersona`**, beside the Male humanoid on the same full-viewport dark stage.
+The figure is chosen from the actual saved/previewed persona, not a separate local
+visual toggle. Female has its existing rose/orchid themed overview, controls and
+subtle glow; Male retains cyan/gold. Both use the male humanoid's normal scene,
+pulse/trace/audio pipeline and optional constellation controls. Female no longer
+uses an orb-only container or the standalone blue reference screen.
 
-Upstream license and community attribution remain in `LICENSE` and `CREDITS.md`.
+The separate `ApexReferenceWorld` preview switch was removed. Source under
+`components/reference/` is retained as upstream reference material, **not the active
+app screen**. Existing `ApexHeroOrb.tsx` and `ApexCore3D.jsx` remain unchanged.
+Use the existing system controls / edition selection to choose Female. No new
+onboarding, preference store, voice policy or backend endpoint is introduced.
+
+Run `npm ci && npm run build` here to update `static_hud/`, served by the Python
+bridge. A static preview has no live voice session or API; desktop settings and
+state still come from the existing bridge.
+
+---
+
+## Female counterpart — approved portrait, shared male animation engine
+
+The female edition now uses the exact image approved and uploaded by the user,
+normalized with padding to the existing 1020×634 asset canvas (no face redraw).
+`female_depth.png` preserves the existing male sculpture's depth/rig channel format,
+with a small jaw taper aligned to the approved frontal pose. This is portrait-derived
+volumetric particle geometry, not a separately modeled or photorealistic avatar.
+
+`ApexFemaleHumanoid` delegates directly to `ApexMaleHumanoid` with
+`appearance="female"`. Assembly/reassembly, shockwave, gaze and head/torso springs,
+voice energy, thinking/mood/trace pulses, breathing, orbit/zoom/reset, quality fallback,
+sound toggle and reduced-motion behavior therefore run through the same implementation.
+Only portrait/depth inputs and the pink/lavender/peach effect palette differ. Male is
+the default appearance and keeps its original assets and palette. Asset and geometry
+caches are keyed by appearance so switching cannot reuse the other figure's data.
+
+The rejected procedural mask renderer is removed. The existing Male/Female edition selector is the sole source of truth for
+placement and persisted persona/voice preferences.
+The full-viewport figure framing matches the actual male HUD. Existing persona-aware
+layout and optional graph stay intact.
+
+Validation: `node check-female-geometry.cjs` exercises the real shared builder,
+checks finite attributes and verifies appearance cache isolation. Run
+`python -m unittest discover -s tests -p 'test_*interface.py'` from the repo root
+for shared-engine, asset/export, trace, layout and visual-preference guards.
 
 ---
 
@@ -108,29 +131,3 @@ If you build on this, please use your own product name and branding.
 
 Made by [Ruben Mouradian — Reznikov Engineering](https://reznikov-engineering.com).
 If you use it, a link back is appreciated (not required).
-
-## Female counterpart — approved portrait, shared male animation engine
-
-The female edition now uses the exact image approved and uploaded by the user,
-normalized with padding to the existing 1020×634 asset canvas (no face redraw).
-`female_depth.png` preserves the existing male sculpture's depth/rig channel format,
-with a small jaw taper aligned to the approved frontal pose. This is portrait-derived
-volumetric particle geometry, not a separately modeled or photorealistic avatar.
-
-`ApexFemaleHumanoid` delegates directly to `ApexMaleHumanoid` with
-`appearance="female"`. Assembly/reassembly, shockwave, gaze and head/torso springs,
-voice energy, thinking/mood/trace pulses, breathing, orbit/zoom/reset, quality fallback,
-sound toggle and reduced-motion behavior therefore run through the same implementation.
-Only portrait/depth inputs and the pink/lavender/peach effect palette differ. Male is
-the default appearance and keeps its original assets and palette. Asset and geometry
-caches are keyed by appearance so switching cannot reuse the other figure's data.
-
-The rejected procedural mask renderer is removed. HUMAN · FEMALE / APEX · ORB
-still switches only the visual choice, without changing voice/persona settings.
-The full-viewport figure framing now matches the male HUD rather than the old small
-central canvas. The surrounding reference layout and graph stay intact.
-
-Validation: `node check-female-geometry.cjs` exercises the real shared builder,
-checks finite attributes and verifies appearance cache isolation. Run
-`python -m unittest discover -s tests -p 'test_*interface.py'` from the repo root
-for shared-engine, asset/export, trace, layout and visual-preference guards.

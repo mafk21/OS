@@ -528,21 +528,14 @@ OS/
 
 Distributed under the [MIT License](LICENSE).
 
-### Exact upstream APEX-UI interface
+### Female humanoid: existing edition, same scene as Male
 
-The default HUD now uses the orb-and-reasoning-graph interface directly from
-[RubenM1990/APEX-UI](https://github.com/RubenM1990/APEX-UI), pinned at
-`a8732fad1078a809cadfa810cb0d89cf4445dbed`. It replaces the custom main-screen
-humanoid/dashboard layout, not assistant behavior. Voice/persona settings and
-existing dialogs remain intact. Right-click the orb or press **Ctrl+Enter** for
-typing and system controls; Escape closes the command console. The checked-in
-static desktop bundle is rebuilt. See `apex_ui/README.md` for provenance and
-design-preview versus live-connection behavior.
-
-**HUMAN · FEMALE** now uses the user-approved rose/lavender contour portrait and
-**the same renderer and animations as the Male humanoid**: particle assembly,
-shockwave, voice response, gaze, breathing, thinking/trace effects and orbit controls.
-The rejected procedural mask is removed. The figure is portrait-derived volumetric
-particles with a registered depth/rig map. **APEX · ORB** restores the reference orb;
-this visual switch does not change saved voice/persona preferences. Backend and
-approval behavior remain unchanged. See `apex_ui/README.md` for implementation details.
+The approved female contour portrait is placed in the actual **Female edition** of
+`apex_ui/components/ApexWorld.tsx`, selected by the existing `activePersona` flow.
+It uses the same full-viewport dark humanoid scene and animation engine as Male,
+with the existing rose/orchid theme. The app root, overview, system dialogs,
+background mode and console route stay connected to the original HUD/provider.
+The incorrect standalone blue reference-screen placement and local figure switch
+were removed. Choose Female through the existing edition selector; there is no
+second visual preference or new setup flow. Voice/approval/backend behavior is
+unchanged. See `apex_ui/README.md` for routing and asset details.

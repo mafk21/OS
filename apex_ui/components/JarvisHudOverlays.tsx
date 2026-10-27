@@ -41,7 +41,7 @@ const RED = "#ff5b79";
 const GREEN = "#34d399";
 const WARN_AMBER = "#f5a623";
 
-export default function JarvisHudOverlays({ referenceLayout = false }: { referenceLayout?: boolean }) {
+export default function JarvisHudOverlays() {
   const {
     connected,
     integrationsReady,
@@ -302,7 +302,6 @@ export default function JarvisHudOverlays({ referenceLayout = false }: { referen
       <AutomationsModal />
       <DevWorkspaceModal />
       <SecurityModal />
-      {(!referenceLayout || consoleOpen || settingsOpen) && <>
       {/* ── Unified Sleek Top-Right HUD Controls (Male Cyan & Female Rose-Orchid) ── */}
       <div
         style={{
@@ -584,7 +583,6 @@ export default function JarvisHudOverlays({ referenceLayout = false }: { referen
         )}
       </div>
 
-      </>}
       {/* ── Unforgeable Confirmation Banner (core/confirm.py) ── */}
       {confirm && (
         <div
@@ -907,7 +905,6 @@ export default function JarvisHudOverlays({ referenceLayout = false }: { referen
         </aside>
       )}
 
-      {(!referenceLayout || consoleOpen) && <>
       {/* ── Bottom Slim Glass Command Bar ── */}
       <form
         onSubmit={onSubmitCmd}
@@ -1060,7 +1057,6 @@ export default function JarvisHudOverlays({ referenceLayout = false }: { referen
         </button>
       </form>
 
-      </>}
       {/* ── Settings Modal (Edition, Voice, Mic/Speaker, Barge-In, API Key) ── */}
       {settingsOpen && (
         <div
