@@ -542,10 +542,13 @@ class ApexHudBridge:
         loop = self._loop
         if loop is None or loop.is_closed():
             return
+        def dispatch():
+            # Construct the coroutine on its owning loop, not on the audio/tool
+            # thread: a close race must not leak an unawaited coroutine.
+            if not loop.is_closed():
+                asyncio.create_task(self._async_broadcast(payload))
         try:
-            loop.call_soon_threadsafe(
-                asyncio.create_task, self._async_broadcast(payload)
-            )
+            loop.call_soon_threadsafe(dispatch)
         except RuntimeError:
             pass
 
@@ -553,14 +556,33 @@ class ApexHudBridge:
         if not self._clients:
             return
         raw = json.dumps(payload)
-        stale = []
-        for ws in list(self._clients):
+        locks = getattr(self, "_client_send_locks", None)
+        if locks is None:
+            locks = self._client_send_locks = {}
+        async def ordered_send(ws):
+            if ws not in self._clients:
+                return
+            lock = locks.setdefault(ws, asyncio.Lock())
+            async with lock:
+                if ws in self._clients:
+                    await ws.send_text(raw)
+        async def send(ws):
             try:
-                await ws.send_text(raw)
+                # A stalled/closed window cannot hold up the other HUD clients
+                # or accumulate indefinitely waiting for a socket write.
+                await asyncio.wait_for(ordered_send(ws), timeout=2.0)
             except Exception:
-                stale.append(ws)
-        for ws in stale:
-            self._clients.discard(ws)
+                was_active = ws in self._clients
+                self._clients.discard(ws)
+                locks.pop(ws, None)
+                # Force an actual reconnect rather than leaving an open but
+                # permanently unsubscribed HUD socket after backpressure.
+                if was_active and callable(getattr(ws, "close", None)):
+                    try:
+                        await asyncio.wait_for(ws.close(code=1013), timeout=.2)
+                    except Exception:
+                        pass
+        await asyncio.gather(*(send(ws) for ws in tuple(self._clients)))
 
     def push_state(self, state: str) -> None:
         s = (state or "LISTENING").upper()
@@ -1992,6 +2014,7 @@ class ApexHudBridge:
                 pass
             finally:
                 self._clients.discard(ws)
+                getattr(self, "_client_send_locks", {}).pop(ws, None)
                 if (
                     self._auto_close
                     and self._had_ws_client

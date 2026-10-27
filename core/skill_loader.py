@@ -35,6 +35,7 @@ and the folder is skipped — ``discover_skills`` NEVER raises.
 from __future__ import annotations
 
 import re
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -242,11 +243,7 @@ class SkillRegistry:
         )
         rec = SkillRecord(name=key, description=desc, dir=key, path=folder,
                           valid=True)
-        rec.resources = [
-            str(p.relative_to(folder))
-            for p in sorted(folder.rglob("*"))
-            if p.is_file() and p.name not in ("SKILL.md", "skill.md")
-        ][:40]
+        rec.resources = _resource_listing(folder)
         self._skills[key] = rec
         if rec not in self._all:
             self._all.append(rec)
@@ -256,10 +253,34 @@ class SkillRegistry:
                 f"[SKILLS] list at the next session.")
 
 
+def _resource_listing(folder: Path, limit=40):
+    """Lexical, bounded resource index; never crawl installed/generated trees."""
+    ignored = {".git", "node_modules", "__pycache__", ".venv", "venv", ".next"}
+    def walk(directory):
+        try:
+            with os.scandir(directory) as entries:
+                ordered = sorted(entries, key=lambda entry: Path(entry.name))
+        except OSError:
+            return
+        for entry in ordered:
+            if entry.is_dir(follow_symlinks=False):
+                if entry.name.lower() not in ignored:
+                    yield from walk(Path(entry.path))
+            elif entry.is_file(follow_symlinks=False) and entry.name not in ("SKILL.md", "skill.md"):
+                yield str(Path(entry.path).relative_to(folder))
+    result = []
+    for relative in walk(folder):
+        result.append(relative)
+        if len(result) >= limit:
+            break
+    return result
+
+
 def _read_capped(path: Path, what: str) -> str:
     if not path.is_file():
         raise ValueError(f"{what} not found at {path.name}")
-    text = path.read_text(encoding="utf-8", errors="replace")
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        text = stream.read(_MAX_BODY + 1)
     if len(text) > _MAX_BODY:
         text = text[:_MAX_BODY] + f"\n\n… [truncated at {_MAX_BODY} chars]"
     return text
@@ -318,11 +339,7 @@ def discover_skills(skills_dir: Path,
                 raise ValueError("SKILL.md body is empty — nothing to follow")
             rec.name, rec.description = name, desc
             rec.valid = True
-            rec.resources = [
-                str(p.relative_to(folder))
-                for p in sorted(folder.rglob("*"))
-                if p.is_file() and p.name not in ("SKILL.md", "skill.md")
-            ][:40]
+            rec.resources = _resource_listing(folder)
             if name in valid:
                 raise ValueError(f"duplicate skill name '{name}'")
             valid[name] = rec
@@ -334,5 +351,5 @@ def discover_skills(skills_dir: Path,
             logger(f"Skill '{folder.name}' rejected: {e}")
         all_records.append(rec)
 
-        logger(f"Skill discovery complete: {len(valid)} active.")
+    logger(f"Skill discovery complete: {len(valid)} active.")
     return SkillRegistry(valid, all_records, base_dir=skills_dir)

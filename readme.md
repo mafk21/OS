@@ -141,6 +141,33 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 
 ---
 
+### Efficiency improvements to existing workflows
+
+No new features or appearance changes in this maintenance pass:
+
+- **Shared settings reads:** reuse the unchanged on-disk configuration instead of
+  reopening/parsing it for every getter. Each access checks file identity, size,
+  modification and change timestamps. Managed writes/key rotation invalidate
+  immediately; a 250ms maximum age also covers external same-stamp edits on
+  coarse-timestamp filesystems. Replacement and deletion invalidate on access. Decryption still runs afresh (no decrypted-secret cache), and
+  callers receive independent dictionaries. Detected malformed writes return empty settings rather than stale
+  credentials. This benefits startup, provider routing, settings and HUD snapshots.
+- **Skill loading:** index only the existing 40-resource display limit, skip
+  dependency/generated environments and directory symlinks, and read references
+  only up to the existing 100,000-character cap. Discovery summaries log once.
+  Explicit safe reference reads and existing path protections remain unchanged.
+- **HUD transport:** send to windows concurrently with per-window ordering and
+  bounded socket-write waits. A stalled window cannot block healthy ones; stale
+  sockets close so the existing reconnect path can recover. Construct background
+  broadcast coroutines on their owning loop to avoid shutdown-race leaks.
+
+A local synthetic benchmark of 5,000 representative settings reads (median of
+five runs) measured **0.1288s before → 0.0581s after (~2.22× for this operation)**.
+This is not a whole-app, network/model-generation, GPU or Windows speed guarantee.
+Headless regression: **546 passed, 28 skipped**; optional browser/hardware paths
+still require live-device verification. Voice settings, Male/Female visuals,
+Instagram send policy, Ollama behavior and paused learning were not changed.
+
 ### Automatic Ollama setup — no extra approval
 
 Say **“Set up Ollama and download the best model for this PC.”** The discoverable
