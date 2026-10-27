@@ -226,6 +226,9 @@ def rotate_vault_master_key(accounts_file: Path, config_file: Path) -> dict[str,
         if cfg_plain is not None and had_cfg_enc:
             enc_cfg = _encrypt_with_key(cfg_plain, new_key)
             config_file.write_text(json.dumps(enc_cfg, indent=2), encoding="utf-8")
+            # Same-size ciphertext writes can share timestamps on coarse FS.
+            from memory.config_manager import invalidate_config_cache
+            invalidate_config_cache()
             reencrypted += count_encrypted_leaves(enc_cfg)
 
         log_audit_event("vault", "rotate_master_key", {}, f"Re-encrypted {reencrypted} secrets")

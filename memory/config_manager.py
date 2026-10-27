@@ -1,4 +1,7 @@
 import json
+import copy
+import threading
+import time
 import os
 import sys
 from pathlib import Path
@@ -30,23 +33,68 @@ def save_api_keys(gemini_api_key: str) -> None:
 
     data["gemini_api_key"] = gemini_api_key.strip()
 
-    CONFIG_FILE.write_text(
+    _write_config_text(
         json.dumps(data, indent=2),
         encoding="utf-8"
     )
 
-def load_api_keys() -> dict:
-    if not CONFIG_FILE.exists():
-        return {}
-    try:
-        raw = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+# Cache only the on-disk object, never decrypted credentials. Stat each access
+# so settings edits, atomic replacements and deletion take effect immediately.
+_CONFIG_READ_LOCK = threading.RLock()
+_CONFIG_READ_CACHE = None
+
+
+def invalidate_config_cache():
+    global _CONFIG_READ_CACHE
+    with _CONFIG_READ_LOCK:
+        _CONFIG_READ_CACHE = None
+
+
+def _write_config_text(text, encoding="utf-8"):
+    # Managed writes invalidate even on filesystems with coarse timestamps.
+    with _CONFIG_READ_LOCK:
+        invalidate_config_cache()
+        try:
+            return CONFIG_FILE.write_text(text, encoding=encoding)
+        finally:
+            invalidate_config_cache()
+
+
+def _config_stamp(path):
+    st = path.stat()
+    return (str(path.absolute()), st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+
+def _read_config_object():
+    global _CONFIG_READ_CACHE
+    with _CONFIG_READ_LOCK:
+        path = CONFIG_FILE
+        try:
+            stamp = _config_stamp(path)
+        except FileNotFoundError:
+            _CONFIG_READ_CACHE = None
+            return {}
+        if (_CONFIG_READ_CACHE is not None and _CONFIG_READ_CACHE[0] == stamp
+                and time.monotonic() - _CONFIG_READ_CACHE[2] < .25):
+            return _CONFIG_READ_CACHE[1]
+        # A failed/partial external write must never serve stale credentials.
+        _CONFIG_READ_CACHE = None
+        raw = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             return {}
+        if _config_stamp(path) == stamp:
+            _CONFIG_READ_CACHE = (stamp, raw, time.monotonic())
+        return raw
+
+
+def load_api_keys() -> dict:
+    try:
+        raw = _read_config_object()
         try:
             from core.security_vault import decrypt_dict_secrets
             return decrypt_dict_secrets(raw)
         except Exception:
-            return raw
+            return copy.deepcopy(raw)
     except Exception as e:
         print(f"❌ Failed to load api_keys.json: {e}")
         return {}
@@ -63,7 +111,7 @@ def set_strict_config_encryption(enabled: bool) -> bool:
         disk_obj = encrypt_dict_secrets(plain)
     else:
         disk_obj = plain
-    CONFIG_FILE.write_text(json.dumps(disk_obj, indent=2), encoding="utf-8")
+    _write_config_text(json.dumps(disk_obj, indent=2), encoding="utf-8")
     return True
 
 def get_gemini_key() -> str | None:
@@ -154,7 +202,7 @@ def save_assistant_config(assistant_name: str, user_name: str) -> None:
             data = {}
     data["assistant_name"] = assistant_name.strip() or "JARVIS"
     data["user_name"] = user_name.strip()
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 # ── Assistant voice & persona ("male" | "female") ────────────────────────────
@@ -196,7 +244,7 @@ def save_voice(voice_name: str) -> None:
             data = {}
     v = (voice_name or "").strip()
     data["voice_name"] = v if v in AVAILABLE_VOICES else DEFAULT_VOICE
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def get_persona() -> str:
@@ -260,7 +308,7 @@ def save_persona(persona: str, voice_name: str | None = None) -> dict:
     data["persona_chosen"] = True
     data["voice_name"] = chosen_voice
     data["ui_color"] = ui_color
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
     return {"persona": p, "voice": chosen_voice, "ui_color": ui_color}
 
 
@@ -278,7 +326,7 @@ def save_wake_word_enabled(enabled: bool) -> None:
         except Exception:
             data = {}
     data["wake_word_enabled"] = bool(enabled)
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def get_push_to_talk_enabled() -> bool:
@@ -375,7 +423,7 @@ def save_turn_tuning(values: dict) -> None:
     cur = dict(cur) if isinstance(cur, dict) else {}
     cur.update(values or {})
     data["turn_tuning"] = cur
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def get_proactive_audio_enabled() -> bool:
@@ -422,7 +470,7 @@ def _save_flag(key: str, value) -> None:
         except Exception:
             data = {}
     data[key] = bool(value) if isinstance(value, bool) else value
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def get_brief_enabled() -> bool:
@@ -438,7 +486,7 @@ def save_brief_enabled(enabled: bool) -> None:
         except Exception:
             data = {}
     data["morning_brief_enabled"] = enabled
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 # ── Audio devices ────────────────────────────────────────────────────────────
@@ -462,7 +510,7 @@ def _patch_config(**fields) -> None:
         except Exception:
             data = {}
     data.update(fields)
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def get_input_device() -> str:
@@ -525,7 +573,7 @@ def save_plugin_config(namespace: str, values: dict) -> None:
     cur.update(values)
     pc[namespace] = cur
     data["plugin_config"] = pc
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
@@ -541,7 +589,7 @@ def save_plugin_enabled(plugin_name: str, enabled: bool) -> None:
         plugins_cfg = {}
     plugins_cfg[plugin_name] = enabled
     data["plugins_enabled"] = plugins_cfg
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 # ── Phase 1: Voice Foundations ───────────────────────────────────────────────
@@ -639,7 +687,7 @@ def save_openai_cfg(
             data = encrypt_dict_secrets(data)
         except Exception:
             pass
-    CONFIG_FILE.write_text(json.dumps(data, indent=4), encoding="utf-8")
+    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def resolve_cloud_engine(skip_engine: str = "") -> str:
