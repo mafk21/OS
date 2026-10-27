@@ -388,12 +388,16 @@ def is_tool_allowed_for_active_companion(tool_name: str) -> tuple[bool, str]:
     )
 
 
-def format_behavior_and_companion_for_prompt() -> str:
-    """Build prompt instructions for Behavior Interview, Adaptive Rules & Active Companion."""
+def format_behavior_and_companion_for_prompt(*, include_personalization: bool = True) -> str:
+    """Build behavior, custom-skill, and active specialist prompt overlays.
+
+    Soul already renders migrated behavior preferences, so callers may exclude
+    only that portion while preserving custom skills and specialist scoping.
+    """
     parts: list[str] = []
     st = _load()
 
-    if cfg.get_personalization_enabled():
+    if include_personalization and cfg.get_personalization_enabled():
         iv = st.get("interview") or {}
         if iv:
             lines = ["[BEHAVIOR INTERVIEW PREFERENCES]"]

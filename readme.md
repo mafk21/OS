@@ -436,6 +436,10 @@ Shape how JARVIS thinks, speaks, and delegates (`core/companions.py`, `apex_ui/c
 - **Persistent Specialist Companions**: Switch between built-in specialists (**Chief of Staff**, **Senior Code Architect**, **Deep Research Analyst**, **Executive Comms**) or create custom companions with dedicated **Male/Female personas, voices (`Charon`, `Aoede`, `Puck`, `Fenrir`, `Kore`), instructions, and scoped tool whitelists**.
 - **Visual Abilities (`SKILL.md`) & Custom Hex Theme Studio**: Create/edit custom Markdown skills visually and switch between **6 signature HUD theme presets** or pick **any custom Primary & Secondary hex colors** live.
 
+#### Persistent Soul foundation (staged)
+
+The provider-independent **Brother-Guardian** Soul foundation now includes an immutable constitution, strict versioned domain model, crash-safe local storage with backup/quarantine/audit recovery, idempotent companion-preference migration, and one bounded canonical context shared by Gemini Live, OpenAI-compatible Live/REST, local fallback, typed desktop fallback, and Telegram. The Male presentation is commanding, grounded, assertive, and protective while capabilities and safeguards remain identical across editions. Runtime activation is deliberately behind the `soul_enabled` rollback flag and defaults off until affect, relationship, reflection, initiative, Studio controls, and final hardening complete. This is personality architecture—not a claim of consciousness or biological emotion.
+
 ---
 
 ### 4. 17 SaaS Connectors, Custom REST/MCP Builder & Recurring Automations

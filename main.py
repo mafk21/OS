@@ -377,6 +377,16 @@ def _load_system_prompt() -> str:
             "Never simulate or guess results — always call the appropriate tool."
         )
 
+
+def _load_soul_context() -> str:
+    """Return canonical Soul context when enabled, otherwise preserve legacy behavior."""
+    try:
+        from core.soul.service import build_runtime_context
+        return build_runtime_context()
+    except Exception:
+        return ""
+
+
 _CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)
 
 # Transcript chunks shorter than this may legitimately repeat ("evet, evet"),
@@ -1325,6 +1335,9 @@ class JarvisLive:
                     break
         except Exception:
             pass
+        soul_ctx = _load_soul_context()
+        if soul_ctx:
+            system_prompt = soul_ctx + "\n\n" + system_prompt
         history: list[dict] = []
         if system_prompt:
             history.append({"role": "system", "content": system_prompt})
@@ -1559,7 +1572,10 @@ class JarvisLive:
         unavailable: answers via core.gemini / core.provider REST ladder so a
         typed command never hangs or goes unanswered."""
         reply = ""
+        soul_ctx = _load_soul_context()
         sys_hint = (
+            soul_ctx + "\n\n[CHANNEL]\nAnswer this typed desktop message directly and concisely."
+            if soul_ctx else
             f"You are {self._asst_name}, a sharp, concise AI operating companion. "
             "Answer the user's message directly and helpfully."
         )
@@ -1904,7 +1920,10 @@ class JarvisLive:
             ),
         })
 
-        parts = [time_ctx, identity_ctx]
+        soul_ctx = _load_soul_context()
+        # Soul and the legacy identity block are mutually exclusive. This keeps
+        # rollback immediate and prevents contradictory stacked identities.
+        parts = [time_ctx, soul_ctx if soul_ctx else identity_ctx]
         # Shared by Gemini Live and the OpenAI adapters: retain discoverability after restarts.
         try:
             from core.topic_learning import prompt_index
@@ -1927,9 +1946,13 @@ class JarvisLive:
                 parts.append(tl_str)
         except Exception:
             pass
+        # Soul imports the behavior interview and learned rules, but custom
+        # skills and active specialist scope must remain available in both paths.
         try:
             from core.companions import format_behavior_and_companion_for_prompt
-            beh_str = format_behavior_and_companion_for_prompt()
+            beh_str = format_behavior_and_companion_for_prompt(
+                include_personalization=not bool(soul_ctx)
+            )
             if beh_str:
                 parts.append(beh_str)
         except Exception:
