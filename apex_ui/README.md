@@ -1,3 +1,33 @@
+## JARVIS interface integration
+
+The main screen uses the actual upstream APEX-UI components pinned at
+`a8732fad1078a809cadfa810cb0d89cf4445dbed`, under `components/reference/`.
+The orb, particle simulation, graph, backdrop, overview, status bar and CSS
+are upstream copies, not a humanoid replacement or visual approximation.
+`upstream.json` records source hashes; only `reference/ApexWorld.tsx` has a
+small transport adapter (controlled state/trace and control-opening callbacks).
+Existing persona/avatar component files remain untouched but are not the main view.
+
+- Connected: existing JARVIS state and traces drive the reference visuals.
+  Upstream has three visual states; listening maps to its idle appearance.
+- Disconnected/design preview: upstream's click-to-cycle animation remains.
+  This does not run assistant actions or represent a live voice session.
+- Right-click the orb or press **Ctrl+Enter** to open existing typing/system
+  controls. Escape closes the command console. No permanent custom toolbar
+  or command box is added to the reference layout.
+- Existing confirmation, onboarding, social, video and settings dialogs remain
+  available when requested. Backend, models, voice settings and safety policies
+  are unchanged. The upstream agent descriptions are interface copy, not new
+  backend agent implementations.
+- The existing Python bridge supplies `/api/weather` in the desktop app.
+  A static design-only preview has no weather API or voice connection.
+- Run `npm ci && npm run build` here to rebuild the checked-in `static_hud/`
+  served by the Python desktop bridge; no Node runtime is needed on the desktop.
+
+Upstream license and community attribution remain in `LICENSE` and `CREDITS.md`.
+
+---
+
 # APEX-UI
 
 An animated **autonomous-agent orb + reasoning-graph** interface — the front-end of

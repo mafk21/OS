@@ -527,3 +527,14 @@ OS/
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).
+
+### Exact upstream APEX-UI interface
+
+The default HUD now uses the orb-and-reasoning-graph interface directly from
+[RubenM1990/APEX-UI](https://github.com/RubenM1990/APEX-UI), pinned at
+`a8732fad1078a809cadfa810cb0d89cf4445dbed`. It replaces the custom main-screen
+humanoid/dashboard layout, not assistant behavior. Voice/persona settings and
+existing dialogs remain intact. Right-click the orb or press **Ctrl+Enter** for
+typing and system controls; Escape closes the command console. The checked-in
+static desktop bundle is rebuilt. See `apex_ui/README.md` for provenance and
+design-preview versus live-connection behavior.
