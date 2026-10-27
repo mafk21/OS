@@ -84,6 +84,26 @@ limitation rather than a fake success. Hardware behavior—microphones, cameras,
 GPU acceleration, accessibility APIs, window managers, and audio backends—still
 depends on the actual computer and must be verified there.
 
+## Privacy of a fresh clone
+
+A published clone contains **application source and intentional visual assets—not
+the previous operator's runtime state**. JARVIS creates personal state locally on
+each machine, and the repository excludes it from Git:
+
+- API keys, OAuth tokens, connector credentials, vault keys and TLS private keys
+- Browser profiles, cookies, linked WhatsApp sessions and login databases
+- Memories, account metadata, companions, routines, automations and pairings
+- Brain, screen-memory, productivity and security-audit databases
+- Imported knowledge, lecture transcripts, generated media and downloaded files
+- Logs, screenshots, recordings, caches and temporary output
+
+`tests/test_repository_privacy.py` prevents high-confidence credentials and known
+runtime-storage paths from becoming tracked files. This is a publication guard,
+not permission to upload arbitrary files: contributors should still inspect
+`git status` and staged changes before every push. If a real secret is ever
+committed, ignoring or deleting it later is insufficient—revoke it immediately
+and purge it from Git history.
+
 ## Start in three steps
 
 ```bash

@@ -5,26 +5,72 @@
 # never be.
 
 # ── Secrets. Committing any of these publishes them. ──────────────────────────
-config/api_keys.json          # your Gemini API key, plus per-plugin credentials
-config/.vault.key             # local 256-bit credential vault master key
-config/certs/                 # the dashboard's TLS private key and certificate
-config/whatsapp_web/          # a LINKED WhatsApp session — committing it hands
-                              # somebody your WhatsApp account, not just a key
-**/token*.json                # Google OAuth tokens (Gmail / Calendar plugins)
-**/client_secret*.json        # Google OAuth client secrets
+# Provider keys, preferences and per-plugin settings.
+config/*.json
+# Local 256-bit credential-vault master key.
+config/.vault.key
+# Dashboard TLS private key and certificate.
+config/certs/
+config/*.pem
+config/*.key
+config/*.p12
+config/*.pfx
+config/*.crt
+config/*.cer
+# A linked WhatsApp session grants account access, not merely a key.
+config/whatsapp_web/
+# Google OAuth tokens and client secrets (Gmail / Calendar plugins).
+**/token*.json
+**/client_secret*.json
 *credentials*.json
 .env
 .env.*
 
 # ── Personal data the assistant accumulates about you ─────────────────────────
-memory/long_term.json
-memory/accounts.json
-memory/companions.json
-memory/custom_tools.json
-memory/automations.json
+# JSON/YAML files in memory are runtime state (identity, chats, account metadata,
+# routines, pairings, permissions, indexes, etc.), never distributable defaults.
+memory/*.json
+memory/*.yaml
+memory/*.yml
+memory/*.db
+memory/*.db-*
+memory/*.sqlite*
+memory/calendar_monitor_enabled
 memory/knowledge_files/
 memory/custom_skills/
-memory/*.db
+memory/lecture_capture/*
+!memory/lecture_capture/.gitkeep
+
+# Generated model/media outputs can contain names, faces, voices, documents, or
+# prompt content. Source assets belong outside memory/ and must be added explicitly.
+memory/*.png
+memory/*.jpg
+memory/*.jpeg
+memory/*.webp
+memory/*.gif
+memory/*.bmp
+memory/*.svg
+memory/*.wav
+memory/*.mp3
+memory/*.m4a
+memory/*.aac
+memory/*.ogg
+memory/*.opus
+memory/*.flac
+memory/*.mp4
+memory/*.mov
+memory/*.mkv
+memory/*.webm
+memory/*.avi
+memory/*.pdf
+memory/*.doc
+memory/*.docx
+memory/*.ppt
+memory/*.pptx
+memory/*.xls
+memory/*.xlsx
+memory/*.csv
+memory/*.txt
 
 # ── Python build noise ────────────────────────────────────────────────────────
 __pycache__/
@@ -59,6 +105,24 @@ node_modules/
 logs/
 downloads/
 screenshots/
+recordings/
+outputs/
+tmp/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Browser automation profiles hold cookies and authenticated sessions.
+.jarvis_profiles/
+**/user-data/
+**/user_data/
+**/browser-profile/
+**/browser_profiles/
+**/Cookies
+**/Cookies-journal
+**/Login Data
+**/Local State
 
 # Source excerpts and acquired subject knowledge are private runtime data.
 memory/learning/
