@@ -33,6 +33,7 @@ export default function ApexReferenceWorld() {
   </div>
   <ApexWorld
     female={female}
+    femaleState={connected ? orbState : undefined}
     liveState={connected ? (orbState === "listening" ? "idle" : orbState) : undefined}
     liveTrace={connected ? trace : undefined}
     onTap={tapOrb}

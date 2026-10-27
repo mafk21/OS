@@ -1,31 +1,42 @@
-"""Female edition integration guards, without audio or GPU dependencies."""
+"""The female edition must use the existing male animation engine, not a substitute."""
 import unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]/'apex_ui'
 
 class FemaleInterfaceTests(unittest.TestCase):
-    def test_original_volume_not_a_portrait_plane(self):
+    def test_same_animation_component_not_separate_sculpture(self):
         s=(ROOT/'components/ApexFemaleHumanoid.tsx').read_text()
-        for token in ('new THREE.SphereGeometry', 'g.computeVertexNormals()', 'new THREE.BufferGeometry()', 'new THREE.ShaderMaterial'):
+        self.assertIn('import ApexMaleHumanoid',s)
+        self.assertIn('appearance="female"',s)
+        self.assertIn('trace={trace} reducedMotion={reducedMotion}',s)
+        for rejected in ('SphereGeometry','sculpture()', 'ShaderMaterial','Canvas'):
+            self.assertNotIn(rejected,s)
+
+    def test_appearance_caches_are_isolated(self):
+        s=(ROOT/'components/ApexMaleHumanoid.tsx').read_text()
+        for token in ('cachedAssetsPromises.get(appearance)', 'cachedAssetsPromises.delete(appearance)', '`${appearance}:${tier}`', 'cachedParticleTiers.get(cacheKey)'):
             self.assertIn(token,s)
-        self.assertNotIn('TextureLoader',s)
-        self.assertNotIn('fetch(',s)
+        self.assertIn('appearance = "male"',s)
+        self.assertIn('loadDecodedAssets(appearance)',s)
 
-    def test_graphics_and_motion_have_bounded_fallbacks(self):
-        s=(ROOT/'components/ApexFemaleHumanoid.tsx').read_text()
-        for token in ('GraphicsBoundary','<Fallback/>','prefers-reduced-motion','dpr={[1,1.5]}','frameloop={reduced?"demand":"always"}','geometry.dispose()', 'material.dispose()'):
-            self.assertIn(token,s)
+    def test_assets_and_palette_are_female_specific(self):
+        s=(ROOT/'components/ApexMaleHumanoid.tsx').read_text()
+        self.assertIn('/hologram/female_portrait.png',s)
+        self.assertIn('/hologram/female_depth.png',s)
+        self.assertIn('uniform float uFemale;',s)
+        for name in ('female_portrait.png','female_depth.png'):
+            public=ROOT/'public/hologram'/name
+            self.assertTrue(public.exists())
+            self.assertEqual(public.read_bytes(),(ROOT/'static_hud/hologram'/name).read_bytes())
 
-    def test_audio_uses_existing_bridge_and_gaze_has_cleanup(self):
-        s=(ROOT/'components/ApexFemaleHumanoid.tsx').read_text()
-        self.assertIn('useJarvisAudioLevel()',s)
-        self.assertIn('state==="speaking"?audio:0',s)
-        self.assertIn('window.removeEventListener("pointermove",move)',s)
-        self.assertNotIn('getUserMedia',s)
-
-    def test_visual_switch_is_persisted_without_changing_voice(self):
+    def test_visual_switch_preserves_voice_and_trace_wiring(self):
         s=(ROOT/'components/ApexReferenceWorld.tsx').read_text()
-        for token in ('localStorage.setItem("apex.figure"', 'aria-pressed={female===value}', 'female={female}'):
-            self.assertIn(token,s)
+        self.assertIn('localStorage.setItem("apex.figure"',s)
         self.assertNotIn('choosePersona(',s)
         self.assertNotIn('setVoice(',s)
+        world=(ROOT/'components/reference/ApexWorld.tsx').read_text()
+        self.assertIn('trace={liveTrace as',world)
+        self.assertIn('reducedMotion={reduced}',world)
+        self.assertIn('femaleState={connected ? orbState : undefined}',s)
+        self.assertIn('state={femaleState ?? orbState}',world)
+        self.assertIn('pulseSignal={femalePulse}',world)

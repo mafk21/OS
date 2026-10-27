@@ -231,13 +231,15 @@ export function AgentOverview({ sel, onClose }: { sel: NodeSel; onClose: () => v
 }
 
 /* ── The world ── */
-export default function ApexWorld({ liveState, liveTrace, onTap, onOpenControls, female }: {
+export default function ApexWorld({ liveState, liveTrace, onTap, onOpenControls, female, femaleState }: {
   female?: boolean;
+  femaleState?: import("../ApexHeroOrb").OrbState;
   liveState?: OrbState;
   liveTrace?: unknown;
   onTap?: () => void;
   onOpenControls?: () => void;
 }) {
+  const [femalePulse, setFemalePulse] = useState(0);
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
 
@@ -248,6 +250,7 @@ export default function ApexWorld({ liveState, liveTrace, onTap, onOpenControls,
   const orbState: OrbState = liveState ?? showState;
 
   const boost = () => {
+    if (female) setFemalePulse((pulse) => pulse + 1);
     if (liveState !== undefined) { onTap?.(); return; }
     const next: OrbState = showState === "idle" ? "thinking" : showState === "thinking" ? "speaking" : "idle";
     setShowState(next);
@@ -331,8 +334,8 @@ export default function ApexWorld({ liveState, liveTrace, onTap, onOpenControls,
 
       {/* the core - painted ABOVE the web (app order); display-only, the tap target
           is the circular disc below so agent nodes near the ring stay clickable */}
-      <div style={{ position: "absolute", left: "50%", top: "50%", width: female ? "min(700px, 80vw)" : "min(560px, 58vw)", height: female ? "min(820px, 91vh)" : "min(500px, 56vw, 70vh)", transform: "translate(-50%, -50%)", zIndex: 3, pointerEvents: "none" }}>
-        {female ? <FemaleHumanoid state={orbState} /> : <ApexHeroOrb state={orbState} interactive={false} />}
+      <div style={{ position: "absolute", left: female ? 0 : "50%", top: female ? 0 : "50%", width: female ? "100%" : "min(560px, 58vw)", height: female ? "100%" : "min(500px, 56vw, 70vh)", transform: female ? undefined : "translate(-50%, -50%)", zIndex: 3, pointerEvents: "none" }}>
+        {female ? <FemaleHumanoid state={femaleState ?? orbState} pulseSignal={femalePulse} trace={liveTrace as import("../JarvisBridge").TraceEvent | undefined} reducedMotion={reduced} /> : <ApexHeroOrb state={orbState} interactive={false} />}
       </div>
 
       {/* central tap disc - covers the ring only (nodes orbit outside it) */}

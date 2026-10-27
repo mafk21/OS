@@ -539,9 +539,10 @@ typing and system controls; Escape closes the command console. The checked-in
 static desktop bundle is rebuilt. See `apex_ui/README.md` for provenance and
 design-preview versus live-connection behavior.
 
-The new **HUMAN · FEMALE** visual edition adds an original volumetric particle bust
-inside this layout. Switch back to **APEX · ORB** at the lower right; the visual
-choice is saved locally and does not overwrite voice/persona settings. The female
-prototype includes cursor-following gaze, subtle blinking/breathing, and audio-driven
-mouth energy when connected. Reduced-motion and WebGL-unavailable fallbacks are
-included. Backend/approval behavior is unchanged; see `apex_ui/README.md`.
+**HUMAN · FEMALE** now uses the user-approved rose/lavender contour portrait and
+**the same renderer and animations as the Male humanoid**: particle assembly,
+shockwave, voice response, gaze, breathing, thinking/trace effects and orbit controls.
+The rejected procedural mask is removed. The figure is portrait-derived volumetric
+particles with a registered depth/rig map. **APEX · ORB** restores the reference orb;
+this visual switch does not change saved voice/persona preferences. Backend and
+approval behavior remain unchanged. See `apex_ui/README.md` for implementation details.
