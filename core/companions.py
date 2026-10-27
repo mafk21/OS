@@ -213,14 +213,16 @@ def detect_and_record_correction(user_text: str) -> str | None:
     if not matched_rule:
         return None
 
+    recorded_id: str | None = None
     with _LOCK:
         st = _load()
         rules: list[dict[str, Any]] = st["learned_rules"]
         lower_existing = {str(r.get("rule", "")).lower() for r in rules}
         if matched_rule.lower() not in lower_existing:
+            recorded_id = f"rule-{uuid.uuid4().hex[:8]}"
             rules.append(
                 {
-                    "id": f"rule-{uuid.uuid4().hex[:8]}",
+                    "id": recorded_id,
                     "rule": matched_rule[:180],
                     "ts": time.strftime("%Y-%m-%d %H:%M"),
                 }
@@ -236,6 +238,25 @@ def detect_and_record_correction(user_text: str) -> str | None:
                 )
             except Exception:
                 pass
+    if recorded_id:
+        try:
+            from core.soul.service import record_runtime_affect_event, record_runtime_relationship
+            from core.soul.affect import AffectEvent
+            from core.soul.models import RelationshipKind
+            evidence = f"companions:rule:{recorded_id}"
+            record_runtime_relationship(
+                kind=RelationshipKind.CORRECTION,
+                subject="communication-style",
+                value=matched_rule[:180],
+                evidence_ref=evidence,
+                explicit=True,
+            )
+            record_runtime_affect_event(
+                AffectEvent.EXPLICIT_CORRECTION_ACCEPTED,
+                evidence_ref=evidence,
+            )
+        except Exception:
+            pass
     return matched_rule
 
 

@@ -28,12 +28,25 @@ from .models import (
     MALE_OVERLAY,
     PrivacyPolicy,
     ReflectionState,
+    RelationshipClaim,
+    RelationshipClaimStatus,
+    RelationshipContradiction,
+    RelationshipKind,
     RelationshipState,
+    Sensitivity,
     SoulState,
     TraitOrigin,
     TraitRange,
     TraitStatus,
     ValidationError,
+)
+from .relationship import (
+    ForgetResult,
+    RelationshipUpdate,
+    apply_relationship_to_soul,
+    forget_relationship_subject,
+    observe_relationship,
+    summarize_relationship,
 )
 from .service import (
     SoulService,
@@ -41,6 +54,7 @@ from .service import (
     get_default_service,
     record_long_task_completion,
     record_runtime_affect_event,
+    record_runtime_relationship,
 )
 from .store import RevisionConflict, SoulStore, SoulStoreError
 
@@ -52,8 +66,11 @@ __all__ = [
     "COMPANIONS_IMPORT_ID", "MigrationResult", "import_companion_compatibility", "migrate_raw",
     "AffectDelta", "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
     "InitiativePolicy", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
-    "RelationshipState", "SoulState", "SoulAuditEvent", "SoulStore", "SoulStoreError",
+    "RelationshipClaim", "RelationshipClaimStatus", "RelationshipContradiction", "RelationshipKind",
+    "RelationshipState", "Sensitivity", "RelationshipUpdate", "ForgetResult", "observe_relationship",
+    "forget_relationship_subject", "summarize_relationship", "apply_relationship_to_soul",
+    "SoulState", "SoulAuditEvent", "SoulStore", "SoulStoreError",
     "SoulService", "build_runtime_context", "get_default_service", "record_long_task_completion",
-    "record_runtime_affect_event", "RevisionConflict",
+    "record_runtime_affect_event", "record_runtime_relationship", "RevisionConflict",
     "TraitOrigin", "TraitRange", "TraitStatus", "ValidationError",
 ]

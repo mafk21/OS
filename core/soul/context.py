@@ -17,6 +17,7 @@ from typing import Any, Mapping, Sequence
 
 from .constitution import CONSTITUTION_VERSION, render_constitution
 from .models import EDITION_OVERLAYS, Edition, SoulState, TraitStatus, ValidationError
+from .relationship import summarize_relationship
 
 TOTAL_BUDGET = 11_000
 SECTION_BUDGETS: Mapping[str, int] = MappingProxyType({
@@ -210,6 +211,8 @@ class SoulContextBuilder:
                 f"Rapport evidence: {_data_list(state.relationship.rapport_evidence)}",
                 f"Milestones: {_data_list(state.relationship.milestones)}",
                 f"Trusted workflows: {_data_list(state.relationship.trusted_workflows)}",
+                f"Evidence-backed continuity: {_data_list(summarize_relationship(state.relationship))}",
+                f"Unresolved contradictions: {sum(1 for item in state.relationship.contradictions if item.resolution == 'unresolved')}",
             ))
             commitments = tuple((*state.relationship.unresolved_commitments, *inputs.active_commitments))
             commitments_text = (
