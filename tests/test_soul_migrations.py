@@ -23,12 +23,12 @@ NOW = "2026-10-27T12:00:00+03:00"
 FIXTURE = Path(__file__).parent / "fixtures" / "soul_v0.json"
 
 
-def test_v0_fixture_migrates_exactly_one_version_and_preserves_values() -> None:
+def test_v0_fixture_migrates_sequentially_to_current_and_preserves_values() -> None:
     raw = json.loads(FIXTURE.read_text(encoding="utf-8"))
     original = copy.deepcopy(raw)
     result = migrate_raw(raw)
     assert raw == original
-    assert result.applied == ("schema-v0-to-v1",)
+    assert result.applied == ("schema-v0-to-v1", "schema-v1-to-v2")
     assert result.state.schema_version == SCHEMA_VERSION
     assert result.state.revision == 7
     assert result.state.created_at == raw["created_at"]

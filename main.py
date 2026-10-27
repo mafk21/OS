@@ -1102,6 +1102,11 @@ class JarvisLive:
                     "Live-session-only tools cannot run after the session disappears."
                 )
             self._long_task_manager.set_executor(_execute_durable_step)
+            # Affect accepts only evidence-backed application events. The long
+            # task manager calls this adapter only for persisted completions;
+            # the adapter independently verifies status, ID, and evidence.
+            from core.soul.service import record_long_task_completion
+            self._long_task_manager.add_notifier(record_long_task_completion)
             if getattr(self.ui, "_apex_bridge", None) is None:
                 self._long_task_manager.add_notifier(
                     lambda task: self.ui.write_log(

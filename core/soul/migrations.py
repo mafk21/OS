@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import hashlib
 from dataclasses import dataclass, replace
+from datetime import datetime
 from typing import Any, Mapping
 
 from .models import (
@@ -91,11 +92,48 @@ def _v0_to_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
     migrated = replace(
         state, revision=revision, created_at=stamp, updated_at=updated, identity=identity,
         completed_migrations=tuple((*state.completed_migrations, "schema-v0-to-v1")),
-    )
-    return migrated.to_dict()
+    ).to_dict()
+    # Emit the historical v1 shape so the sequential engine must pass through
+    # v1-to-v2 instead of skipping a migration.
+    migrated["schema_version"] = 1
+    for key in (
+        "baseline_calm", "baseline_energy", "baseline_concern", "baseline_confidence",
+        "baseline_curiosity", "baseline_rapport", "daily_delta", "daily_date",
+    ):
+        migrated["affect"].pop(key, None)
+    return migrated
 
 
-_MIGRATIONS = {0: _v0_to_v1}
+def _v1_to_v2(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Add persisted affect baselines and per-day accumulation accounting."""
+    working = copy.deepcopy(dict(raw))
+    affect = _mapping(working.get("affect"), "schema v1 affect")
+    old_fields = {"calm", "energy", "concern", "confidence", "curiosity", "rapport", "updated_at", "causes"}
+    _strict(affect, old_fields, "schema v1 affect")
+    missing = old_fields - set(affect)
+    if missing:
+        raise ValidationError(f"schema v1 affect is missing fields: {', '.join(sorted(missing))}")
+    updated_at = _timestamp(affect["updated_at"], "schema v1 affect updated_at")
+    updated_date = datetime.fromisoformat(updated_at.replace("Z", "+00:00")).date().isoformat()
+    upgraded_affect = dict(affect)
+    for name in ("calm", "energy", "concern", "confidence", "curiosity", "rapport"):
+        upgraded_affect[f"baseline_{name}"] = affect[name]
+    upgraded_affect["daily_delta"] = {
+        "calm": 0.0, "energy": 0.0, "concern": 0.0,
+        "confidence": 0.0, "curiosity": 0.0, "rapport": 0.0,
+    }
+    upgraded_affect["daily_date"] = updated_date
+    working["affect"] = upgraded_affect
+    working["schema_version"] = 2
+    completed = working.get("completed_migrations", [])
+    if not isinstance(completed, list):
+        raise ValidationError("schema v1 completed_migrations must be a list")
+    if "schema-v1-to-v2" not in completed:
+        working["completed_migrations"] = [*completed, "schema-v1-to-v2"]
+    return working
+
+
+_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2}
 
 
 def import_companion_compatibility(

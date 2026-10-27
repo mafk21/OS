@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from core.soul import RevisionConflict, SoulState, SoulStore, SoulStoreError, ValidationError
+from core.soul import SCHEMA_VERSION, RevisionConflict, SoulState, SoulStore, SoulStoreError, ValidationError
 
 NOW = "2026-10-27T12:00:00+03:00"
 LATER = "2026-10-27T12:01:00+03:00"
@@ -124,7 +124,7 @@ def test_future_version_is_never_consumed(tmp_path: Path) -> None:
     store.path.parent.mkdir(parents=True)
     store.path.write_text(json.dumps(raw), encoding="utf-8")
     loaded = store.load()
-    assert loaded.schema_version == 1
+    assert loaded.schema_version == SCHEMA_VERSION
     assert not store.path.exists()
     assert list(store.quarantine_dir.glob("*.invalid"))
 

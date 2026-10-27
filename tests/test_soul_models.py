@@ -153,7 +153,8 @@ def test_duplicate_trait_ids_and_bad_revision_order_are_rejected() -> None:
     base = SoulState.new(NOW)
     with pytest.raises(ValidationError, match="unique"):
         SoulState(
-            schema_version=1, revision=2, constitution_version=1, created_at=NOW, updated_at=NOW,
+            schema_version=base.schema_version, revision=2, constitution_version=base.constitution_version,
+            created_at=NOW, updated_at=NOW,
             identity=base.identity, affect=base.affect, relationship=base.relationship,
             learned_traits=(trait, trait), initiative_policy=base.initiative_policy,
             reflection_state=base.reflection_state, privacy=base.privacy,

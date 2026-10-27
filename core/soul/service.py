@@ -11,9 +11,10 @@ import threading
 from pathlib import Path
 from typing import Callable
 
+from .affect import AffectEvent, AffectUpdate, apply_event_to_soul
 from .context import SoulContext, SoulContextBuilder, SoulContextInputs
 from .migrations import COMPANIONS_IMPORT_ID, import_companion_compatibility
-from .models import Edition, SoulState
+from .models import Edition, SoulState, utc_now_iso
 from .store import SoulStore, SoulStoreError
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -58,6 +59,40 @@ class SoulService:
         with self._lock:
             state = self.initialize()
             return self.builder.build(state, inputs)
+
+    def record_affect_event(
+        self,
+        event: AffectEvent | str,
+        *,
+        evidence_ref: str,
+        occurred_at: str | None = None,
+    ) -> AffectUpdate | None:
+        """Persist one verified expressive event; return None when affect is disabled."""
+        with self._lock:
+            self.initialize()
+            state = self.store.load()
+            self._state = state
+            if not state.privacy.affect_enabled:
+                return None
+            holder: dict[str, AffectUpdate] = {}
+            stamp = occurred_at or utc_now_iso()
+
+            def mutate(current: SoulState) -> SoulState:
+                changed, update = apply_event_to_soul(
+                    current, event, occurred_at=stamp, evidence_ref=evidence_ref
+                )
+                holder["update"] = update
+                return changed
+
+            self._state = self.store.transact(
+                mutate,
+                expected_revision=state.revision,
+                reason=f"apply bounded affect event {AffectEvent(event).value}",
+                source="affect",
+                event="soul.affect_changed",
+            )
+            self.builder.clear_cache()
+            return holder["update"]
 
     def _import_companions_once(self, state: SoulState) -> SoulState:
         if COMPANIONS_IMPORT_ID in state.completed_migrations or not self.companions_path.exists():
@@ -105,6 +140,39 @@ def reset_default_service_for_tests() -> None:
     global _DEFAULT_SERVICE
     with _DEFAULT_LOCK:
         _DEFAULT_SERVICE = None
+
+
+def record_runtime_affect_event(
+    event: AffectEvent | str,
+    *,
+    evidence_ref: str,
+    occurred_at: str | None = None,
+) -> AffectUpdate | None:
+    """Record an app-verified event only when staged Soul runtime is enabled."""
+    try:
+        from memory import config_manager as cfg
+        if not cfg.get_soul_enabled():
+            return None
+        return get_default_service().record_affect_event(
+            event, evidence_ref=evidence_ref, occurred_at=occurred_at
+        )
+    except Exception as exc:
+        print(f"[Soul] Affect event skipped: {type(exc).__name__}: {exc}")
+        return None
+
+
+def record_long_task_completion(task: dict) -> None:
+    """LongTaskManager notifier adapter; accepts verified completed records only."""
+    if not isinstance(task, dict) or task.get("status") != "completed":
+        return
+    task_id = str(task.get("id") or "").strip()
+    evidence = str(task.get("completion_evidence") or "").strip()
+    if not task_id or not evidence:
+        return
+    record_runtime_affect_event(
+        AffectEvent.VERIFIED_TASK_SUCCESS,
+        evidence_ref=f"long-task:{task_id}:completed",
+    )
 
 
 def build_runtime_context(*, include_personalization: bool | None = None) -> str:

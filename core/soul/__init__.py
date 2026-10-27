@@ -1,10 +1,22 @@
 """Public typed foundation for the JARVIS persistent Soul."""
+from .affect import (
+    DAILY_CAPS,
+    EVENT_DELTAS,
+    HALF_LIFE_HOURS,
+    AffectEvent,
+    AffectUpdate,
+    apply_affect_event,
+    apply_event_to_soul,
+    decay_affect,
+    explain_affect,
+)
 from .constitution import CONSTITUTION_VERSION, RULES, ConstitutionalRule, render_constitution
 from .context import SECTION_BUDGETS, SECTION_ORDER, SoulContext, SoulContextBuilder, SoulContextInputs
 from .events import SoulAuditEvent
 from .migrations import COMPANIONS_IMPORT_ID, MigrationResult, import_companion_compatibility, migrate_raw
 from .models import (
     SCHEMA_VERSION,
+    AffectDelta,
     AffectState,
     CoachingMode,
     Edition,
@@ -23,16 +35,25 @@ from .models import (
     TraitStatus,
     ValidationError,
 )
-from .service import SoulService, build_runtime_context, get_default_service
+from .service import (
+    SoulService,
+    build_runtime_context,
+    get_default_service,
+    record_long_task_completion,
+    record_runtime_affect_event,
+)
 from .store import RevisionConflict, SoulStore, SoulStoreError
 
 __all__ = [
+    "DAILY_CAPS", "EVENT_DELTAS", "HALF_LIFE_HOURS", "AffectEvent", "AffectUpdate",
+    "apply_affect_event", "apply_event_to_soul", "decay_affect", "explain_affect",
     "SCHEMA_VERSION", "CONSTITUTION_VERSION", "RULES", "ConstitutionalRule", "render_constitution",
     "SECTION_BUDGETS", "SECTION_ORDER", "SoulContext", "SoulContextBuilder", "SoulContextInputs",
     "COMPANIONS_IMPORT_ID", "MigrationResult", "import_companion_compatibility", "migrate_raw",
-    "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
+    "AffectDelta", "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
     "InitiativePolicy", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
     "RelationshipState", "SoulState", "SoulAuditEvent", "SoulStore", "SoulStoreError",
-    "SoulService", "build_runtime_context", "get_default_service", "RevisionConflict",
+    "SoulService", "build_runtime_context", "get_default_service", "record_long_task_completion",
+    "record_runtime_affect_event", "RevisionConflict",
     "TraitOrigin", "TraitRange", "TraitStatus", "ValidationError",
 ]
