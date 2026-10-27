@@ -84,6 +84,11 @@ def handle_inbound(text: str, user_id: int = 0, player=None, loop=None) -> str:
         # Use provider text
         from core.provider import text as prov_text
         prompt=text
+        try:
+            from core.soul.service import build_runtime_context
+            soul_ctx = build_runtime_context()
+        except Exception:
+            soul_ctx = ""
         ctx_parts = []
         try:
             from memory.memory_manager import load_memory, format_memory_for_prompt
@@ -98,7 +103,9 @@ def handle_inbound(text: str, user_id: int = 0, player=None, loop=None) -> str:
                 detect_and_record_correction,
                 format_behavior_and_companion_for_prompt,
             )
-            beh_ctx = format_behavior_and_companion_for_prompt()
+            beh_ctx = format_behavior_and_companion_for_prompt(
+                include_personalization=not bool(soul_ctx)
+            )
             if beh_ctx:
                 ctx_parts.append(beh_ctx)
             detect_and_record_correction(text)
@@ -106,15 +113,26 @@ def handle_inbound(text: str, user_id: int = 0, player=None, loop=None) -> str:
         except Exception:
             append_turn = None  # type: ignore
         ctx_block = ("\n".join(ctx_parts) + "\n") if ctx_parts else ""
-        sys_hint=(
-            "You are JARVIS, a helpful assistant sharing one continuous Forever Timeline "
-            "across desktop voice, text, and Telegram. Reply concisely (<300 chars ideally).\n"
-            f"{ctx_block}User via Telegram: "
-        )
-        reply=prov_text(sys_hint+prompt, tier="fast", timeout_ms=15000, default="")
+        if soul_ctx:
+            sys_hint = (
+                soul_ctx
+                + "\n\n[CHANNEL]\nThis message arrived through Telegram. Reply concisely "
+                  "(under 300 characters when practical). Preserve the same identity and continuity as desktop.\n"
+                + ctx_block
+            )
+        else:
+            sys_hint = (
+                "You are JARVIS, a helpful assistant sharing one continuous Forever Timeline "
+                "across desktop voice, text, and Telegram. Reply concisely (<300 chars ideally).\n"
+                f"{ctx_block}"
+            )
+        reply=prov_text(prompt, tier="fast", config={"system_instruction": sys_hint}, timeout_ms=15000, default="")
         if not reply:
             from core.llm_client import call_llm
-            raw=call_llm([{"role":"user","content": prompt}], timeout=20)
+            raw=call_llm([
+                {"role":"system","content":sys_hint},
+                {"role":"user","content": prompt},
+            ], timeout=20)
             reply=(raw.get("content") or "").strip()
         if reply and callable(append_turn):
             try:

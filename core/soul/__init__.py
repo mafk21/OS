@@ -23,6 +23,7 @@ from .models import (
     TraitStatus,
     ValidationError,
 )
+from .service import SoulService, build_runtime_context, get_default_service
 from .store import RevisionConflict, SoulStore, SoulStoreError
 
 __all__ = [
@@ -32,5 +33,6 @@ __all__ = [
     "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
     "InitiativePolicy", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
     "RelationshipState", "SoulState", "SoulAuditEvent", "SoulStore", "SoulStoreError",
-    "RevisionConflict", "TraitOrigin", "TraitRange", "TraitStatus", "ValidationError",
+    "SoulService", "build_runtime_context", "get_default_service", "RevisionConflict",
+    "TraitOrigin", "TraitRange", "TraitStatus", "ValidationError",
 ]

@@ -172,6 +172,15 @@ def save_timeline_persistence_enabled(enabled: bool) -> None:
     _save_flag("timeline_persistence_enabled", bool(enabled))
 
 
+def get_soul_enabled() -> bool:
+    """Feature flag for the persistent Soul context; off until staged rollout."""
+    return bool(load_api_keys().get("soul_enabled", False))
+
+
+def save_soul_enabled(enabled: bool) -> None:
+    _save_flag("soul_enabled", bool(enabled))
+
+
 def get_privacy_settings() -> dict:
     cfg = load_api_keys()
     return {
