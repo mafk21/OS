@@ -13,7 +13,7 @@ from typing import Any, Mapping
 
 from .constitution import CONSTITUTION_VERSION
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_SHORT_TEXT = 160
 MAX_TEXT = 600
 MAX_LIST_ITEMS = 100
@@ -217,6 +217,36 @@ EDITION_OVERLAYS = {Edition.MALE: MALE_OVERLAY, Edition.FEMALE: FEMALE_OVERLAY}
 
 
 @dataclass(frozen=True, slots=True)
+class AffectDelta:
+    calm: float = 0.0
+    energy: float = 0.0
+    concern: float = 0.0
+    confidence: float = 0.0
+    curiosity: float = 0.0
+    rapport: float = 0.0
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValidationError(f"affect delta {name} must be a number")
+            value = float(value)
+            if not math.isfinite(value) or not -1.0 <= value <= 1.0:
+                raise ValidationError(f"affect delta {name} must be finite and between -1.0 and 1.0")
+            object.__setattr__(self, name, value)
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> "AffectDelta":
+        data = _mapping(raw, "affect daily delta")
+        fields = set(cls.__dataclass_fields__)
+        _strict(data, fields, "affect daily delta")
+        missing = fields - set(data)
+        if missing:
+            raise ValidationError(f"affect daily delta is missing fields: {', '.join(sorted(missing))}")
+        return cls(**data)
+
+
+@dataclass(frozen=True, slots=True)
 class AffectState:
     calm: float = .78
     energy: float = .58
@@ -224,24 +254,47 @@ class AffectState:
     confidence: float = .72
     curiosity: float = .62
     rapport: float = .45
+    baseline_calm: float = .78
+    baseline_energy: float = .58
+    baseline_concern: float = .18
+    baseline_confidence: float = .72
+    baseline_curiosity: float = .62
+    baseline_rapport: float = .45
+    daily_delta: AffectDelta = field(default_factory=AffectDelta)
+    daily_date: str = field(default_factory=lambda: datetime.now(timezone.utc).date().isoformat())
     updated_at: str = field(default_factory=utc_now_iso)
     causes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        for name in ("calm", "energy", "concern", "confidence", "curiosity", "rapport"):
+        dimensions = ("calm", "energy", "concern", "confidence", "curiosity", "rapport")
+        for name in dimensions:
             object.__setattr__(self, name, _number(getattr(self, name), f"affect {name}"))
+            baseline_name = f"baseline_{name}"
+            object.__setattr__(self, baseline_name, _number(getattr(self, baseline_name), f"affect {baseline_name}"))
+        if not isinstance(self.daily_delta, AffectDelta):
+            raise ValidationError("affect daily_delta has the wrong type")
+        daily_date = _text(self.daily_date, "affect daily_date", maximum=10)
+        try:
+            datetime.strptime(daily_date, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValidationError("affect daily_date must use YYYY-MM-DD") from exc
+        object.__setattr__(self, "daily_date", daily_date)
         object.__setattr__(self, "updated_at", _timestamp(self.updated_at, "affect updated_at"))
         object.__setattr__(self, "causes", _text_list(self.causes, "affect causes", maximum=12))
 
     @classmethod
     def from_dict(cls, raw: Any) -> "AffectState":
         data = _mapping(raw, "affect")
-        fields = {"calm", "energy", "concern", "confidence", "curiosity", "rapport", "updated_at", "causes"}
+        fields = set(cls.__dataclass_fields__)
         _strict(data, fields, "affect")
         missing = fields - set(data)
         if missing:
             raise ValidationError(f"affect is missing fields: {', '.join(sorted(missing))}")
-        return cls(**{**data, "causes": tuple(data["causes"])})
+        return cls(**{
+            **data,
+            "daily_delta": AffectDelta.from_dict(data["daily_delta"]),
+            "causes": tuple(data["causes"]),
+        })
 
 
 @dataclass(frozen=True, slots=True)
@@ -423,7 +476,8 @@ class SoulState:
         stamp = _timestamp(now or utc_now_iso(), "initial timestamp")
         return cls(
             schema_version=SCHEMA_VERSION, revision=0, constitution_version=CONSTITUTION_VERSION,
-            created_at=stamp, updated_at=stamp, identity=IdentityProfile(), affect=AffectState(updated_at=stamp),
+            created_at=stamp, updated_at=stamp, identity=IdentityProfile(),
+            affect=AffectState(updated_at=stamp, daily_date=datetime.fromisoformat(stamp.replace("Z", "+00:00")).date().isoformat()),
             relationship=RelationshipState(), learned_traits=(), initiative_policy=InitiativePolicy(),
             reflection_state=ReflectionState(), privacy=PrivacyPolicy(), completed_migrations=(),
         )

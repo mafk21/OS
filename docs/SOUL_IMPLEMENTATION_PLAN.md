@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phases 0–5 complete; bounded affect implementation has not started
+Status: Phases 0–6 complete; relationship continuity implementation has not started
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 
