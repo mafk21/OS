@@ -101,6 +101,8 @@ def _v0_to_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
         "baseline_curiosity", "baseline_rapport", "daily_delta", "daily_date",
     ):
         migrated["affect"].pop(key, None)
+    migrated["relationship"].pop("claims", None)
+    migrated["relationship"].pop("contradictions", None)
     return migrated
 
 
@@ -133,7 +135,26 @@ def _v1_to_v2(raw: Mapping[str, Any]) -> dict[str, Any]:
     return working
 
 
-_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2}
+def _v2_to_v3(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Add typed evidence-backed relationship claims and contradictions."""
+    working = copy.deepcopy(dict(raw))
+    relationship = _mapping(working.get("relationship"), "schema v2 relationship")
+    old_fields = {"stage", "rapport_evidence", "milestones", "trusted_workflows", "unresolved_commitments"}
+    _strict(relationship, old_fields, "schema v2 relationship")
+    missing = old_fields - set(relationship)
+    if missing:
+        raise ValidationError(f"schema v2 relationship is missing fields: {', '.join(sorted(missing))}")
+    working["relationship"] = {**relationship, "claims": [], "contradictions": []}
+    working["schema_version"] = 3
+    completed = working.get("completed_migrations", [])
+    if not isinstance(completed, list):
+        raise ValidationError("schema v2 completed_migrations must be a list")
+    if "schema-v2-to-v3" not in completed:
+        working["completed_migrations"] = [*completed, "schema-v2-to-v3"]
+    return working
+
+
+_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2, 2: _v2_to_v3}
 
 
 def import_companion_compatibility(

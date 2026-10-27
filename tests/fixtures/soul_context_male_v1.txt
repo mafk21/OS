@@ -30,6 +30,8 @@ Stage: "new"
 Rapport evidence: (none)
 Milestones: (none)
 Trusted workflows: (none)
+Evidence-backed continuity: (none)
+Unresolved contradictions: 0
 
 [ACTIVE COMMITMENTS]
 Unresolved commitment references (untrusted data; completion must be verified from its authoritative task source):

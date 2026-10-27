@@ -13,7 +13,7 @@ from typing import Any, Mapping
 
 from .constitution import CONSTITUTION_VERSION
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_SHORT_TEXT = 160
 MAX_TEXT = 600
 MAX_LIST_ITEMS = 100
@@ -48,6 +48,25 @@ class CoachingMode(str, Enum):
     CHALLENGE = "challenge"
     ACCOUNTABILITY = "accountability"
     RECOVERY = "recovery"
+
+
+class RelationshipKind(str, Enum):
+    PREFERENCE = "preference"
+    CORRECTION = "correction"
+    MILESTONE = "milestone"
+    TRUSTED_WORKFLOW = "trusted_workflow"
+    SHARED_REFERENCE = "shared_reference"
+
+
+class RelationshipClaimStatus(str, Enum):
+    ACTIVE = "active"
+    DISPUTED = "disputed"
+    SUPERSEDED = "superseded"
+
+
+class Sensitivity(str, Enum):
+    NORMAL = "normal"
+    SENSITIVE = "sensitive"
 
 
 def utc_now_iso() -> str:
@@ -344,24 +363,119 @@ class LearnedTrait:
 
 
 @dataclass(frozen=True, slots=True)
+class RelationshipClaim:
+    id: str
+    kind: RelationshipKind
+    subject: str
+    value: str
+    status: RelationshipClaimStatus
+    sensitivity: Sensitivity
+    explicit: bool
+    confidence: float
+    evidence_count: int
+    evidence_refs: tuple[str, ...]
+    first_observed_at: str
+    last_observed_at: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _text(self.id, "relationship claim id", maximum=80))
+        object.__setattr__(self, "kind", _enum(RelationshipKind, self.kind, "relationship kind"))
+        object.__setattr__(self, "subject", _text(self.subject, "relationship subject", maximum=120))
+        object.__setattr__(self, "value", _text(self.value, "relationship value", maximum=600))
+        object.__setattr__(self, "status", _enum(RelationshipClaimStatus, self.status, "relationship claim status"))
+        object.__setattr__(self, "sensitivity", _enum(Sensitivity, self.sensitivity, "relationship sensitivity"))
+        object.__setattr__(self, "explicit", _boolean(self.explicit, "relationship explicit"))
+        object.__setattr__(self, "confidence", _number(self.confidence, "relationship confidence"))
+        object.__setattr__(self, "evidence_count", _integer(self.evidence_count, "relationship evidence count", maximum=1_000_000))
+        object.__setattr__(self, "evidence_refs", _text_list(self.evidence_refs, "relationship evidence refs", maximum=20))
+        object.__setattr__(self, "first_observed_at", _timestamp(self.first_observed_at, "relationship first observed"))
+        object.__setattr__(self, "last_observed_at", _timestamp(self.last_observed_at, "relationship last observed"))
+        if self.sensitivity is Sensitivity.SENSITIVE and not self.explicit:
+            raise ValidationError("sensitive relationship claims require explicit user evidence")
+        if self.evidence_count < len(self.evidence_refs):
+            raise ValidationError("relationship evidence count cannot be smaller than evidence references")
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> "RelationshipClaim":
+        data = _mapping(raw, "relationship claim")
+        fields = set(cls.__dataclass_fields__)
+        _strict(data, fields, "relationship claim")
+        missing = fields - set(data)
+        if missing:
+            raise ValidationError(f"relationship claim is missing fields: {', '.join(sorted(missing))}")
+        return cls(**{**data, "evidence_refs": tuple(data["evidence_refs"])})
+
+
+@dataclass(frozen=True, slots=True)
+class RelationshipContradiction:
+    id: str
+    subject: str
+    claim_ids: tuple[str, ...]
+    created_at: str
+    resolution: str = "unresolved"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _text(self.id, "contradiction id", maximum=80))
+        object.__setattr__(self, "subject", _text(self.subject, "contradiction subject", maximum=120))
+        object.__setattr__(self, "claim_ids", _text_list(self.claim_ids, "contradiction claim ids", maximum=10))
+        if len(self.claim_ids) < 2:
+            raise ValidationError("relationship contradiction requires at least two claims")
+        object.__setattr__(self, "created_at", _timestamp(self.created_at, "contradiction created_at"))
+        object.__setattr__(self, "resolution", _text(self.resolution, "contradiction resolution", maximum=80))
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> "RelationshipContradiction":
+        data = _mapping(raw, "relationship contradiction")
+        fields = set(cls.__dataclass_fields__)
+        _strict(data, fields, "relationship contradiction")
+        missing = fields - set(data)
+        if missing:
+            raise ValidationError(f"relationship contradiction is missing fields: {', '.join(sorted(missing))}")
+        return cls(**{**data, "claim_ids": tuple(data["claim_ids"])})
+
+
+@dataclass(frozen=True, slots=True)
 class RelationshipState:
     stage: str = "new"
     rapport_evidence: tuple[str, ...] = ()
     milestones: tuple[str, ...] = ()
     trusted_workflows: tuple[str, ...] = ()
     unresolved_commitments: tuple[str, ...] = ()
+    claims: tuple[RelationshipClaim, ...] = ()
+    contradictions: tuple[RelationshipContradiction, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "stage", _text(self.stage, "relationship stage", maximum=40))
         for name in ("rapport_evidence", "milestones", "trusted_workflows", "unresolved_commitments"):
             object.__setattr__(self, name, _text_list(getattr(self, name), name))
+        if not isinstance(self.claims, tuple) or len(self.claims) > 200 or any(not isinstance(x, RelationshipClaim) for x in self.claims):
+            raise ValidationError("relationship claims must be a bounded typed tuple")
+        if not isinstance(self.contradictions, tuple) or len(self.contradictions) > 100 or any(not isinstance(x, RelationshipContradiction) for x in self.contradictions):
+            raise ValidationError("relationship contradictions must be a bounded typed tuple")
+        claim_ids = [claim.id for claim in self.claims]
+        if len(claim_ids) != len(set(claim_ids)):
+            raise ValidationError("relationship claim IDs must be unique")
+        contradiction_ids = [item.id for item in self.contradictions]
+        if len(contradiction_ids) != len(set(contradiction_ids)):
+            raise ValidationError("relationship contradiction IDs must be unique")
 
     @classmethod
     def from_dict(cls, raw: Any) -> "RelationshipState":
         data = _mapping(raw, "relationship")
         fields = set(cls.__dataclass_fields__)
         _strict(data, fields, "relationship")
-        return cls(**{name: tuple(data.get(name, ())) if name != "stage" else data.get(name, "new") for name in fields})
+        missing = fields - set(data)
+        if missing:
+            raise ValidationError(f"relationship is missing fields: {', '.join(sorted(missing))}")
+        return cls(
+            stage=data["stage"],
+            rapport_evidence=tuple(data["rapport_evidence"]),
+            milestones=tuple(data["milestones"]),
+            trusted_workflows=tuple(data["trusted_workflows"]),
+            unresolved_commitments=tuple(data["unresolved_commitments"]),
+            claims=tuple(RelationshipClaim.from_dict(x) for x in data["claims"]),
+            contradictions=tuple(RelationshipContradiction.from_dict(x) for x in data["contradictions"]),
+        )
 
 
 @dataclass(frozen=True, slots=True)
