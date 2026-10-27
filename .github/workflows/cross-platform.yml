@@ -1,7 +1,16 @@
 name: Cross-platform regression
 on:
+  # Pull requests run the matrix once. Direct pushes run only after landing on
+  # main, avoiding duplicate branch-push + pull-request jobs for the same SHA.
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
+
+concurrency:
+  group: cross-platform-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 jobs:
