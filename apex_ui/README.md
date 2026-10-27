@@ -1,3 +1,33 @@
+## JARVIS interface integration
+
+The main screen uses the actual upstream APEX-UI components pinned at
+`a8732fad1078a809cadfa810cb0d89cf4445dbed`, under `components/reference/`.
+The orb, particle simulation, graph, backdrop, overview, status bar and CSS
+are upstream copies, not a humanoid replacement or visual approximation.
+`upstream.json` records source hashes; only `reference/ApexWorld.tsx` has a
+small transport adapter (controlled state/trace and control-opening callbacks).
+Existing persona/avatar component files remain untouched but are not the main view.
+
+- Connected: existing JARVIS state and traces drive the reference visuals.
+  Upstream has three visual states; listening maps to its idle appearance.
+- Disconnected/design preview: upstream's click-to-cycle animation remains.
+  This does not run assistant actions or represent a live voice session.
+- Right-click the orb or press **Ctrl+Enter** to open existing typing/system
+  controls. Escape closes the command console. No permanent custom toolbar
+  or command box is added to the reference layout.
+- Existing confirmation, onboarding, social, video and settings dialogs remain
+  available when requested. Backend, models, voice settings and safety policies
+  are unchanged. The upstream agent descriptions are interface copy, not new
+  backend agent implementations.
+- The existing Python bridge supplies `/api/weather` in the desktop app.
+  A static design-only preview has no weather API or voice connection.
+- Run `npm ci && npm run build` here to rebuild the checked-in `static_hud/`
+  served by the Python desktop bridge; no Node runtime is needed on the desktop.
+
+Upstream license and community attribution remain in `LICENSE` and `CREDITS.md`.
+
+---
+
 # APEX-UI
 
 An animated **autonomous-agent orb + reasoning-graph** interface — the front-end of
@@ -77,3 +107,27 @@ If you build on this, please use your own product name and branding.
 
 Made by [Ruben Mouradian — Reznikov Engineering](https://reznikov-engineering.com).
 If you use it, a link back is appreciated (not required).
+
+## Original human female edition
+
+The main screen now defaults to an original head-and-shoulders female hologram.
+**HUMAN · FEMALE / APEX · ORB** switches only the visual figure and persists locally
+(`apex.figure`); it deliberately does not overwrite the existing voice/persona choice.
+The original Female orb and Male avatar source components are untouched.
+
+The female figure uses deterministic 3D surface particles, a shaded sculpted face,
+layered hair, eyes/lips, neck and shoulders—not a photograph on a plane. Pointer
+tracking is damped, blinking/breathing are subtle, and mouth/glow intensity uses the
+existing audio-level context while speaking. Offline previews do not synthesize a
+voice track or claim live lip synchronization. The reference graph/layout remains;
+the expensive full-screen WebGL wave shader is omitted in human mode, retaining its
+radial backdrop. Particle assembly takes about two seconds on capable graphics.
+
+WebGL errors fall back to an inline SVG silhouette. Reduced-motion mode disables
+assembly, gaze and continuous rendering. Canvas pixel ratio is capped at 1.5 and no
+post-processing passes, remote models, external textures or new runtime dependencies
+are required. This is a stylized original prototype, not a photorealistic character.
+
+Validation: `node check-female-geometry.cjs` verifies deterministic finite particle
+positions/colors, 3D depth and surface normals. Frontend integration guards run via
+`python -m unittest discover -s tests -p 'test_*interface.py'` from the repo root.

@@ -527,3 +527,21 @@ OS/
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).
+
+### Exact upstream APEX-UI interface
+
+The default HUD now uses the orb-and-reasoning-graph interface directly from
+[RubenM1990/APEX-UI](https://github.com/RubenM1990/APEX-UI), pinned at
+`a8732fad1078a809cadfa810cb0d89cf4445dbed`. It replaces the custom main-screen
+humanoid/dashboard layout, not assistant behavior. Voice/persona settings and
+existing dialogs remain intact. Right-click the orb or press **Ctrl+Enter** for
+typing and system controls; Escape closes the command console. The checked-in
+static desktop bundle is rebuilt. See `apex_ui/README.md` for provenance and
+design-preview versus live-connection behavior.
+
+The new **HUMAN · FEMALE** visual edition adds an original volumetric particle bust
+inside this layout. Switch back to **APEX · ORB** at the lower right; the visual
+choice is saved locally and does not overwrite voice/persona settings. The female
+prototype includes cursor-following gaze, subtle blinking/breathing, and audio-driven
+mouth energy when connected. Reduced-motion and WebGL-unavailable fallbacks are
+included. Backend/approval behavior is unchanged; see `apex_ui/README.md`.
