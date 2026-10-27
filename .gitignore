@@ -30,8 +30,13 @@ config/whatsapp_web/
 # JSON/YAML files in memory are runtime state (identity, chats, account metadata,
 # routines, pairings, permissions, indexes, etc.), never distributable defaults.
 memory/*.json
+memory/*.jsonl
 memory/*.yaml
 memory/*.yml
+memory/*.tmp
+memory/*.invalid
+memory/*.quarantine/
+memory/soul.quarantine/
 memory/*.db
 memory/*.db-*
 memory/*.sqlite*

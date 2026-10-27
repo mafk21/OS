@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phase 0 and Phase 1 complete; durable persistence has not started
+Status: Phases 0–2 complete; migration and compatibility work has not started
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 
