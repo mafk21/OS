@@ -98,12 +98,17 @@ def ensure_ollama_running(timeout: int = 15) -> bool:
     if _is_up():
         return True
 
+    from urllib.parse import urlsplit
+    parsed = urlsplit(url)
+    if parsed.scheme != "http" or parsed.hostname not in ("localhost", "127.0.0.1") or parsed.port != 11434:
+        print("[LLM] Configured non-default Ollama server is offline; not starting an unrelated local server.")
+        return False
     print("[LLM] Ollama not running — launching 'ollama serve'…")
     try:
-        kwargs: dict = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        subprocess.Popen(["ollama", "serve"], **kwargs)
+        # Includes the verified per-user runtime installed by ollama_setup;
+        # restart it locally without requiring a PATH change or elevation.
+        from core.ollama_setup import executable, launch
+        launch(executable() or "ollama")
     except FileNotFoundError:
         print("[LLM] 'ollama' command not found. Install Ollama from https://ollama.com")
         return False

@@ -22,7 +22,13 @@ Diagnose slow machines, audio glitches, network/API failures, low disk space, an
 3. **Report diagnosis before remediating**:
    - Lead with the exact culprit and metric (e.g. *"RAM is at 92% — Chrome and Docker hold 19.4 GB; mic and Gemini Live are healthy"*).
    - Give the single concrete fix; apply safe reversible fixes (`computer_settings` or `device_manager` window controls) directly.
-4. **Gate disruptive actions**:
+4. **User-requested Ollama setup (no second approval)**:
+   - For “install/connect Ollama”, “download the best local model”, or “start my local AI server”, call `ollama_setup(action="setup", model="auto")` directly. This is the user's authorization; do not ask again or substitute a generic shell/approval tool.
+   - It installs a SHA-256-verified official per-user runtime, starts loopback HTTP, chooses a RAM/VRAM-fit Qwen3 model, checks storage, downloads it and verifies inference. Model downloads can be multi-GB; selection is a conservative heuristic, not a universal best-model guarantee.
+   - Retain job_id. Queued is not completed; use status/cancel. Only completed proves inference and configuration succeeded. Report actual errors, never claim a terminal command/server/model ran merely because it was proposed.
+   - Default preserves Gemini/OpenAI live voice and cloud preference, enabling local fallback. Use activate=true only when explicitly asked to select local text provider; this does not replace audio STT/TTS or every cloud-only feature.
+   - OS security restrictions cannot be bypassed. This scoped setup authorization does not remove confirmation gates for unrelated destructive commands.
+5. **Gate disruptive actions**:
    - `device_manager` (`action="kill_process"` / `"empty_recycle_bin"`) and `computer_settings` (`restart` / `shutdown` / `toggle_wifi`) place a `[CONFIRMATION_PENDING]` button on the HUD — ask the user in one short sentence to confirm on screen and never claim it completed early.
 
 ## Pitfalls
@@ -32,4 +38,4 @@ Diagnose slow machines, audio glitches, network/API failures, low disk space, an
 
 ## Verification
 
-Both `system_status` and `diagnostics_check` consulted? Root metric cited concretely? Any state-changing fix confirmed before execution?
+Both `system_status` and `diagnostics_check` consulted? Root metric cited concretely? Requested Ollama job actually verified? Disruptive actions handled by their existing approval gates?

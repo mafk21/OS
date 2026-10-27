@@ -5,7 +5,7 @@
 | Metric | Verified Scale |
 | :--- | :--- |
 | **Codebase** | **65,000+ lines** across **159 Python & Next.js / Three.js HUD source modules** (`Windows` · `macOS` · `Linux`) |
-| **Execution Surface** | **51 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
+| **Execution Surface** | **52 OS, cloud, social, media & companion action modules** (`social_hub` + `social_video` + `video_player` across **Instagram**, **Snapchat**, **TikTok**, **X**, **WhatsApp**, **YouTube**, **Reddit** & **1,800+ `yt-dlp` sites**) + **15 built-in live-session tools** + **11 core `SKILL.md` playbooks** + **Visual Custom Skills, REST/Webhook & MCP JSON-RPC 2.0 Builder** |
 | **Dual-Engine Live Voice & Vision** | **OpenAI Realtime (`gpt-4o-realtime-preview` + Universal REST Live fallback) & Gemini 3.8 Live** full-duplex audio + **GPT-4o / Gemini Multimodal Vision** + **Male ~300K-Particle Figure-of-Light Humanoid (`Charon` / `ash`) & Female 3D Core (`Aoede` / `shimmer`) HUD Editions** + **Automatic Dual-Engine Failover** |
 | **Brain & Forever Timeline** | **Zero-Reset Continuous SQLite WAL Timeline** across **Voice, Desktop Text & Telegram** + **Auto-Epoch Compression** + **Drag-and-Drop Knowledge Docs** + **Outputs Vault** + **JSON Export/Import & Privacy Toggles** |
 | **Cloud, Socials & Automations** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X / Twitter**, **WhatsApp Web**, **Reddit**, **Email IMAP/SMTP**, **Gmail**, **Google Calendar**, **Google Classroom**, **Google Drive**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, **Trello**, **Linear**, **Microsoft Outlook/Graph**, **Dropbox**, **HubSpot**, **Calendly**) + **Recurring Automations Scheduler** |
@@ -140,6 +140,50 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`WASD` / `Arrows` · `Ctrl+Space` · `Ctrl×2`** | Smooth 3D World camera orbit/zoom (`WASD`/Arrows, `0` reset), global Push-to-Talk (`Ctrl+Space`), and direct cursor Flow/Dictation (`Ctrl×2`) | Always active (`"Hey Jarvis"` wake word optional) |
 
 ---
+
+### Automatic Ollama setup — no extra approval
+
+Say **“Set up Ollama and download the best model for this PC.”** The discoverable
+`ollama_setup` action starts a background job without another JARVIS approval.
+It detects RAM/available memory and NVIDIA free VRAM, chooses a conservative
+Qwen3 size (0.6B / 1.7B / 4B / 8B / 14B / 30B-A3B), checks disk space, installs
+an official portable Ollama release if missing, starts its loopback HTTP server,
+pulls the model and tests **actual local inference before saving settings**.
+“Best” here means a documented hardware-fit heuristic, not a benchmark win.
+Unknown/Apple/AMD GPU capacity is treated conservatively, not invented.
+
+- **No admin installer or terminal approval:** official GitHub release metadata
+  provides a version/size/SHA-256 digest. Only the matching official portable
+  asset is accepted. No `curl | sh`, arbitrary command strings, sudo, PATH edits,
+  system services, or UAC/Gatekeeper bypass. Windows x64/ARM64, Linux x64/ARM64
+  and macOS x64/ARM64 have fixed asset mappings. Linux extraction uses the
+  declared `zstandard` dependency. OS/security/network failures are reported.
+- **Local HTTP:** managed server binds `127.0.0.1:11434`; local requests bypass
+  proxy variables. Never exposes an unauthenticated Ollama server to the LAN.
+  An already running server is reused, not reconfigured or killed; its existing
+  bind policy remains the user's responsibility. Logs: `~/.jarvis/ollama/server.log`.
+- **Honest lifecycle:** `setup`, `status`, `cancel`, `doctor`; queued is not ready.
+  Completion/failure reaches the HUD/transcript. Duplicate setup requests reuse
+  the active job. Interrupted work is not marked complete. Cancellation can wait
+  for an HTTP read timeout; partial model blobs may remain resumable. Installer
+  staging is cleaned on ordinary failures. A hard app/process crash can leave
+  temporary downloads. Model downloads can be multi-GB and take considerable time.
+- **Connect without breaking cloud voice:** saves `llm_provider=ollama`, local URL,
+  selected model and offline fallback only after a successful response. Existing
+  cloud keys (including encrypted values), persona, voice and provider are kept.
+  `activate=true` explicitly selects the **local text provider** for callers of
+  the provider abstraction; it does not turn Ollama into Gemini/OpenAI Realtime,
+  change STT/TTS, or reroute every cloud-specific feature. Other safety gates and
+  the paused-learning preference are unchanged. No automatic app launch at login.
+- **Recovery:** per-user runtimes live under `~/.jarvis/ollama/runtime/`; the normal
+  local client can restart this binary without a PATH change. Runtime/models are
+  outside the repository. No working configuration is replaced on install,
+  download, cancellation or inference failure. Fresh installs require internet
+  access to official GitHub release assets and Ollama's registry/CDN.
+
+Example: `ollama_setup(action="setup", model="auto")`. Use its returned job_id
+with `status`/`cancel`. Tests simulate downloads/inference; do not mistake them
+for a live hardware benchmark or a certified real-model installation.
 
 ### Instagram / Socials reliability
 
