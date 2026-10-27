@@ -139,6 +139,38 @@ or account actions.
 
 ---
 
+## ⏳ Durable long-term tasks — completion, not promises
+
+JARVIS can now keep a **persistent, observable monitor** running after the
+conversation moves on. For example:
+
+> “Watch this until the end and notify me.”
+
+When media is playing in the HUD, `long_task(action="watch_until_end")` binds to
+the current video—or the complete active queue by default—and waits for the
+browser's real `HTMLMediaElement.ended` event. It does **not** guess completion
+from a duration or immediately claim success. The task appears in Activity, can
+be inspected or cancelled, survives JARVIS restarts, records completion evidence,
+deduplicates repeated end events, and delivers through the in-app and native
+desktop notification channels available on that machine.
+
+The same durable engine can:
+
+- notify at a future ISO date/time or after a relative delay;
+- wait for a file to actually appear (useful for exports and downloads);
+- wait for an existing file to really change (useful for renders and builds);
+- list, inspect, cancel, and remove finished monitors;
+- expire honestly when the configured maximum wait passes without evidence.
+
+State is stored privately in git-ignored `memory/long_tasks.json` using atomic
+replacement. A stopped app cannot observe a video ending while it is offline;
+the media monitor therefore remains pending rather than inventing completion.
+Time and file monitors resume polling after restart. OS notification availability
+still depends on host permissions and notification services; the HUD log remains
+the in-app delivery path.
+
+---
+
 ## 📚 Persistent Subject Learning — not just “I learned it”
 
 Say **“Learn nuclear physics”**, **“Continue studying nuclear physics”**, or
@@ -257,6 +289,7 @@ Every subsystem in the Operating Companion can be driven visually from the **APE
 | **`LINKS`** | **23 Native SaaS, Mail & Personal Social Connectors** (**Instagram**, **Snapchat Web**, **TikTok**, **X**, **WhatsApp Web**, **Reddit**, **Gmail**, **GitHub**, **Notion**, **Slack**, **Discord**, **Telegram**, **Spotify**, etc. with `Ask` / `Full` / `ReadOnly` / `Paused` policies), Custom REST/Webhook Builder, and MCP Server Registry (`HTTP` & `stdio`) | `manage_accounts`, `cloud_integrations`, `social_hub`, `custom_connector` |
 | **Personal Socials Hub** | Persistent `AES-256-GCM` encrypted sessions + 1-click browser cookie import for **Instagram**, **Snapchat Web (`web.snapchat.com`)**, **TikTok**, **X / Twitter**, **WhatsApp Web** & **Reddit**: check unread DMs/Snaps/notifications (`check_inbox`), read threads (`read_messages`), send replies (Instagram extra prompt disabled by preference) and confirmation-gated posts (`send_message`, `post` via `core.confirm`), and control Reels/feeds hands-free (`feed`: `open_reels`, `next`, `previous`, `like`, `save`, `look`) | `social_hub` (`check_inbox`, `read_messages`, `send_message`, `post`, `feed`, `connect`, `status`) |
 | **`AUTOMATE`** | Recurring Interval & Daily Automations Scheduler with 1-click Run Now, Pause/Resume, and execution history | `companion_os` (`automation_save`, `automation_run`, `automation_list`) |
+| **Long-term monitors** | Durable Activity worker that waits for real media completion, a future time, file creation, or file change; survives restarts and notifies only after observed completion | `long_task` (`watch_until_end`, `at_time`, `file_exists`, `file_changed`, `status`, `cancel`) |
 | **`CODE`** | Live Streaming Dev Terminal (`stdout`/`stderr` + interactive `stdin` + Stop), Codebase File-Tree Explorer, and Colorized Unified Git Diffs | `dev_agent`, `shell_agent`, `code_helper`, `github_automation` |
 | **`SHIELD`** | `AES-256-GCM` Vault status & 256-bit key rotation, `SHA-256` Hash-Chained Action Audit Log verifier, and Revocable Read-Only Guest Portals (`/portal/<token>`) | `companion_os` (`portal_create`, `portal_revoke_all`, `audit_verify`) |
 | **Universal Social, Web Video & YouTube Mixes** | Visually watch timestamped keyframes (`watch`), download MP4 video / MP3 audio (or entire numbered **YouTube Mix `list=RD...` & Playlist** folders), play inline inside the 3D HUD theater player (with **Mix Queue**, **Prev/Next**, **Tracklist Drawer** & **Auto-Advance**), or transcribe & summarize across **Instagram**, **YouTube (Videos, Shorts, Radio Mixes & Playlists)**, **Snapchat**, **TikTok**, **X**, **Reddit**, **Facebook**, **Twitch**, **Vimeo**, **SoundCloud** & **1,800+ sites** | `social_video` (`watch`, `download`, `play`, `summarize`, `info`, `next`, `previous`, `jump`), `video_player`, `youtube_video` |

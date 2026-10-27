@@ -1069,6 +1069,23 @@ class JarvisLive:
             except Exception:
                 pass
 
+        # Durable condition monitors run in both Classic and APEX modes. The
+        # manager itself also emits a native desktop notification; this callback
+        # keeps the active conversation/activity log in sync.
+        self._long_task_manager = None
+        if getattr(self.ui, "_apex_bridge", None) is None:
+            try:
+                from core.long_tasks import get_long_task_manager
+                self._long_task_manager = get_long_task_manager()
+                self._long_task_manager.add_notifier(
+                    lambda task: self.ui.write_log(
+                        f"SYS: LONG TASK COMPLETE — {task.get('notify_message') or task.get('title')}"
+                    )
+                )
+                self._long_task_manager.start()
+            except Exception:
+                pass
+
         # ── Wake word ────────────────────────────────────────────────────────
         # _awake gates the mic (see _listen_audio) and the background speakers.
         # It is True whenever wake word is OFF, so default behaviour is unchanged.

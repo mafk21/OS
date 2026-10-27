@@ -85,6 +85,35 @@ export default function HudVideoModal() {
   const queueIndex = video.queue_index || 0;
   const hasQueue = queueTotal > 1;
 
+  const reportEnded = () => {
+    // This is the browser's real HTMLMediaElement ended event—not a duration
+    // estimate. Retry the local handoff because a dropped completion event is
+    // worse than a duplicate (the durable manager deduplicates by task state).
+    const payload = JSON.stringify({
+      action: "video_ended",
+      video_id: video.id,
+      webpage_url: video.webpage_url || "",
+      playlist_url: video.playlist_url || "",
+      queue_index: queueIndex,
+      queue_total: queueTotal,
+      terminal: !hasQueue || queueIndex >= queueTotal - 1,
+    });
+    const send = async () => {
+      for (const waitMs of [0, 250, 750]) {
+        if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+        try {
+          const response = await fetch("/api/hud/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+          });
+          if (response.ok) return;
+        } catch {}
+      }
+    };
+    void send();
+  };
+
   return (
     <div
       data-testid="hud-video-player"
@@ -342,6 +371,7 @@ export default function HudVideoModal() {
           controls
           muted={Boolean(video.audio_url) ? true : video.muted}
           onEnded={() => {
+            reportEnded();
             if (hasQueue) {
               nextVideo();
             }

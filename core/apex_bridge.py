@@ -103,6 +103,7 @@ TOOL_NODE_MAP: dict[str, list[str]] = {
     "whatsapp": ["sales"],
     "chat_takeover": ["sales"],
     "agent_task": ["strategist", "chief_of_staff"],
+    "long_task": ["planner", "chief_of_staff"],
 }
 
 
@@ -200,6 +201,10 @@ class ApexHudBridge:
         self._wx_cache: dict[str, Any] | None = None
         self._wx_cached_at = 0.0
         self._auto_scheduler = automations.AutomationScheduler(on_log=self.push_log)
+        from core.long_tasks import get_long_task_manager
+        self._long_tasks = get_long_task_manager()
+        self._long_tasks.add_listener(self.push_activity)
+        self._long_tasks.add_notifier(self._notify_long_task_completion)
 
     # ── State inspection helpers ──────────────────────────────────────────────
 
@@ -493,7 +498,16 @@ class ApexHudBridge:
         with self._lock:
             if self._video is not None:
                 return str(getattr(self, "_last_video_target", "") or self._video.get("webpage_url") or "")
-            return ""
+        return ""
+
+    def current_video_snapshot(self) -> dict[str, Any] | None:
+        """Stable metadata used to bind an observable long-term media monitor."""
+        with self._lock:
+            return dict(self._video) if self._video else None
+
+    def _notify_long_task_completion(self, task: dict[str, Any]) -> None:
+        message = str(task.get("notify_message") or task.get("title") or "Task completed.")
+        self.push_log(f"SYS: LONG TASK COMPLETE — {message}")
 
     def current_mix_target(self) -> str:
         with self._lock:
@@ -645,6 +659,10 @@ class ApexHudBridge:
         try:
             from core.subagents import get_subagent_manager
             items.extend(get_subagent_manager().list_detailed())
+        except Exception:
+            pass
+        try:
+            items.extend(self._long_tasks.list_detailed())
         except Exception:
             pass
 
@@ -1117,6 +1135,20 @@ class ApexHudBridge:
             self.notify_background_mode(False, native_dock=False)
             return {"ok": True, "background_mode": False}
 
+        if action == "video_ended":
+            # Completion is accepted only from the local HUD's real media-ended
+            # event. Matching and deduplication happen in the durable manager.
+            event = {
+                "video_id": str(data.get("video_id") or ""),
+                "webpage_url": str(data.get("webpage_url") or ""),
+                "playlist_url": str(data.get("playlist_url") or ""),
+                "queue_index": int(data.get("queue_index") or 0),
+                "queue_total": int(data.get("queue_total") or 0),
+                "terminal": bool(data.get("terminal", False)),
+            }
+            matched = self._long_tasks.signal_media_ended(event)
+            return {"ok": True, "completed_tasks": matched}
+
         if action == "video_close":
             if ui is not None and callable(getattr(ui, "stop_video", None)):
                 ui.stop_video()
@@ -1417,6 +1449,11 @@ class ApexHudBridge:
             except Exception:
                 pass
             if not cancelled:
+                try:
+                    cancelled = self._long_tasks.cancel(wid)
+                except Exception:
+                    pass
+            if not cancelled:
                 with self._lock:
                     self._cancelled_task_ids.add(wid)
                     rec = self._tool_tasks.get(wid)
@@ -1435,6 +1472,10 @@ class ApexHudBridge:
             try:
                 from core.subagents import get_subagent_manager
                 removed += get_subagent_manager().clear_finished()
+            except Exception:
+                pass
+            try:
+                removed += self._long_tasks.clear_finished()
             except Exception:
                 pass
             with self._lock:
@@ -2107,11 +2148,13 @@ class ApexHudBridge:
         )
         self._thread.start()
         self._auto_scheduler.start()
+        self._long_tasks.start()
         self._started.wait(timeout=timeout)
         return self.url
 
     def stop(self) -> None:
         self._auto_scheduler.stop()
+        self._long_tasks.stop()
         if self._close_timer is not None:
             self._close_timer.cancel()
         if self._server is not None:
