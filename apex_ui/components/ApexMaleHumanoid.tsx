@@ -33,6 +33,7 @@ const MAX_HEAD_PITCH_UP = 0.26; // ~15 deg 3D chin lift
 const MAX_HEAD_PITCH_DOWN = 0.28; // ~16 deg 3D downward nod
 
 export type HumanoidQualityMode = "auto" | "high" | "balanced";
+export type HumanoidAppearance = "male" | "female";
 type RenderTier = "high" | "medium" | "low";
 
 type DecodedAssets = {
@@ -43,6 +44,7 @@ type DecodedAssets = {
 };
 
 type HumanoidParticleData = {
+  appearance?: HumanoidAppearance;
   count: number;
   tier: RenderTier;
   worldH: number;
@@ -79,8 +81,8 @@ const SRGB_TO_LINEAR = (() => {
   return lut;
 })();
 
-let cachedAssetsPromise: Promise<DecodedAssets> | null = null;
-const cachedParticleTiers = new Map<RenderTier, HumanoidParticleData>();
+const cachedAssetsPromises = new Map<HumanoidAppearance, Promise<DecodedAssets>>();
+const cachedParticleTiers = new Map<string, HumanoidParticleData>();
 
 function hash01(v: number): number {
   const raw = Math.sin(v * 12.9898 + 0.1234) * 43758.5453;
@@ -214,12 +216,13 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function loadDecodedAssets(): Promise<DecodedAssets> {
-  if (cachedAssetsPromise) return cachedAssetsPromise;
+function loadDecodedAssets(appearance: HumanoidAppearance = "male"): Promise<DecodedAssets> {
+  const cached = cachedAssetsPromises.get(appearance);
+  if (cached) return cached;
 
-  cachedAssetsPromise = Promise.all([
-    loadImageElement(PORTRAIT_URL),
-    loadImageElement(DEPTH_URL),
+  const promise = Promise.all([
+    loadImageElement(appearance === "female" ? "/hologram/female_portrait.png" : PORTRAIT_URL),
+    loadImageElement(appearance === "female" ? "/hologram/female_depth.png" : DEPTH_URL),
   ])
     .then(([portraitImg, depthImg]) => {
       const width = portraitImg.naturalWidth || 1020;
@@ -244,11 +247,12 @@ function loadDecodedAssets(): Promise<DecodedAssets> {
       return { width, height, portrait, depth };
     })
     .catch((err) => {
-      cachedAssetsPromise = null;
+      cachedAssetsPromises.delete(appearance);
       throw err;
     });
 
-  return cachedAssetsPromise;
+  cachedAssetsPromises.set(appearance, promise);
+  return promise;
 }
 
 function buildProceduralFallback(tier: RenderTier): HumanoidParticleData {
@@ -384,9 +388,11 @@ function buildProceduralFallback(tier: RenderTier): HumanoidParticleData {
 
 function buildHumanoidParticles(
   assets: DecodedAssets,
-  tier: RenderTier
+  tier: RenderTier,
+  appearance: HumanoidAppearance = "male"
 ): HumanoidParticleData {
-  const cached = cachedParticleTiers.get(tier);
+  const cacheKey = `${appearance}:${tier}`;
+  const cached = cachedParticleTiers.get(cacheKey);
   if (cached) return cached;
 
   const { width: W, height: H, portrait, depth } = assets;
@@ -802,7 +808,7 @@ function buildHumanoidParticles(
     rig: rig.subarray(0, count * 2),
   });
 
-  cachedParticleTiers.set(tier, built);
+  cachedParticleTiers.set(cacheKey, built);
   return built;
 }
 
@@ -836,6 +842,7 @@ uniform float uVoice;
 uniform float uBrainActivity;
 uniform float uBrainTone;
 uniform float uEffects;
+uniform float uFemale;
 
 varying vec3 vCoreColor;
 varying vec3 vHaloColor;
@@ -1050,8 +1057,8 @@ void main() {
   float zoneEnergy = (1.0 - radialZone * 0.72) * stateZone;
   float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.48) * uEffects;
 
-  vec3 electricCyan = vec3(0.20, 0.94, 1.0);
-  vec3 moltenAmber = vec3(1.0, 0.66, 0.18);
+  vec3 electricCyan = mix(vec3(0.20, 0.94, 1.0), vec3(1.0, 0.48, 0.79), uFemale);
+  vec3 moltenAmber = mix(vec3(1.0, 0.66, 0.18), vec3(1.0, 0.74, 0.60), uFemale);
   vec3 emeraldSignal = vec3(0.38, 1.0, 0.70);
   vec3 synapticViolet = vec3(0.68, 0.48, 1.0);
 
@@ -1253,6 +1260,7 @@ function HumanoidPointCloud({
 
   const uniforms = useMemo(
     () => ({
+      uFemale: { value: data.appearance === "female" ? 1 : 0 },
       uTime: { value: 0 },
       uDpr: { value: 1 },
       uPointSize: { value: 2.35 },
@@ -1279,6 +1287,10 @@ function HumanoidPointCloud({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  useEffect(() => {
+    uniforms.uFemale.value = data.appearance === "female" ? 1 : 0;
+  }, [data.appearance, uniforms]);
 
   const material = useMemo(
     () =>
@@ -1588,6 +1600,7 @@ export default function ApexMaleHumanoid({
   constellationVisible = true,
   onToggleConstellation,
   pulseSignal = 0,
+  appearance = "male",
 }: {
   state: OrbState;
   trace: TraceEvent | null;
@@ -1595,6 +1608,7 @@ export default function ApexMaleHumanoid({
   constellationVisible?: boolean;
   onToggleConstellation?: () => void;
   pulseSignal?: number;
+  appearance?: HumanoidAppearance;
 }) {
   const audioLevelRef = useRef(0);
   const [qualityMode, setQualityMode] = useState<HumanoidQualityMode>("auto");
@@ -1634,20 +1648,20 @@ export default function ApexMaleHumanoid({
 
   useEffect(() => {
     let cancelled = false;
-    loadDecodedAssets()
+    loadDecodedAssets(appearance)
       .then((assets) => {
         if (cancelled) return;
-        const built = buildHumanoidParticles(assets, effectiveTier);
-        setParticleData(built);
+        const built = buildHumanoidParticles(assets, effectiveTier, appearance);
+        setParticleData({ ...built, appearance });
       })
       .catch(() => {
         if (cancelled) return;
-        setParticleData(buildProceduralFallback(effectiveTier));
+        setParticleData({ ...buildProceduralFallback(effectiveTier), appearance });
       });
     return () => {
       cancelled = true;
     };
-  }, [effectiveTier]);
+  }, [effectiveTier, appearance]);
 
   // Capture-phase window mouse/pointer/touch gaze + interactive click-drag 3D orbit & wheel zoom
   useEffect(() => {

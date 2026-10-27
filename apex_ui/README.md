@@ -6,7 +6,8 @@ The orb, particle simulation, graph, backdrop, overview, status bar and CSS
 are upstream copies, not a humanoid replacement or visual approximation.
 `upstream.json` records source hashes; only `reference/ApexWorld.tsx` has a
 small transport adapter (controlled state/trace and control-opening callbacks).
-Existing persona/avatar component files remain untouched but are not the main view.
+The original persona/orb designs remain available; the male humanoid renderer now
+also accepts the female asset/palette variant.
 
 - Connected: existing JARVIS state and traces drive the reference visuals.
   Upstream has three visual states; listening maps to its idle appearance.
@@ -108,26 +109,28 @@ If you build on this, please use your own product name and branding.
 Made by [Ruben Mouradian — Reznikov Engineering](https://reznikov-engineering.com).
 If you use it, a link back is appreciated (not required).
 
-## Original human female edition
+## Female counterpart — approved portrait, shared male animation engine
 
-The main screen now defaults to an original head-and-shoulders female hologram.
-**HUMAN · FEMALE / APEX · ORB** switches only the visual figure and persists locally
-(`apex.figure`); it deliberately does not overwrite the existing voice/persona choice.
-The original Female orb and Male avatar source components are untouched.
+The female edition now uses the exact image approved and uploaded by the user,
+normalized with padding to the existing 1020×634 asset canvas (no face redraw).
+`female_depth.png` preserves the existing male sculpture's depth/rig channel format,
+with a small jaw taper aligned to the approved frontal pose. This is portrait-derived
+volumetric particle geometry, not a separately modeled or photorealistic avatar.
 
-The female figure uses deterministic 3D surface particles, a shaded sculpted face,
-layered hair, eyes/lips, neck and shoulders—not a photograph on a plane. Pointer
-tracking is damped, blinking/breathing are subtle, and mouth/glow intensity uses the
-existing audio-level context while speaking. Offline previews do not synthesize a
-voice track or claim live lip synchronization. The reference graph/layout remains;
-the expensive full-screen WebGL wave shader is omitted in human mode, retaining its
-radial backdrop. Particle assembly takes about two seconds on capable graphics.
+`ApexFemaleHumanoid` delegates directly to `ApexMaleHumanoid` with
+`appearance="female"`. Assembly/reassembly, shockwave, gaze and head/torso springs,
+voice energy, thinking/mood/trace pulses, breathing, orbit/zoom/reset, quality fallback,
+sound toggle and reduced-motion behavior therefore run through the same implementation.
+Only portrait/depth inputs and the pink/lavender/peach effect palette differ. Male is
+the default appearance and keeps its original assets and palette. Asset and geometry
+caches are keyed by appearance so switching cannot reuse the other figure's data.
 
-WebGL errors fall back to an inline SVG silhouette. Reduced-motion mode disables
-assembly, gaze and continuous rendering. Canvas pixel ratio is capped at 1.5 and no
-post-processing passes, remote models, external textures or new runtime dependencies
-are required. This is a stylized original prototype, not a photorealistic character.
+The rejected procedural mask renderer is removed. HUMAN · FEMALE / APEX · ORB
+still switches only the visual choice, without changing voice/persona settings.
+The full-viewport figure framing now matches the male HUD rather than the old small
+central canvas. The surrounding reference layout and graph stay intact.
 
-Validation: `node check-female-geometry.cjs` verifies deterministic finite particle
-positions/colors, 3D depth and surface normals. Frontend integration guards run via
-`python -m unittest discover -s tests -p 'test_*interface.py'` from the repo root.
+Validation: `node check-female-geometry.cjs` exercises the real shared builder,
+checks finite attributes and verifies appearance cache isolation. Run
+`python -m unittest discover -s tests -p 'test_*interface.py'` from the repo root
+for shared-engine, asset/export, trace, layout and visual-preference guards.
