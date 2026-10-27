@@ -84,6 +84,8 @@ class LongTaskManager:
         self._listeners: list[Callable[[], None]] = []
         self._notifiers: list[Callable[[dict[str, Any]], None]] = []
         self._delivering: set[str] = set()
+        self._workflow_threads: set[str] = set()
+        self._executor: Callable[[str, dict[str, Any]], str] | None = None
 
     def _load(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -111,6 +113,12 @@ class LongTaskManager:
         if callable(callback) and callback not in self._notifiers:
             self._notifiers.append(callback)
 
+    def set_executor(self, callback: Callable[[str, dict[str, Any]], str]) -> None:
+        """Bind the app's real action registry for durable workflow steps."""
+        if callable(callback):
+            self._executor = callback
+            self._launch_pending_workflows()
+
     def _changed(self) -> None:
         for callback in list(self._listeners):
             try:
@@ -120,12 +128,15 @@ class LongTaskManager:
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
+            self._launch_pending_workflows()
             return
         self._stop.clear()
+        self._recover_interrupted_workflows()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="JarvisLongTasks")
         self._thread.start()
         # Deliver a completion that was persisted immediately before a crash.
         self.deliver_pending_notifications()
+        self._launch_pending_workflows()
 
     def stop(self) -> None:
         self._stop.set()
@@ -211,6 +222,43 @@ class LongTaskManager:
             expires_at=time.time() + max(1.0, min(max_wait_hours, 24 * 365)) * 3600,
         )
 
+    def create_workflow(self, steps: list[dict[str, Any]], *, title: str = "Long-running workflow",
+                        notify_message: str = "", max_wait_hours: float = 24 * 7) -> dict[str, Any]:
+        """Persist and execute sequential real actions, checkpointing every step."""
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("A workflow requires at least one tool step.")
+        if len(steps) > 25:
+            raise ValueError("A workflow is limited to 25 steps; split larger jobs into stages.")
+        normalized = []
+        for index, raw in enumerate(steps, 1):
+            if not isinstance(raw, dict):
+                raise ValueError(f"Workflow step {index} must be an object.")
+            tool = str(raw.get("tool") or "").strip()
+            if not tool or tool == "long_task":
+                raise ValueError(f"Workflow step {index} has an invalid tool.")
+            params = raw.get("params", {})
+            if isinstance(params, str):
+                try:
+                    params = json.loads(params or "{}")
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Workflow step {index} params are not valid JSON: {exc}") from exc
+            if not isinstance(params, dict):
+                raise ValueError(f"Workflow step {index} params must be a JSON object.")
+            normalized.append({
+                "index": index, "tool": tool, "params": params,
+                "status": "queued", "attempts": 0,
+                "started_at": None, "completed_at": None,
+                "output": None, "error": None, "execution_id": None,
+            })
+        rec = self._new(
+            title=title, condition="workflow",
+            target={"steps": normalized, "current_step": 0},
+            notify_message=notify_message or f"Workflow finished: {title}",
+            expires_at=time.time() + max(1.0, min(max_wait_hours, 24 * 365)) * 3600,
+        )
+        self._launch_workflow(str(rec["id"]))
+        return self.get(str(rec["id"])) or rec
+
     def list(self, include_finished: bool = True) -> list[dict[str, Any]]:
         rows = self._load()
         if not include_finished:
@@ -227,17 +275,25 @@ class LongTaskManager:
             status = str(rec.get("status") or "waiting")
             target = rec.get("target") or {}
             evidence = rec.get("completion_evidence") or ""
+            workflow_steps = target.get("steps") or [] if rec.get("condition") == "workflow" else []
+            activity_steps = ([{
+                "step": int(step.get("index") or index),
+                "action": str(step.get("tool") or "tool"),
+                "result": str(step.get("output") or step.get("error") or step.get("status") or "queued")[:500],
+                "ts": step.get("completed_at") or step.get("started_at") or rec.get("updated_at"),
+            } for index, step in enumerate(workflow_steps, 1)] if workflow_steps else [{
+                "step": 1, "action": str(rec.get("condition") or "monitor"),
+                "result": evidence or self._target_summary(str(rec.get("condition") or ""), target),
+                "ts": rec.get("updated_at"),
+            }])
             out.append({
                 "id": rec.get("id"), "kind": "long_task", "title": rec.get("title"),
                 "goal": rec.get("title"),
                 "status": "in_progress" if status == "waiting" else status,
-                "tools": ["long_task"], "nodes": ["planner"],
-                "steps": [{
-                    "step": 1, "action": str(rec.get("condition") or "monitor"),
-                    "result": evidence or self._target_summary(str(rec.get("condition") or ""), target),
-                    "ts": rec.get("updated_at"),
-                }],
-                "step_count": 1, "max_steps": 1,
+                "tools": [str(step.get("tool")) for step in workflow_steps] or ["long_task"],
+                "nodes": ["planner"], "steps": activity_steps[-12:],
+                "step_count": sum(1 for step in workflow_steps if step.get("status") == "completed") if workflow_steps else 1,
+                "max_steps": len(workflow_steps) if workflow_steps else 1,
                 "result": evidence if status == "completed" else None,
                 "error": evidence if status in ("failed", "expired") else None,
                 "created_at": rec.get("created_at"), "updated_at": rec.get("updated_at"),
@@ -255,7 +311,201 @@ class LongTaskManager:
             return f"Watching for a real file change: {target.get('path', '')}"
         if condition == "file_exists":
             return f"Watching for file creation: {target.get('path', '')}"
+        if condition == "workflow":
+            steps = target.get("steps") or []
+            done = sum(1 for step in steps if step.get("status") == "completed")
+            return f"Executing durable workflow steps: {done}/{len(steps)} complete."
         return "Monitoring an observable completion condition."
+
+    def _recover_interrupted_workflows(self) -> None:
+        """Never blindly repeat a side effect whose result was lost in a crash."""
+        with self._lock:
+            rows = self._load()
+            changed = False
+            for rec in rows:
+                if rec.get("condition") != "workflow" or rec.get("status") in _TERMINAL:
+                    continue
+                steps = (rec.get("target") or {}).get("steps") or []
+                interrupted = next((s for s in steps if s.get("status") == "running"), None)
+                if interrupted:
+                    interrupted["status"] = "uncertain"
+                    interrupted["error"] = (
+                        "JARVIS stopped while this step was running. Its side effect may have happened; "
+                        "choose retry or mark_done explicitly."
+                    )
+                    rec["status"] = "needs_review"
+                    rec["completion_evidence"] = interrupted["error"]
+                    rec["updated_at"] = time.time()
+                    changed = True
+                elif rec.get("status") in ("running", "waiting"):
+                    rec["status"] = "waiting"
+                    changed = True
+            if changed:
+                self._save(rows)
+        if changed:
+            self._changed()
+
+    def _launch_pending_workflows(self) -> None:
+        for rec in self.list(include_finished=False):
+            if rec.get("condition") == "workflow" and rec.get("status") == "waiting":
+                self._launch_workflow(str(rec.get("id") or ""))
+
+    def _launch_workflow(self, task_id: str) -> bool:
+        if not task_id or self._executor is None:
+            return False
+        with self._lock:
+            if task_id in self._workflow_threads:
+                return False
+            rec = self.get(task_id)
+            if not rec or rec.get("condition") != "workflow" or rec.get("status") != "waiting":
+                return False
+            self._workflow_threads.add(task_id)
+        thread = threading.Thread(
+            target=self._run_workflow, args=(task_id,), daemon=True,
+            name=f"JarvisLongWorkflow-{task_id[-6:]}",
+        )
+        thread.start()
+        return True
+
+    @staticmethod
+    def _resolve_workflow_params(value: Any, completed: list[dict[str, Any]]) -> Any:
+        """Allow later steps to consume `${previous.output}` / `${step.N.output}`."""
+        if isinstance(value, dict):
+            return {k: LongTaskManager._resolve_workflow_params(v, completed) for k, v in value.items()}
+        if isinstance(value, list):
+            return [LongTaskManager._resolve_workflow_params(v, completed) for v in value]
+        if not isinstance(value, str):
+            return value
+        out = value
+        previous = str(completed[-1].get("output") or "") if completed else ""
+        out = out.replace("${previous.output}", previous)
+        for step in completed:
+            out = out.replace(f"${{step.{step.get('index')}.output}}", str(step.get("output") or ""))
+        return out
+
+    def _default_execute(self, tool: str, params: dict[str, Any]) -> str:
+        from core.action_loader import discover_actions
+        registry = discover_actions(BASE_DIR / "actions", logger=lambda _msg: None)
+        if not registry.has(tool):
+            raise ValueError(f"Tool '{tool}' is not a discoverable durable action.")
+        return str(registry.run(tool, params, {"player": None, "speak": None}) or "Done.")
+
+    def _run_workflow(self, task_id: str) -> None:
+        try:
+            while not self._stop.is_set():
+                with self._lock:
+                    rows = self._load()
+                    rec = next((x for x in rows if x.get("id") == task_id), None)
+                    if not rec or rec.get("status") in _TERMINAL or rec.get("status") == "needs_review":
+                        return
+                    target = rec.get("target") or {}
+                    steps = target.get("steps") or []
+                    queued = next((s for s in steps if s.get("status") == "queued"), None)
+                    if queued is None:
+                        break
+                    completed = [dict(s) for s in steps if s.get("status") == "completed"]
+                    queued["status"] = "running"
+                    queued["attempts"] = int(queued.get("attempts") or 0) + 1
+                    queued["started_at"] = time.time()
+                    queued["execution_id"] = f"exec-{uuid.uuid4().hex[:10]}"
+                    rec["status"] = "running"
+                    rec["updated_at"] = time.time()
+                    target["current_step"] = int(queued.get("index") or 1)
+                    self._save(rows)  # checkpoint BEFORE any side effect
+                    tool = str(queued.get("tool") or "")
+                    params = self._resolve_workflow_params(dict(queued.get("params") or {}), completed)
+                    execution_id = str(queued["execution_id"])
+                self._changed()
+
+                try:
+                    executor = self._executor or self._default_execute
+                    result = str(executor(tool, params) or "Done.")
+                    result_low = result.strip().lower()
+                    confirmation_pending = "[confirmation_pending]" in result_low
+                    failed = result_low.startswith((
+                        "tool '", "action '", "error", "failed", "could not", "unable to",
+                    ))
+                except Exception as exc:
+                    result = f"{type(exc).__name__}: {exc}"
+                    failed = True
+                    confirmation_pending = False
+
+                with self._lock:
+                    rows = self._load()
+                    rec = next((x for x in rows if x.get("id") == task_id), None)
+                    if not rec or rec.get("status") in _TERMINAL:
+                        return
+                    steps = (rec.get("target") or {}).get("steps") or []
+                    step = next((s for s in steps if s.get("execution_id") == execution_id), None)
+                    if not step:
+                        return
+                    now = time.time()
+                    step["completed_at"] = now
+                    if confirmation_pending:
+                        step["status"] = "uncertain"
+                        step["error"] = result[:4000]
+                        rec["status"] = "needs_review"
+                        rec["completion_evidence"] = (
+                            f"Step {step.get('index')} ({tool}) is waiting for the HUD confirmation. "
+                            "After approving or rejecting it, resume with mark_done or retry."
+                        )
+                    elif failed:
+                        step["status"] = "failed"
+                        step["error"] = result[:4000]
+                        rec["status"] = "failed"
+                        rec["completion_evidence"] = f"Step {step.get('index')} ({tool}) failed: {result[:500]}"
+                    else:
+                        step["status"] = "completed"
+                        step["output"] = result[:12000]
+                        step["error"] = None
+                        rec["status"] = "waiting"
+                        rec["completion_evidence"] = None
+                    rec["updated_at"] = now
+                    self._save(rows)
+                self._changed()
+                if failed or confirmation_pending:
+                    return
+
+            rec = self.get(task_id)
+            if rec and rec.get("status") not in _TERMINAL:
+                steps = (rec.get("target") or {}).get("steps") or []
+                summary = "Workflow completed: " + "; ".join(
+                    f"{s.get('index')}. {s.get('tool')}" for s in steps
+                )
+                self._complete(task_id, summary)
+        finally:
+            with self._lock:
+                self._workflow_threads.discard(task_id)
+
+    def resolve_uncertain(self, task_id: str, resolution: str) -> bool:
+        """Human recovery after a crash: retry explicitly or acknowledge done."""
+        resolution = str(resolution or "").strip().lower()
+        if resolution not in ("retry", "mark_done"):
+            return False
+        with self._lock:
+            rows = self._load()
+            rec = next((x for x in rows if x.get("id") == task_id), None)
+            if not rec or rec.get("status") != "needs_review":
+                return False
+            steps = (rec.get("target") or {}).get("steps") or []
+            step = next((s for s in steps if s.get("status") == "uncertain"), None)
+            if not step:
+                return False
+            if resolution == "retry":
+                step["status"] = "queued"
+                step["error"] = None
+                step["execution_id"] = None
+            else:
+                step["status"] = "completed"
+                step["output"] = "Marked complete by the user after restart review."
+                step["completed_at"] = time.time()
+            rec["status"] = "waiting"
+            rec["completion_evidence"] = None
+            rec["updated_at"] = time.time()
+            self._save(rows)
+        self._changed()
+        self._launch_workflow(task_id)
+        return True
 
     def cancel(self, task_id: str) -> bool:
         with self._lock:
@@ -300,7 +550,7 @@ class LongTaskManager:
             rows = self._load()
             completed = None
             for rec in rows:
-                if rec.get("id") == task_id and rec.get("status") == "waiting":
+                if rec.get("id") == task_id and rec.get("status") in ("waiting", "running"):
                     now = time.time()
                     rec["status"] = "completed"
                     rec["completed_at"] = now
@@ -381,6 +631,7 @@ class LongTaskManager:
                     self._save(rows)
             self._changed()
         self.deliver_pending_notifications()
+        self._launch_pending_workflows()
         return completed
 
     def _deliver(self, rec: dict[str, Any]) -> None:

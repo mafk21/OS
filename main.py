@@ -1073,18 +1073,34 @@ class JarvisLive:
         # manager itself also emits a native desktop notification; this callback
         # keeps the active conversation/activity log in sync.
         self._long_task_manager = None
-        if getattr(self.ui, "_apex_bridge", None) is None:
-            try:
-                from core.long_tasks import get_long_task_manager
-                self._long_task_manager = get_long_task_manager()
+        try:
+            from core.long_tasks import get_long_task_manager
+            self._long_task_manager = get_long_task_manager()
+            def _execute_durable_step(tool, params):
+                context = {
+                    "player": self.ui, "speak": self.speak,
+                    "response": None, "session_memory": None,
+                }
+                if self._action_registry.has(tool):
+                    return self._action_registry.run(tool, params, context)
+                if self._plugin_registry.has(tool):
+                    return self._plugin_registry.run(
+                        tool, params, player=self.ui, session_memory=None
+                    )
+                raise ValueError(
+                    f"Tool '{tool}' is not a durable action/plugin. "
+                    "Live-session-only tools cannot run after the session disappears."
+                )
+            self._long_task_manager.set_executor(_execute_durable_step)
+            if getattr(self.ui, "_apex_bridge", None) is None:
                 self._long_task_manager.add_notifier(
                     lambda task: self.ui.write_log(
                         f"SYS: LONG TASK COMPLETE — {task.get('notify_message') or task.get('title')}"
                     )
                 )
-                self._long_task_manager.start()
-            except Exception:
-                pass
+            self._long_task_manager.start()
+        except Exception:
+            pass
 
         # ── Wake word ────────────────────────────────────────────────────────
         # _awake gates the mic (see _listen_audio) and the background speakers.

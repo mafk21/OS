@@ -122,6 +122,104 @@ def test_action_contract_and_hud_event_wiring_are_discoverable():
     assert "signal_media_ended" in bridge
 
 
+def _wait_for(mgr, task_id, statuses, timeout=3):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        rec = mgr.get(task_id)
+        if rec and rec.get("status") in statuses:
+            return rec
+        time.sleep(0.01)
+    raise AssertionError(f"task {task_id} did not reach {statuses}: {mgr.get(task_id)}")
+
+
+def test_durable_workflow_executes_real_steps_checkpoints_and_chains_output(tmp_path, monkeypatch):
+    mgr, notices = manager(tmp_path, monkeypatch)
+    calls = []
+    def execute(tool, params):
+        calls.append((tool, params))
+        return "alpha" if tool == "first" else f"received={params['value']}"
+    mgr.set_executor(execute)
+    rec = mgr.create_workflow([
+        {"tool": "first", "params": {"query": "go"}},
+        {"tool": "second", "params": {"value": "${previous.output}"}},
+    ], title="Real workflow")
+    done = _wait_for(mgr, rec["id"], {"completed"})
+    mgr.stop()
+    assert calls == [("first", {"query": "go"}), ("second", {"value": "alpha"})]
+    steps = done["target"]["steps"]
+    assert [s["status"] for s in steps] == ["completed", "completed"]
+    assert all(s["execution_id"] and s["started_at"] and s["completed_at"] for s in steps)
+    assert steps[1]["output"] == "received=alpha"
+    assert done["notified_at"] and len(notices) == 2
+
+
+def test_workflow_failure_is_real_and_stops_later_steps(tmp_path, monkeypatch):
+    mgr, notices = manager(tmp_path, monkeypatch)
+    calls = []
+    mgr.set_executor(lambda tool, params: calls.append(tool) or ("Tool 'bad' failed: real failure" if tool == "bad" else "should not run"))
+    rec = mgr.create_workflow([
+        {"tool": "bad", "params": {}}, {"tool": "later", "params": {}},
+    ])
+    failed = _wait_for(mgr, rec["id"], {"failed"})
+    mgr.stop()
+    assert calls == ["bad"]
+    assert failed["target"]["steps"][0]["status"] == "failed"
+    assert failed["target"]["steps"][1]["status"] == "queued"
+    assert notices == []  # failure is not misreported as successful completion
+
+
+def test_confirmation_pending_pauses_workflow_instead_of_claiming_success(tmp_path, monkeypatch):
+    mgr, notices = manager(tmp_path, monkeypatch)
+    calls = []
+    mgr.set_executor(lambda tool, params: calls.append(tool) or "[CONFIRMATION_PENDING] Approve this in the HUD.")
+    rec = mgr.create_workflow([
+        {"tool": "dangerous", "params": {}}, {"tool": "later", "params": {}},
+    ])
+    review = _wait_for(mgr, rec["id"], {"needs_review"})
+    mgr.stop()
+    assert calls == ["dangerous"]
+    assert review["target"]["steps"][0]["status"] == "uncertain"
+    assert review["target"]["steps"][1]["status"] == "queued"
+    assert notices == []
+
+
+def test_restart_does_not_repeat_uncertain_side_effect_without_user_resolution(tmp_path, monkeypatch):
+    mgr, _ = manager(tmp_path, monkeypatch)
+    rec = mgr.create_workflow([{"tool": "send_something", "params": {"to": "person"}}])
+    mgr.stop()
+    # Simulate a process crash after the pre-side-effect checkpoint.
+    rows = mgr._load()
+    rows[0]["status"] = "running"
+    rows[0]["target"]["steps"][0].update({"status": "running", "execution_id": "exec-crashed"})
+    mgr._save(rows)
+
+    restored, _ = manager(tmp_path, monkeypatch)
+    calls = []
+    restored.set_executor(lambda tool, params: calls.append(tool) or "sent")
+    restored.start()
+    review = restored.get(rec["id"])
+    assert review["status"] == "needs_review"
+    assert review["target"]["steps"][0]["status"] == "uncertain"
+    assert calls == []
+    assert restored.resolve_uncertain(rec["id"], "mark_done")
+    done = _wait_for(restored, rec["id"], {"completed"})
+    restored.stop()
+    assert calls == []
+    assert done["status"] == "completed"
+
+
+def test_workflow_waits_for_app_executor_instead_of_running_without_context(tmp_path, monkeypatch):
+    mgr, _ = manager(tmp_path, monkeypatch)
+    rec = mgr.create_workflow([{"tool": "needs_ui", "params": {}}])
+    time.sleep(0.03)
+    assert mgr.get(rec["id"])["status"] == "waiting"
+    calls = []
+    mgr.set_executor(lambda tool, params: calls.append(tool) or "done")
+    done = _wait_for(mgr, rec["id"], {"completed"})
+    mgr.stop()
+    assert calls == ["needs_ui"] and done["status"] == "completed"
+
+
 def test_bridge_end_to_end_completes_bound_media_monitor(tmp_path, monkeypatch):
     from core.apex_bridge import ApexHudBridge
     monkeypatch.setattr(lt, "desktop_notify", lambda *_: True)
