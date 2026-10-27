@@ -585,3 +585,34 @@ def test_failure_hud_adopts_exact_target_without_navigating_it(monkeypatch):
     assert hub._CDP._tab_ids == {"instagram":"failed"}
     assert hub._HUD_SOCIAL_SESSIONS["current"]["failure_review"] is True
     assert hub._HUD_SOCIAL_SESSIONS["current"]["layout"] == "wide"
+
+
+@pytest.mark.parametrize("recipient", ["@Sarah", " SARAH ", "https://www.instagram.com/Sarah/?igsh=share", "instagram.com/sarah/", "\u200f@sarah\u200e"])
+def test_exact_copied_handle_sends_without_extra_confirmation(monkeypatch, recipient, tmp_path):
+    connected("ask")
+    monkeypatch.delenv("JARVIS_INSTAGRAM_CONFIRM_SEND", raising=False)
+    monkeypatch.setattr(accounts, "_base", lambda: tmp_path)
+    sent = Mock(return_value="Instagram acknowledgment: one-id")
+    gate = Mock(side_effect=AssertionError("Explicit Instagram request must not ask again"))
+    monkeypatch.setattr(hub, "_ig_api_send_dm", sent)
+    monkeypatch.setattr(confirm, "request", gate)
+    assert "one-id" in hub.stage_or_send_social_message("instagram", recipient, "hello")
+    sent.assert_called_once_with("sarah", "hello")
+    gate.assert_not_called()
+
+
+@pytest.mark.parametrize("contents", [None, "not JSON", "{}", '{"instagram_confirm_send":false}'])
+def test_no_extra_prompt_is_default_even_without_preference_file(tmp_path, monkeypatch, contents):
+    monkeypatch.delenv("JARVIS_INSTAGRAM_CONFIRM_SEND", raising=False)
+    monkeypatch.setattr(accounts, "_base", lambda: tmp_path)
+    if contents is not None:
+        (tmp_path / "config").mkdir()
+        (tmp_path / "config" / "social_preferences.json").write_text(contents)
+    assert not hub._instagram_send_confirmation_required()
+
+
+@pytest.mark.parametrize("recipient", ["Sarah Smith", "https://instagram.com.evil.invalid/sarah/", "https://instagram.com/direct/t/123", "@@sarah", "sarah/other", "sаrah"])
+def test_invalid_or_lookalike_inputs_never_resolve(recipient):
+    from core.instagram_direct import normalize_username
+    with pytest.raises(RecipientError):
+        normalize_username(recipient)

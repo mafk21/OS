@@ -102,3 +102,35 @@ def test_load_error_reloads_at_most_once():
     with pytest.raises(RecipientError, match="after one safe reload"):
         web._prepare_inbox(page, lambda _: None)
     page.reload.assert_called_once_with(wait_until="domcontentloaded")
+
+
+@pytest.mark.parametrize("identity", [{"username":"sarah", "id":"2"}, None])
+def test_missing_spa_metadata_can_recover_without_guessing(tmp_path, monkeypatch, identity):
+    run = engine(tmp_path, [identity])
+    run.existing_thread = lambda: None
+    monkeypatch.setattr(web, "_profile_verified", lambda *_: False)
+    monkeypatch.setattr(web, "_prepare_inbox", lambda *_: None)
+    compose = Mock(return_value="exact-row-and-header-verified")
+    profile = Mock(return_value="profile-verified")
+    monkeypatch.setattr(web, "_open_from_compose", compose)
+    monkeypatch.setattr(web, "_open_conversation", profile)
+    result = run.open_chat()
+    if identity:
+        assert result == "profile-verified"
+        profile.assert_called_once()
+    else:
+        assert result == "exact-row-and-header-verified"
+        compose.assert_called_once()
+    assert not run.attempted
+
+
+def test_wrong_profile_api_identity_never_opens_composer(tmp_path, monkeypatch):
+    run = engine(tmp_path, [{"username":"sarah_other", "id":"999"}])
+    run.existing_thread = lambda: None
+    monkeypatch.setattr(web, "_profile_verified", lambda *_: False)
+    compose = Mock()
+    monkeypatch.setattr(web, "_open_from_compose", compose)
+    with pytest.raises(RecipientError, match="different profile"):
+        run.open_chat()
+    compose.assert_not_called()
+    assert not run.attempted

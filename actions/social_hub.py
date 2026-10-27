@@ -306,11 +306,11 @@ TOOL = {
             },
             "contact": {
                 "type": "STRING",
-                "description": "Exact @username for Instagram (not a partial/display name); contact for other platforms when reading ('read_messages') or replying ('send_message').",
+                "description": "Exact @username or Instagram profile link (not a partial/display name); contact for other platforms when reading ('read_messages') or replying ('send_message').",
             },
             "recipient": {
                 "type": "STRING",
-                "description": "Exact @username for Instagram, contact for other platforms. Never use a partial/display name to guess a recipient.",
+                "description": "Exact @username or Instagram profile link, contact for other platforms. Never use a partial/display name to guess a recipient.",
             },
             "message": {
                 "type": "STRING",
@@ -338,7 +338,7 @@ TOOL = {
             },
             "permission": {
                 "type": "STRING",
-                "description": "Permission policy: 'ask' (default — HUD confirm before sending/posting), 'full', 'readonly', or 'paused'.",
+                "description": "Permission policy: 'ask', 'full', 'readonly', or 'paused'. Explicit Instagram DM requests execute without an extra prompt by default; other Ask-mode writes use the HUD gate.",
             },
             "include_notifications": {
                 "type": "BOOLEAN",

@@ -13,7 +13,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-from core.instagram_direct import DeliveryUnknown, RecipientError, receipt_id, exact_thread
+from core.instagram_direct import DeliveryUnknown, RecipientError, receipt_id, exact_thread, normalize_username
 
 _LOCK = threading.Lock()
 
@@ -215,11 +215,13 @@ def _open_from_compose(page, username: str, progress=lambda _: None):
     # substring, and there must be exactly one matching row.
     page.wait_for_function(r"""username => {
       for (const old of document.querySelectorAll('[data-jarvis-recipient]')) old.removeAttribute('data-jarvis-recipient');
-      const search = document.querySelector('input[name="queryBox"], input[placeholder*="Search" i], input[placeholder*="بحث"], input[aria-label*="Search" i]');
-      const scope = search?.closest('[role="dialog"]') || document.querySelector('main') || document.body;
       const normalize = s => (s || '').trim().replace(/^@/, '').toLowerCase();
       const visible = el => el.getBoundingClientRect().width > 0 && getComputedStyle(el).visibility !== 'hidden';
-      const rows = Array.from(scope.querySelectorAll('button, [role="button"], [role="option"], label, [tabindex="0"]')).filter(visible);
+      const search = Array.from(document.querySelectorAll('input[name="queryBox"], input[placeholder*="Search" i], input[placeholder*="بحث"], input[aria-label*="Search" i]'))
+        .find(el => visible(el) && normalize(el.value) === username);
+      if (!search) return false;
+      const scope = search.closest('[role="dialog"]') || document.querySelector('main') || document.body;
+      const rows = Array.from(scope.querySelectorAll('button, [role="button"], [role="option"], [role="checkbox"], [role="radio"], label, [tabindex="0"]')).filter(visible);
       const matches = rows.filter(row => {
         // An exact first-party profile link is independent username evidence,
         // including rows that render a display name before the actual handle.
@@ -435,7 +437,28 @@ class InstagramMessageRun:
             return root
         self.progress("profile_identity")
         if not _profile_verified(self.page, self.username):
-            raise RecipientError("Instagram did not expose independent exact-profile identity.")
+            # SPA metadata/header can be missing or delayed. A read-only exact
+            # profile lookup provides independent identity without searching names.
+            self.progress("profile_api_identity")
+            identity = self.page.evaluate(r"""async username => {
+              try {
+                const r = await fetch('/api/v1/users/web_profile_info/?username='+encodeURIComponent(username), {
+                  credentials:'same-origin', redirect:'error',
+                  headers:{'X-IG-App-ID':'936619743392459','X-Requested-With':'XMLHttpRequest'},
+                  signal:AbortSignal.timeout(5000)});
+                if (!r.ok) return null;
+                const u = (await r.json()).data?.user;
+                return u ? {username:u.username, id:String(u.id || u.pk || '')} : null;
+              } catch {return null;}
+            }""", self.username)
+            if isinstance(identity, dict) and identity.get("username"):
+                if str(identity["username"]).lower() != self.username or not identity.get("id"):
+                    raise RecipientError("Instagram returned a different profile identity. Nothing was sent.")
+            else:
+                # Exact search-row proof + independent chat-header proof are
+                # still required by the native route; never choose a fuzzy row.
+                _prepare_inbox(self.page, self.progress)
+                return _open_from_compose(self.page, self.username, self.progress)
         return _open_conversation(self.page, self.username, self.progress)
 
     def check_sender(self):
@@ -543,7 +566,7 @@ class InstagramMessageRun:
         explanations = {
             "compose_search": "Instagram's recipient search input did not appear.",
             "compose_launcher": "The inbox did not expose an accessible New Message control.",
-            "compose_exact_recipient": "The search did not produce one verifiable exact username row.",
+            "compose_exact_recipient": "The search did not produce one verifiable exact username row before timeout; this does not prove the account is missing. Check the loaded search page in the HUD.",
             "compose_selection": "The exact recipient row did not expose a verifiable selected state.",
             "compose_open_chat": "The selected recipient did not produce an enabled Chat/Next control.",
             "compose_chat_transition": "Instagram did not open the selected recipient's conversation.",
@@ -577,8 +600,6 @@ class InstagramMessageRun:
 
 def send_instagram_message(hub, recipient: str, message: str, *, expected_sender: dict | None = None) -> str:
     """Native Instagram send engine; this entry point never retries a write."""
-    username = recipient.strip().lstrip("@").lower()
-    if not re.fullmatch(r"[a-z0-9_.]{1,30}", username):
-        raise RecipientError("Use an exact Instagram @username. Nothing was sent.")
+    username = normalize_username(recipient)
     with _LOCK:
         return InstagramMessageRun(hub, username, message, expected_sender).run()

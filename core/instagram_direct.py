@@ -6,6 +6,8 @@ optimistic UI text, or a timeout as a delivery receipt. Never retry a POST.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -23,9 +25,29 @@ class DeliveryUnknown(RuntimeError):
     pass
 
 
+def normalize_username(value: str) -> str:
+    """Accept exact copied handles/profile links, never guess a display name."""
+    text = unicodedata.normalize("NFKC", str(value or ""))
+    text = "".join(c for c in text if unicodedata.category(c) != "Cf").strip()
+    if text.lower().startswith(("https://", "http://", "www.instagram.com/", "instagram.com/")):
+        url = urlsplit(text if "://" in text else "https://"+text)
+        if url.hostname not in ("instagram.com", "www.instagram.com") or url.username or url.password:
+            raise RecipientError("Use an exact Instagram handle or an instagram.com profile link. Nothing was sent.")
+        text = url.path.strip("/")
+        if text.lower() in {"direct", "accounts", "explore", "reels", "reel", "p", "stories"}:
+            raise RecipientError("That is an Instagram page, not a person's profile. Nothing was sent.")
+    text = text.removeprefix("@").lower()
+    if not re.fullmatch(r"[a-z0-9_.]{1,30}", text) or not text.strip("."):
+        raise RecipientError("Use the exact Instagram @username or profile link, not a display name. Nothing was sent.")
+    return text
+
+
 def exact_thread(threads: list, contact: str) -> dict | None:
     """Resolve only an exact username in a one-to-one thread, never a group/name fragment."""
-    needle = contact.strip().lstrip("@").casefold()
+    try:
+        needle = normalize_username(contact) if contact.strip() else ""
+    except RecipientError:
+        return None
     if not needle:
         return threads[0] if threads else None
     matches = []
