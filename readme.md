@@ -539,3 +539,27 @@ The incorrect standalone blue reference-screen placement and local figure switch
 were removed. Choose Female through the existing edition selector; there is no
 second visual preference or new setup flow. Voice/approval/backend behavior is
 unchanged. See `apex_ui/README.md` for routing and asset details.
+
+### Windows, macOS, and Linux support
+
+The desktop runtime detects the **current host OS** for native actions; it does
+not trust an `os_system` value copied from another computer. Native launchers are
+included for Windows (`Start_JARVIS.bat`), macOS (`Start_JARVIS.command`), and
+Linux (`Start_JARVIS.sh`). Python 3.11+ is required, and `requirements.txt` uses
+platform markers so Windows-only packages are skipped elsewhere.
+
+Cross-platform behavior includes verified app/terminal launching, Command-key
+clipboard shortcuts on macOS, shell-specific command routing (`bash`, `zsh`,
+`sh`, and `pwsh` where installed), PulseAudio or PipeWire volume controls on
+Linux, safe process-tree cancellation, headless import degradation, and paths
+containing spaces or Unicode. Some operating-system actions still require host
+permissions or installed native tools: macOS Accessibility/Automation approval;
+a graphical X11/Wayland session for Linux GUI automation; `pactl` or `wpctl` for
+Linux volume; and `brightnessctl` or desktop display utilities for brightness.
+The app returns an explicit limitation instead of reporting false success.
+
+`.github/workflows/cross-platform.yml` installs the real OS-filtered dependencies
+and runs startup/platform regressions on Windows, macOS, and Ubuntu with Python
+3.11 and 3.12. The HUD is separately type-checked and production-built. Local
+Linux validation currently covers the complete Python test suite; CI is the
+source of native Windows/macOS results.

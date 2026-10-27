@@ -20,7 +20,8 @@ try:
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE    = 0.05
     _PYAUTOGUI = True
-except ImportError:
+except Exception:
+    # Missing X11/DISPLAY or OS accessibility support must not break tool discovery.
     _PYAUTOGUI = False
 
 try:
@@ -51,7 +52,7 @@ def _platform_os() -> str:
     )
 
 def _get_os() -> str:
-    return _load_config().get("os_system", _platform_os()).lower()
+    return _platform_os()  # Native input follows the actual host, not a copied profile.
 
 
 def _get_api_key() -> str:
@@ -228,7 +229,7 @@ def _drag(x1: int, y1: int, x2: int, y2: int, duration: float = 0.5) -> str:
 def _clipboard_get() -> str:
     if _PYPERCLIP:
         return pyperclip.paste()
-    _hotkey("ctrl", "c")
+    _hotkey("command" if _get_os() == "mac" else "ctrl", "c")
     time.sleep(0.2)
     return "(copied — pyperclip unavailable for read)"
 

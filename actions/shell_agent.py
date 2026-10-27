@@ -27,11 +27,11 @@ _PS_CMDLET_RE = re.compile(
 
 
 def _should_use_powershell(cmd: str, shell_pref: str = "") -> bool:
-    if _SYSTEM != "Windows":
-        return False
     pref = (shell_pref or "").strip().lower()
     if pref in ("powershell", "pwsh", "ps1"):
         return True
+    if _SYSTEM != "Windows":
+        return False
     if pref in ("cmd", "cmd.exe"):
         return False
     return bool(_PS_CMDLET_RE.search(cmd or ""))
@@ -46,7 +46,8 @@ def _run_once(cmd: str, cwd: str = "", timeout: int = 60, shell_pref: str = "") 
             ps_bin = (
                 shutil.which("pwsh")
                 if shell_pref.strip().lower() == "pwsh" and shutil.which("pwsh")
-                else (shutil.which("powershell") or "powershell")
+                else ((shutil.which("powershell") or shutil.which("pwsh") or "powershell")
+                      if _SYSTEM == "Windows" else (shutil.which("pwsh") or "pwsh"))
             )
             result = subprocess.run(
                 [ps_bin, "-NoProfile", "-NonInteractive", "-Command", cmd],
@@ -57,9 +58,16 @@ def _run_once(cmd: str, cwd: str = "", timeout: int = 60, shell_pref: str = "") 
                 **_WIN_HIDE,
             )
         else:
+            shell_options = {}
+            if _SYSTEM != "Windows" and shell_pref.strip().lower() in ("bash", "zsh", "sh"):
+                executable = shutil.which(shell_pref.strip().lower())
+                if not executable:
+                    return f"Shell error: requested shell is not installed: {shell_pref}"
+                shell_options["executable"] = executable
             result = subprocess.run(
                 cmd,
                 shell=True,
+                **shell_options,
                 capture_output=True,
                 text=True,
                 cwd=str(workdir),

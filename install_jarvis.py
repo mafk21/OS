@@ -3,7 +3,7 @@
 1-Click Cross-Platform Installer & Native Launcher for JARVIS OS — Phase 6.
 
 Zero external dependencies (stdlib only). Handles:
-  • Python >= 3.10 environment & prebuilt `apex_ui/static_hud` verification
+  • Python >= 3.11 environment & prebuilt `apex_ui/static_hud` verification
   • Virtual environment creation (`.venv`) + `requirements.txt` installation
   • Native 1-click desktop launcher generation (Windows `.bat`, macOS `.command`, Linux `.sh`)
   • Immediate boot into JARVIS (first-run Gemini API key + optional Integrations + Male/Female chooser)
@@ -33,7 +33,7 @@ def venv_python(venv_dir: Path = VENV_DIR) -> Path:
 
 
 def check_environment() -> dict:
-    py_ok = sys.version_info >= (3, 10)
+    py_ok = sys.version_info >= (3, 11)
     hud_ok = HUD_INDEX.is_file()
     req_ok = REQ_FILE.is_file()
     return {
@@ -79,6 +79,11 @@ def write_native_launchers(target_dir: Path = BASE_DIR) -> list[str]:
     except Exception:
         pass
     created.append(str(mac_cmd))
+    # Linux gets a real executable launcher too, not just a macOS .command file.
+    linux_sh = target_dir / "Start_JARVIS.sh"
+    linux_sh.write_text(mac_cmd.read_text(encoding="utf-8"), encoding="utf-8")
+    linux_sh.chmod(linux_sh.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    created.append(str(linux_sh))
     return created
 
 
@@ -107,14 +112,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if status["ok"] else 1
 
     if not status["python_ok"]:
-        print("ERROR: Python 3.10 or newer is required.", file=sys.stderr)
+        print("ERROR: Python 3.11 or newer is required.", file=sys.stderr)
         return 1
 
     if args.shortcuts:
         paths = write_native_launchers(BASE_DIR)
         print("Created native launchers:\n  " + "\n  ".join(paths))
 
-    py_exec = Path(sys.executable)
+    existing_venv = venv_python()
+    py_exec = existing_venv if existing_venv.is_file() else Path(sys.executable)
     if args.install:
         py_exec = ensure_venv_and_deps()
         write_native_launchers(BASE_DIR)

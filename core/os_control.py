@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ctypes
 import csv
+import shlex
 import io
 import os
 import platform
@@ -1042,7 +1043,7 @@ def open_interactive_terminal(
     if _SYSTEM == "Darwin":
         cmd_parts = []
         if workdir:
-            cmd_parts.append(f"cd {subprocess.list2cmdline([workdir])}")
+            cmd_parts.append(f"cd -- {shlex.quote(workdir)}")
         if command:
             cmd_parts.append(command)
         do_line = "; ".join(cmd_parts)
@@ -1064,10 +1065,11 @@ def open_interactive_terminal(
                 }
             ver = verify_launch("terminal", before_pids, before_wins, timeout=verify_timeout)
             return {
-                "ok": True,
-                "verified_window": ver.get("window_title") or "Terminal",
+                "ok": bool(ver["verified"]),
+                "verified_window": ver.get("window_title"),
                 "pid": ver.get("pid"),
-                "message": f"Opened macOS Terminal (window '{ver.get('window_title') or 'Terminal'}').",
+                "message": (f"Opened macOS Terminal (window '{ver.get('window_title') or 'Terminal'}')."
+                            if ver["verified"] else "Terminal launch requested, but no window or running process could be verified."),
             }
         except Exception as e:
             return {"ok": False, "verified_window": None, "pid": None, "message": f"Failed to open Terminal: {e}"}
@@ -1105,7 +1107,13 @@ def open_interactive_terminal(
 
     argv = [chosen]
     if command:
-        argv.extend(["-e", "bash", "-lc", f"{command}; exec bash"])
+        script = f"{command}\nexec bash"
+        if chosen in ("gnome-terminal", "kgx"):
+            argv.extend(["--", "bash", "-lc", script])
+        elif chosen == "xfce4-terminal":
+            argv.extend(["--command", shlex.join(["bash", "-lc", script])])
+        else:
+            argv.extend(["-e", "bash", "-lc", script])
     try:
         proc = unpatched_popen(
             argv,

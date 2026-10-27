@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover — pytesseract not installed
 try:
     import pyautogui  # type: ignore
     _A11Y = True
-except ImportError:  # pragma: no cover — pyautogui not installed
+except Exception:  # pragma: no cover — pyautogui not installed
     _A11Y = False
 
 
