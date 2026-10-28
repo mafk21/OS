@@ -30,8 +30,9 @@ def watch_replies(session_id:str,*,config:dict[str,str]|None=None,poll_seconds:f
     cfg=dict(config or load_config())
     def run()->None:
         seen:set[int]=set()
+        deadline=time.monotonic()+4*60*60
         try:
-            while True:
+            while time.monotonic()<deadline:
                 try:
                     data=session_status(session_id,config=cfg)
                     session=data.get("session") or {}

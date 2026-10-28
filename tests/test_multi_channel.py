@@ -65,6 +65,13 @@ def test_handle_inbound_with_handler():
     assert result == "Inbound message handled."
 
 
+def test_live_session_inject_handler_is_stored_on_gateway():
+    gw = mc.ChannelGateway()
+    handler = lambda *_: None
+    gw.set_inbound_inject(handler)
+    assert gw._inbound_inject is handler
+
+
 # ── Tool declaration ──────────────────────────────────────────────────────
 
 def test_tool_declaration():

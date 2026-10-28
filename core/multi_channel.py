@@ -50,7 +50,8 @@ class ChannelGateway:
 
     def __init__(self):
         self._channels: dict[str, Channel] = {}
-        self._inbound_handler: Optional[callable] = None  # called on inbound msg
+        self._inbound_handler: Optional[callable] = None  # app-level routing
+        self._inbound_inject: Optional[callable] = None   # live-session delivery
         self._lock = threading.Lock()
 
     def register(self, channel: Channel) -> None:
@@ -84,6 +85,10 @@ class ChannelGateway:
     def set_inbound_handler(self, handler: callable) -> None:
         """Handler called with (channel_id, sender, text) on inbound message."""
         self._inbound_handler = handler
+
+    def set_inbound_inject(self, handler: callable) -> None:
+        """Deliver inbound text to the currently active model session."""
+        self._inbound_inject = handler
 
     def handle_inbound(self, channel_id: str, sender: str, text: str) -> str:
         """Route an inbound message. Returns a response string."""
@@ -231,6 +236,7 @@ class WebhookServer:
     def set_inbound_inject(self, fn: callable) -> None:
         """Callback to inject an inbound message into JARVIS's session."""
         self._inbound_inject = fn
+        self.gateway.set_inbound_inject(fn)
 
 
 # ── Gateway singleton ─────────────────────────────────────────────────────
