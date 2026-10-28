@@ -28,7 +28,7 @@ def test_v0_fixture_migrates_sequentially_to_current_and_preserves_values() -> N
     original = copy.deepcopy(raw)
     result = migrate_raw(raw)
     assert raw == original
-    assert result.applied == ("schema-v0-to-v1", "schema-v1-to-v2", "schema-v2-to-v3")
+    assert result.applied == ("schema-v0-to-v1", "schema-v1-to-v2", "schema-v2-to-v3", "schema-v3-to-v4")
     assert result.state.schema_version == SCHEMA_VERSION
     assert result.state.revision == 7
     assert result.state.created_at == raw["created_at"]

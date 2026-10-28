@@ -103,6 +103,8 @@ def _v0_to_v1(raw: Mapping[str, Any]) -> dict[str, Any]:
         migrated["affect"].pop(key, None)
     migrated["relationship"].pop("claims", None)
     migrated["relationship"].pop("contradictions", None)
+    for key in ("daily_date", "interruptions_today", "snooze_until", "topics"):
+        migrated["initiative_policy"].pop(key, None)
     return migrated
 
 
@@ -154,7 +156,27 @@ def _v2_to_v3(raw: Mapping[str, Any]) -> dict[str, Any]:
     return working
 
 
-_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2, 2: _v2_to_v3}
+def _v3_to_v4(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist restart-safe initiative budget, snooze, and topic outcomes."""
+    working = copy.deepcopy(dict(raw))
+    policy = _mapping(working.get("initiative_policy"), "schema v3 initiative policy")
+    old_fields = {"enabled", "timezone", "quiet_start", "quiet_end", "daily_budget", "coaching_mode"}
+    _strict(policy, old_fields, "schema v3 initiative policy")
+    missing = old_fields - set(policy)
+    if missing:
+        raise ValidationError(f"schema v3 initiative policy is missing fields: {', '.join(sorted(missing))}")
+    updated = _timestamp(working.get("updated_at"), "schema v3 updated_at")
+    day = datetime.fromisoformat(updated.replace("Z", "+00:00")).date().isoformat()
+    working["initiative_policy"] = {**policy, "daily_date": day, "interruptions_today": 0, "snooze_until": None, "topics": []}
+    working["schema_version"] = 4
+    completed = working.get("completed_migrations", [])
+    if not isinstance(completed, list):
+        raise ValidationError("schema v3 completed_migrations must be a list")
+    working["completed_migrations"] = [*completed, "schema-v3-to-v4"] if "schema-v3-to-v4" not in completed else completed
+    return working
+
+
+_MIGRATIONS = {0: _v0_to_v1, 1: _v1_to_v2, 2: _v2_to_v3, 3: _v3_to_v4}
 
 
 def import_companion_compatibility(

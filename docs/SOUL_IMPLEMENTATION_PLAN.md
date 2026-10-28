@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phases 0–9 complete; restart-safe initiative policy has not started
+Status: Phases 0–10 complete; Soul Studio backend API has not started
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 

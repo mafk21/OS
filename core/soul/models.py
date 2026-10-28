@@ -13,7 +13,7 @@ from typing import Any, Mapping
 
 from .constitution import CONSTITUTION_VERSION
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MAX_SHORT_TEXT = 160
 MAX_TEXT = 600
 MAX_LIST_ITEMS = 100
@@ -479,6 +479,30 @@ class RelationshipState:
 
 
 @dataclass(frozen=True, slots=True)
+class InitiativeTopicState:
+    topic: str
+    last_suggested_at: str | None = None
+    ignored_count: int = 0
+    last_outcome: str = "none"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "topic", _text(self.topic, "initiative topic", maximum=160))
+        object.__setattr__(self, "last_suggested_at", _timestamp(self.last_suggested_at, "initiative last suggested", optional=True))
+        object.__setattr__(self, "ignored_count", _integer(self.ignored_count, "initiative ignored count", maximum=20))
+        outcome = _text(self.last_outcome, "initiative outcome", maximum=30)
+        if outcome not in {"none", "delivered", "accepted", "ignored", "dismissed", "snoozed", "completed"}:
+            raise ValidationError("unsupported initiative outcome")
+        object.__setattr__(self, "last_outcome", outcome)
+
+    @classmethod
+    def from_dict(cls, raw: Any) -> "InitiativeTopicState":
+        data = _mapping(raw, "initiative topic state")
+        fields = set(cls.__dataclass_fields__)
+        _strict(data, fields, "initiative topic state")
+        return cls(**data)
+
+
+@dataclass(frozen=True, slots=True)
 class InitiativePolicy:
     enabled: bool = False
     timezone: str = "local"
@@ -486,6 +510,10 @@ class InitiativePolicy:
     quiet_end: str = "08:00"
     daily_budget: int = 3
     coaching_mode: CoachingMode = CoachingMode.ACCOUNTABILITY
+    daily_date: str = "1970-01-01"
+    interruptions_today: int = 0
+    snooze_until: str | None = None
+    topics: tuple[InitiativeTopicState, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "enabled", _boolean(self.enabled, "initiative enabled"))
@@ -497,15 +525,28 @@ class InitiativePolicy:
             except ValueError as exc:
                 raise ValidationError(f"{name} must use 24-hour HH:MM") from exc
             object.__setattr__(self, name, val)
+        date_value = _text(self.daily_date, "initiative daily date", maximum=10)
+        try:
+            datetime.strptime(date_value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValidationError("initiative daily_date must use YYYY-MM-DD") from exc
+        object.__setattr__(self, "daily_date", date_value)
         object.__setattr__(self, "daily_budget", _integer(self.daily_budget, "daily budget", maximum=20))
+        object.__setattr__(self, "interruptions_today", _integer(self.interruptions_today, "interruptions today", maximum=20))
+        object.__setattr__(self, "snooze_until", _timestamp(self.snooze_until, "initiative snooze", optional=True))
         object.__setattr__(self, "coaching_mode", _enum(CoachingMode, self.coaching_mode, "coaching mode"))
+        if not isinstance(self.topics, tuple) or len(self.topics) > 100 or any(not isinstance(x, InitiativeTopicState) for x in self.topics):
+            raise ValidationError("initiative topics must be a bounded typed tuple")
 
     @classmethod
     def from_dict(cls, raw: Any) -> "InitiativePolicy":
         data = _mapping(raw, "initiative policy")
         fields = set(cls.__dataclass_fields__)
         _strict(data, fields, "initiative policy")
-        return cls(**data)
+        missing = fields - set(data)
+        if missing:
+            raise ValidationError(f"initiative policy is missing fields: {', '.join(sorted(missing))}")
+        return cls(**{**data, "topics": tuple(InitiativeTopicState.from_dict(x) for x in data["topics"])})
 
 
 @dataclass(frozen=True, slots=True)

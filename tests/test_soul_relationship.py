@@ -151,8 +151,10 @@ def test_v2_migration_adds_empty_typed_relationship_ledgers() -> None:
     raw["schema_version"] = 2
     raw["relationship"].pop("claims")
     raw["relationship"].pop("contradictions")
+    for key in ("daily_date", "interruptions_today", "snooze_until", "topics"):
+        raw["initiative_policy"].pop(key)
     result = migrate_raw(raw)
-    assert result.applied == ("schema-v2-to-v3",)
+    assert result.applied == ("schema-v2-to-v3", "schema-v3-to-v4")
     assert result.state.relationship.claims == ()
     assert result.state.relationship.contradictions == ()
     assert "schema-v2-to-v3" in result.state.completed_migrations

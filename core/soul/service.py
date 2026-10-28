@@ -9,11 +9,13 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
 from .affect import AffectEvent, AffectUpdate, apply_event_to_soul
 from .context import SoulContext, SoulContextBuilder, SoulContextInputs
+from .initiative import InitiativeCandidate, InitiativeDecision, record_delivery, select_initiative
 from .migrations import COMPANIONS_IMPORT_ID, import_companion_compatibility
 from .models import Edition, RelationshipKind, Sensitivity, SoulState, utc_now_iso
 from .reflection import ReflectionEvidence, ReflectionResult, ReflectionRunner, run_reflection
@@ -160,6 +162,28 @@ class SoulService:
             )
             self.builder.clear_cache()
             return holder["result"]
+
+    def evaluate_initiative_topic(self, topic: str, *, now: str | None = None) -> InitiativeDecision:
+        """Gate one heartbeat topic through durable initiative policy and record delivery first."""
+        with self._lock:
+            self.initialize()
+            state = self.store.load()
+            stamp = now or utc_now_iso()
+            current = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            candidate = InitiativeCandidate(
+                topic=topic, evidence_ref=f"heartbeat:{topic}", confidence=.70, value=.65, urgency=.50,
+                expires_at=(current + timedelta(hours=1)).isoformat(), suggestion=f"Follow up on {topic}",
+            )
+            decision = select_initiative(state.initiative_policy, (candidate,), now=stamp)
+            if decision.candidate is None:
+                return decision
+            changed_policy = record_delivery(state.initiative_policy, candidate, now=stamp)
+            self._state = self.store.transact(
+                lambda current_state: replace(current_state, initiative_policy=changed_policy),
+                expected_revision=state.revision, reason="reserve initiative interruption before delivery",
+                source="initiative", event="soul.initiative_delivered",
+            )
+            return decision
 
     def reflect(
         self,

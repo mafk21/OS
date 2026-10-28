@@ -183,14 +183,16 @@ def test_v1_state_migrates_affect_baselines_and_daily_accounting() -> None:
     raw["schema_version"] = 1
     raw["relationship"].pop("claims")
     raw["relationship"].pop("contradictions")
+    for key in ("daily_date", "interruptions_today", "snooze_until", "topics"):
+        raw["initiative_policy"].pop(key)
     for key in (
         "baseline_calm", "baseline_energy", "baseline_concern", "baseline_confidence",
         "baseline_curiosity", "baseline_rapport", "daily_delta", "daily_date",
     ):
         raw["affect"].pop(key)
     result = migrate_raw(raw)
-    assert result.applied == ("schema-v1-to-v2", "schema-v2-to-v3")
-    assert result.state.schema_version == 3
+    assert result.applied == ("schema-v1-to-v2", "schema-v2-to-v3", "schema-v3-to-v4")
+    assert result.state.schema_version == 4
     assert result.state.affect.baseline_calm == result.state.affect.calm
     assert result.state.affect.daily_delta == AffectDelta()
     assert "schema-v1-to-v2" in result.state.completed_migrations
