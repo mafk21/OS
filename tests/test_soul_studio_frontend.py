@@ -39,3 +39,6 @@ def test_soul_studio_exposes_revision_safe_controls_and_context_preview():
         assert f'operation:"{operation}"' in PANEL or f'operation: "{operation}"' in PANEL
     assert "/api/hud/soul/export" in PANEL
     assert "CANONICAL CONTEXT PREVIEW" in PANEL
+    assert "SOUL DIAGNOSTICS" in PANEL
+    for diagnostic in ("last_successful_save", "last_backup", "last_reflection", "context_size", "completed_migrations"):
+        assert diagnostic in PANEL

@@ -713,6 +713,14 @@ marker-delimited legacy operator/humor persona prose while retaining shared tool
 execution, language, interruption, and safety rules. Disabling Soul immediately
 restores the complete legacy personality path.
 
+The Soul implementation has completed all Phase 0–14 gates. Release hardening
+covers concurrent writers, crash/restart recovery, long simulated clocks,
+Unicode and spaced paths, prompt latency/size targets, populated-profile
+rollback, export redaction, dependency and credential scans, and the complete
+regression/build pipeline. Soul stays disabled by default for controlled
+rollout. Schema, diagnostics, troubleshooting, recovery, and rollback procedures
+are documented in [`docs/SOUL_OPERATIONS.md`](docs/SOUL_OPERATIONS.md).
+
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).

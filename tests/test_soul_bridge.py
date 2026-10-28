@@ -28,6 +28,10 @@ def test_snapshot_export_and_affect_explanation_are_redacted_from_credentials(tm
     assert snap["revision"] == 0
     assert "not biological emotion" in snap["affect"]["framing"]
     assert snap["context_preview"].startswith("[CONSTITUTION]")
+    assert snap["diagnostics"]["schema_version"] == snap["schema_version"]
+    assert snap["diagnostics"]["revision"] == snap["revision"]
+    assert snap["diagnostics"]["context_size"] == len(snap["context_preview"].encode("utf-8"))
+    assert snap["diagnostics"]["last_successful_save"]
     exported = api.export()
     text = str(exported).lower()
     assert exported["format"] == "jarvis-soul"
