@@ -721,6 +721,16 @@ regression/build pipeline. Soul stays disabled by default for controlled
 rollout. Schema, diagnostics, troubleshooting, recovery, and rollback procedures
 are documented in [`docs/SOUL_OPERATIONS.md`](docs/SOUL_OPERATIONS.md).
 
+## 📞 Free private web calls
+
+JARVIS can ring a paired phone or browser through the included `call_portal/`
+Progressive Web App—no phone number or per-minute carrier fee. It supports push
+ringing, answer/decline, device-spoken JARVIS messages, spoken or typed replies,
+immediate calls, configured important alerts, and restart-safe scheduled calls.
+The `web_call` tool preserves Soul quiet-hours and initiative boundaries.
+Deployment, pairing, security, browser notes, and honest free-tier limits are in
+[`docs/JARVIS_WEB_CALL.md`](docs/JARVIS_WEB_CALL.md).
+
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).
