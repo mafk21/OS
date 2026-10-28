@@ -19,7 +19,8 @@ This is an internet voice conversation, not a PSTN/mobile-number call. Browser s
 2. Enter the private pairing code generated during deployment.
 3. Select **Enable Calls** and grant notification permission.
 4. On iPhone/iPad, add the site to the Home Screen and enable notifications for the installed web app. Android and desktop Chrome/Edge can register directly.
-5. Keep `config/web_call.json` private. It contains the sender credential and is ignored by Git.
+5. On the computer where JARVIS actually runs, say “Set up web calling.” Give JARVIS the same pairing code when requested. JARVIS securely exchanges it for a sender credential and writes `config/web_call.json` with owner-only permissions. Telegram is not involved.
+6. Keep `config/web_call.json` private. It contains the sender credential and is ignored by Git. Repeat step 5 on each separate JARVIS installation; configuration from another checkout or machine does not transfer automatically.
 
 Use JARVIS commands such as:
 

@@ -1,14 +1,18 @@
 """Call the user through their private free JARVIS web-call portal."""
 from datetime import datetime
-from core.web_call import load_config, schedule_call, session_action, session_status, start_call
+from core.web_call import configure, load_config, schedule_call, session_action, session_status, start_call
 
 def web_call(parameters:dict,response=None,player=None,session_memory=None)->str:
     action=str(parameters.get("action") or "start").strip().lower()
     try:
-        if action=="setup":
+        if action in {"configure","setup"}:
+            supplied=str(parameters.get("pairing_code") or "").strip()
+            if supplied:
+                cfg=configure(str(parameters.get("url") or "https://jarvis-call-sigma.vercel.app"),supplied)
+                return f"Web calling configured and saved for {cfg['url']}."
             cfg=load_config()
-            if not cfg: return "Web calling is not configured on this device."
-            return f"Open {cfg['url']} and enter pairing code {cfg['pairing_code']}. Keep the code private."
+            if not cfg: return "Web calling needs one-time pairing. Ask the user for the pairing code shown in their JARVIS Call web app, then call web_call action=configure with it. Telegram is unrelated."
+            return f"Web calling is configured for {cfg['url']}. The phone pairing code is installed."
         if action=="start":
             result=start_call(str(parameters.get("message") or ""),str(parameters.get("reason") or "JARVIS is calling"))
             return f"Call sent. Session {result['session_id']}; {result.get('notifications',0)} paired device notification(s) delivered."
@@ -30,9 +34,11 @@ def web_call(parameters:dict,response=None,player=None,session_memory=None)->str
 
 TOOL={
  "name":"web_call",
- "description":"Call the user through their private free web voice line. Can start now, schedule through the OS scheduler, check a session, reply, end, or show setup. Calls are allowed only when the user asks, for configured important alerts, or for user-created schedules; respect Soul quiet hours and snooze for proactive calls.",
+ "description":"The ONLY tool for 'call me', 'ring my phone', or JARVIS voice-call requests. Uses the private JARVIS Call website—not Telegram or remote_relay. Can configure once with the website pairing code, start now, schedule through the OS scheduler, check a session, reply, or end. Never claim calling is unconfigured before calling this tool with action=setup. Respect Soul quiet hours and snooze for proactive calls.",
  "parameters":{"type":"OBJECT","properties":{
-  "action":{"type":"STRING","description":"start | schedule | status | reply | end | setup"},
+  "action":{"type":"STRING","description":"configure | setup | start | schedule | status | reply | end"},
+  "pairing_code":{"type":"STRING","description":"configure: private code shown in the JARVIS Call web app"},
+  "url":{"type":"STRING","description":"configure: portal URL; defaults to the official deployed portal"},
   "message":{"type":"STRING","description":"What JARVIS will say during the call"},
   "reason":{"type":"STRING","description":"Short reason shown while ringing"},
   "date":{"type":"STRING","description":"schedule: YYYY-MM-DD local date"},

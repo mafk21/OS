@@ -12,6 +12,18 @@ class Response:
  def __exit__(self,*a): pass
  def read(self): return json.dumps(self.data).encode()
 
+def test_configure_bootstraps_and_saves_owner_only_config(tmp_path):
+ seen={}
+ def open_(req,timeout):
+  seen.update(url=req.full_url,code=req.headers["X-pairing-code"]);return Response({"call_secret":"issued-secret"})
+ path=tmp_path/"web_call.json"
+ with patch("urllib.request.urlopen",open_): result=web_call.configure("https://calls.example/","owner-code",path=path)
+ assert seen=={"url":"https://calls.example/api/bootstrap","code":"owner-code"}
+ assert result["call_secret"]=="issued-secret"
+ assert path.stat().st_mode & 0o777 == 0o600
+ assert json.loads(path.read_text())==result
+
+
 def test_start_call_uses_authenticated_https_endpoint():
  seen={}
  def open_(req,timeout):
