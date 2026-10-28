@@ -32,6 +32,26 @@ def _request(method:str,path:str,payload:dict[str,Any]|None=None,*,sender:bool=T
         raise RuntimeError(detail or f"Call service returned HTTP {exc.code}") from exc
     except (OSError,ValueError) as exc: raise RuntimeError(f"Call service unavailable: {exc}") from exc
 
+def configure(url:str,pairing_code:str,*,path:Path=CONFIG_PATH)->dict[str,str]:
+    """Exchange the owner's pairing code for a sender credential and save it."""
+    base=str(url or "").strip().rstrip("/")
+    code=str(pairing_code or "").strip()
+    if not base.startswith("https://") or not code: raise ValueError("A secure portal URL and pairing code are required")
+    req=urllib.request.Request(base+"/api/bootstrap",data=b"{}",headers={"Content-Type":"application/json","x-pairing-code":code},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=15) as response: result=json.loads(response.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError("The pairing code was rejected") from exc
+    except (OSError,ValueError) as exc:
+        raise RuntimeError(f"Call service unavailable: {exc}") from exc
+    secret=str(result.get("call_secret") or "").strip()
+    if not secret: raise RuntimeError("Call service did not return a sender credential")
+    cfg={"url":base,"call_secret":secret,"pairing_code":code}
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temp=path.with_suffix(path.suffix+".tmp")
+    temp.write_text(json.dumps(cfg,indent=2),encoding="utf-8"); temp.chmod(0o600); os.replace(temp,path); path.chmod(0o600)
+    return cfg
+
 def start_call(message:str,reason:str="JARVIS is calling",*,config=None)->dict[str,Any]:
     message=str(message or "").strip(); reason=str(reason or "").strip()
     if not message: raise ValueError("Call message is required")
