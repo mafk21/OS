@@ -10,6 +10,10 @@ from .affect import (
     decay_affect,
     explain_affect,
 )
+from .commitments import (
+    CoachingDecision, CommitmentProjection, CommitmentSource, CommitmentStatus,
+    decide_coaching, format_active_commitments, project_long_tasks, project_memory_projects,
+)
 from .constitution import CONSTITUTION_VERSION, RULES, ConstitutionalRule, render_constitution
 from .context import SECTION_BUDGETS, SECTION_ORDER, SoulContext, SoulContextBuilder, SoulContextInputs
 from .events import SoulAuditEvent
@@ -61,6 +65,8 @@ from .store import RevisionConflict, SoulStore, SoulStoreError
 __all__ = [
     "DAILY_CAPS", "EVENT_DELTAS", "HALF_LIFE_HOURS", "AffectEvent", "AffectUpdate",
     "apply_affect_event", "apply_event_to_soul", "decay_affect", "explain_affect",
+    "CoachingDecision", "CommitmentProjection", "CommitmentSource", "CommitmentStatus",
+    "decide_coaching", "format_active_commitments", "project_long_tasks", "project_memory_projects",
     "SCHEMA_VERSION", "CONSTITUTION_VERSION", "RULES", "ConstitutionalRule", "render_constitution",
     "SECTION_BUDGETS", "SECTION_ORDER", "SoulContext", "SoulContextBuilder", "SoulContextInputs",
     "COMPANIONS_IMPORT_ID", "MigrationResult", "import_companion_compatibility", "migrate_raw",
