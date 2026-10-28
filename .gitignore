@@ -135,3 +135,5 @@ memory/learning/
 
 # Preserve privacy for existing generated video outputs and intermediate plans.
 memory/generated_videos/
+
+*.tsbuildinfo
