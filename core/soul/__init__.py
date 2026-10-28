@@ -44,6 +44,10 @@ from .models import (
     TraitStatus,
     ValidationError,
 )
+from .reflection import (
+    ReflectionEvidence, ReflectionResult, ReflectionRunner, qualifies_for_reflection,
+    reflection_backoff_seconds, run_reflection,
+)
 from .relationship import (
     ForgetResult,
     RelationshipUpdate,
@@ -72,6 +76,8 @@ __all__ = [
     "COMPANIONS_IMPORT_ID", "MigrationResult", "import_companion_compatibility", "migrate_raw",
     "AffectDelta", "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
     "InitiativePolicy", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
+    "ReflectionEvidence", "ReflectionResult", "ReflectionRunner", "qualifies_for_reflection",
+    "reflection_backoff_seconds", "run_reflection",
     "RelationshipClaim", "RelationshipClaimStatus", "RelationshipContradiction", "RelationshipKind",
     "RelationshipState", "Sensitivity", "RelationshipUpdate", "ForgetResult", "observe_relationship",
     "forget_relationship_subject", "summarize_relationship", "apply_relationship_to_soul",
