@@ -10,7 +10,7 @@ from .models import (
     AffectState, Edition, IdentityProfile, InitiativePolicy, RelationshipState,
     SoulState, TraitRange, TraitStatus, ValidationError,
 )
-from .service import SoulService
+from .service import SoulService, project_runtime_commitments
 from .store import RevisionConflict
 
 
@@ -37,6 +37,8 @@ class SoulStudioAPI:
             "identity": state.to_dict()["identity"],
             "affect": explain_affect(state.affect),
             "relationship": state.to_dict()["relationship"],
+            # Read-only projection; authoritative task and memory stores remain unchanged.
+            "commitments": list(project_runtime_commitments()),
             "learned_traits": state.to_dict()["learned_traits"],
             "initiative_policy": state.to_dict()["initiative_policy"],
             "reflection_state": state.to_dict()["reflection_state"],

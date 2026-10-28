@@ -34,6 +34,13 @@ def test_snapshot_export_and_affect_explanation_are_redacted_from_credentials(tm
     assert "api_key" not in text and "token" not in text and "password" not in text
 
 
+def test_snapshot_exposes_read_only_authoritative_commitment_projection(tmp_path, monkeypatch):
+    _, _, api = setup(tmp_path)
+    projected = ("long-task:7; status=active; title=Finish report; authoritative_source=long_task",)
+    monkeypatch.setattr("core.soul.api.project_runtime_commitments", lambda: projected)
+    assert api.snapshot()["commitments"] == list(projected)
+
+
 def test_identity_update_is_bounded_and_stale_revision_conflicts(tmp_path):
     from core.soul import RevisionConflict, ValidationError
     _, _, api = setup(tmp_path)

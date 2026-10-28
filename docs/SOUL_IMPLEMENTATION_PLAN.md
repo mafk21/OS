@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phases 0–11 complete; Soul Studio frontend has not started
+Status: Phases 0–12 complete; prompt reconciliation is next
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 
