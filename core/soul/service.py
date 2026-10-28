@@ -335,6 +335,38 @@ def project_runtime_commitments() -> tuple[str, ...]:
         return ()
 
 
+def reconcile_legacy_prompt(prompt: str, soul_context: str) -> str:
+    """Select exactly one personality authority while retaining operational rules.
+
+    Marker-delimited legacy personality prose remains available for immediate
+    feature-flag rollback, but is omitted whenever a validated Soul context is
+    active. Marker lines are never sent to a model.
+    """
+    if not isinstance(prompt, str) or not isinstance(soul_context, str):
+        raise TypeError("prompt and soul_context must be strings")
+    start = "[[LEGACY_PERSONALITY_START]]"
+    end = "[[LEGACY_PERSONALITY_END]]"
+    output: list[str] = []
+    skipping = False
+    for line in prompt.splitlines(keepends=True):
+        token = line.strip()
+        if token == start:
+            if skipping:
+                raise ValueError("nested legacy personality marker")
+            skipping = True
+            continue
+        if token == end:
+            if not skipping:
+                raise ValueError("unmatched legacy personality marker")
+            skipping = False
+            continue
+        if not (skipping and soul_context.strip()):
+            output.append(line)
+    if skipping:
+        raise ValueError("unterminated legacy personality marker")
+    return "".join(output)
+
+
 def build_runtime_context(*, include_personalization: bool | None = None) -> str:
     """Build canonical context from live config, or return empty on rollback/failure."""
     try:

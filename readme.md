@@ -707,7 +707,11 @@ Commitments are read-only projections over the authoritative long-task and
 memory systems, not a duplicate executor. Every mutation uses optimistic
 revision checks; stale edits reload current state rather than overwriting it.
 Soul remains behind the local `soul_enabled` rollback setting and all existing
-Companions, Interview, Skills, and Themes Studio views remain available.
+Companions, Interview, Skills, and Themes Studio views remain available. Prompt
+composition selects one personality authority: enabled Soul replaces only the
+marker-delimited legacy operator/humor persona prose while retaining shared tool,
+execution, language, interruption, and safety rules. Disabling Soul immediately
+restores the complete legacy personality path.
 
 ## 📄 License
 

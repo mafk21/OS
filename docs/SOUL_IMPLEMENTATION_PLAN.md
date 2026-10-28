@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phases 0–12 complete; prompt reconciliation is next
+Status: Phases 0–13 complete; hardening, soak, and release validation is next
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 

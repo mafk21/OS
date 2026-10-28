@@ -61,6 +61,7 @@ from .relationship import (
 from .service import (
     SoulService,
     build_runtime_context,
+    reconcile_legacy_prompt,
     get_default_service,
     record_long_task_completion,
     record_runtime_affect_event,
@@ -85,7 +86,7 @@ __all__ = [
     "RelationshipState", "Sensitivity", "RelationshipUpdate", "ForgetResult", "observe_relationship",
     "forget_relationship_subject", "summarize_relationship", "apply_relationship_to_soul",
     "SoulState", "SoulAuditEvent", "SoulStore", "SoulStoreError",
-    "SoulService", "build_runtime_context", "get_default_service", "record_long_task_completion",
+    "SoulService", "build_runtime_context", "reconcile_legacy_prompt", "get_default_service", "record_long_task_completion",
     "record_runtime_affect_event", "record_runtime_relationship", "RevisionConflict",
     "TraitOrigin", "TraitRange", "TraitStatus", "ValidationError",
 ]

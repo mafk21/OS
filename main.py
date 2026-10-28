@@ -1341,6 +1341,11 @@ class JarvisLive:
         except Exception:
             pass
         soul_ctx = _load_soul_context()
+        try:
+            from core.soul.service import reconcile_legacy_prompt
+            system_prompt = reconcile_legacy_prompt(system_prompt, soul_ctx)
+        except Exception as exc:
+            print(f"[Soul] Legacy prompt reconciliation failed safely: {type(exc).__name__}: {exc}")
         if soul_ctx:
             system_prompt = soul_ctx + "\n\n" + system_prompt
         history: list[dict] = []
@@ -1926,8 +1931,13 @@ class JarvisLive:
         })
 
         soul_ctx = _load_soul_context()
-        # Soul and the legacy identity block are mutually exclusive. This keeps
-        # rollback immediate and prevents contradictory stacked identities.
+        # Soul and both legacy identity sources are mutually exclusive. Keep
+        # operational/tool rules while selecting exactly one personality owner.
+        try:
+            from core.soul.service import reconcile_legacy_prompt
+            sys_prompt = reconcile_legacy_prompt(sys_prompt, soul_ctx)
+        except Exception as exc:
+            print(f"[Soul] Legacy prompt reconciliation failed safely: {type(exc).__name__}: {exc}")
         parts = [time_ctx, soul_ctx if soul_ctx else identity_ctx]
         # Shared by Gemini Live and the OpenAI adapters: retain discoverability after restarts.
         try:
