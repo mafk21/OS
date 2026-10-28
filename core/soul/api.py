@@ -30,6 +30,17 @@ class SoulStudioAPI:
         except Exception:
             inputs = SoulContextInputs()
         context = self.service.builder.build(state, inputs)
+        backup = self.service.store.load_backup()
+        diagnostics = {
+            "schema_version": state.schema_version,
+            "revision": state.revision,
+            "last_successful_save": state.updated_at,
+            "last_backup": backup.updated_at if backup is not None else None,
+            "last_reflection": state.reflection_state.last_run_at,
+            "context_size": len(context.text.encode("utf-8")),
+            "completed_migrations": list(state.completed_migrations),
+            "degraded": self.service.degraded_reason,
+        }
         return {
             "schema_version": state.schema_version, "revision": state.revision,
             "runtime_enabled": bool(cfg.get_soul_enabled()) if 'cfg' in locals() else False,
@@ -45,6 +56,7 @@ class SoulStudioAPI:
             "privacy": state.to_dict()["privacy"],
             "context_preview": context.text,
             "context_fingerprint": context.fingerprint,
+            "diagnostics": diagnostics,
             "history": [event.to_dict() for event in self.service.store.read_events(limit=100)],
             "recovery": self.service.store.last_recovery,
             "degraded": self.service.degraded_reason,
