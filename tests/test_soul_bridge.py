@@ -26,6 +26,8 @@ def test_snapshot_export_and_affect_explanation_are_redacted_from_credentials(tm
     store, service, api = setup(tmp_path)
     snap = api.snapshot()
     assert snap["revision"] == 0
+    assert snap["presentation"]["edition"] in {"male", "female"}
+    assert snap["presentation"]["archetype"] in {"Brother-Guardian", "Guardian-Confidante"}
     assert "not biological emotion" in snap["affect"]["framing"]
     assert snap["context_preview"].startswith("[CONSTITUTION]")
     assert snap["diagnostics"]["schema_version"] == snap["schema_version"]
@@ -43,6 +45,23 @@ def test_snapshot_exposes_read_only_authoritative_commitment_projection(tmp_path
     projected = ("long-task:7; status=active; title=Finish report; authoritative_source=long_task",)
     monkeypatch.setattr("core.soul.api.project_runtime_commitments", lambda: projected)
     assert api.snapshot()["commitments"] == list(projected)
+
+
+def test_snapshot_switches_to_female_friend_presentation_without_state_fork(tmp_path, monkeypatch):
+    from memory import config_manager as cfg
+    store, _, api = setup(tmp_path)
+    monkeypatch.setattr(cfg, "get_persona", lambda: "female")
+    monkeypatch.setattr(cfg, "get_assistant_name", lambda: "JARVIS")
+    monkeypatch.setattr(cfg, "get_user_name", lambda: "Alex")
+    monkeypatch.setattr(cfg, "get_voice", lambda: "Aoede")
+    monkeypatch.setattr(cfg, "get_personalization_enabled", lambda: True)
+    monkeypatch.setattr(cfg, "get_soul_enabled", lambda: True)
+    female = api.snapshot()
+    assert female["presentation"]["archetype"] == "Guardian-Confidante"
+    assert "trusted female friend" in female["presentation"]["identity_summary"]
+    assert 'Archetype: "Guardian-Confidante"' in female["context_preview"]
+    assert store.load().identity.archetype == "Brother-Guardian"
+    assert store.load().revision == female["revision"] == 0
 
 
 def test_identity_update_is_bounded_and_stale_revision_conflicts(tmp_path):

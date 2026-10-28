@@ -13,6 +13,7 @@ from core.soul import (
     SCHEMA_VERSION,
     AffectState,
     Edition,
+    FEMALE_OVERLAY,
     IdentityProfile,
     InitiativePolicy,
     LearnedTrait,
@@ -47,6 +48,16 @@ def test_male_overlay_is_commanding_but_not_a_capability_policy() -> None:
     text = (" ".join(MALE_OVERLAY.presence) + " " + MALE_OVERLAY.voice_guidance).lower()
     for forbidden in ("permission", "tool access", "more intelligent", "superior capability"):
         assert forbidden not in text
+
+
+def test_female_overlay_is_a_female_friend_not_a_weaker_capability_tier() -> None:
+    assert FEMALE_OVERLAY.edition is Edition.FEMALE
+    assert FEMALE_OVERLAY.archetype == "Guardian-Confidante"
+    text = " ".join((FEMALE_OVERLAY.identity_summary, FEMALE_OVERLAY.voice_guidance, FEMALE_OVERLAY.relationship_guidance)).lower()
+    assert "female friend" in text and "not a brother" in text
+    for forbidden in ("less intelligent", "fewer tools", "reduced permission"):
+        assert forbidden not in text
+    assert "not a brother" in text and "submissive helper" in text
 
 
 def test_constitution_is_ordered_immutable_and_complete() -> None:

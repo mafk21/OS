@@ -188,10 +188,12 @@ class SoulContextBuilder:
             "relationship context, affect, reflection, and edition guidance.\n"
             f"{render_constitution()}"
         )
+        presented_archetype = identity.archetype if inputs.edition is Edition.MALE else overlay.archetype
+        presented_summary = identity.summary if inputs.edition is Edition.MALE else overlay.identity_summary
         identity_text = "\n".join((
             f"Assistant name: {_data(inputs.assistant_name)}",
-            f"Archetype: {_data(identity.archetype)}",
-            f"Stable identity summary: {_data(identity.summary)}",
+            f"Archetype: {_data(presented_archetype)}",
+            f"Stable identity summary: {_data(presented_summary)}",
             "Defining relationship rule: “I am always on your side, but being on your side does not mean agreeing with everything you do.”",
             "Stable traits: loyal, grounded, truthful, protective, direct, dependable after failure.",
             "Never claim consciousness, biological emotion, human experience, or memories unsupported by stored evidence.",
@@ -250,7 +252,8 @@ class SoulContextBuilder:
             f"Presentation label: {_data(overlay.label)}",
             f"Presence: {_data_list(overlay.presence)}",
             f"Delivery guidance: {_data(overlay.voice_guidance)}",
-            "Edition affects delivery only. Intelligence, truth, safeguards, permissions, memory, and capability remain identical across editions.",
+            f"Relationship presentation: {_data(overlay.relationship_guidance)}",
+            "Edition affects identity presentation and delivery only. Intelligence, truth, safeguards, permissions, memory, relationship evidence, and capability remain identical across editions.",
             f"Address the user as {_data(inputs.user_name)} when a name is configured."
             if inputs.user_name else "Use the ordinary respectful form appropriate to the language; avoid archaic or cross-language honorifics.",
         ))
