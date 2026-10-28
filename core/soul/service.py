@@ -16,6 +16,7 @@ from .affect import AffectEvent, AffectUpdate, apply_event_to_soul
 from .context import SoulContext, SoulContextBuilder, SoulContextInputs
 from .migrations import COMPANIONS_IMPORT_ID, import_companion_compatibility
 from .models import Edition, RelationshipKind, Sensitivity, SoulState, utc_now_iso
+from .reflection import ReflectionEvidence, ReflectionResult, ReflectionRunner, run_reflection
 from .relationship import (
     ForgetResult,
     RelationshipUpdate,
@@ -43,6 +44,7 @@ class SoulService:
         self.logger = logger or (lambda message: print(f"[Soul] {message}"))
         self._lock = threading.RLock()
         self._state: SoulState | None = None
+        self._reflection_runner = ReflectionRunner()
         self.degraded_reason: str | None = None
 
     def initialize(self) -> SoulState:
@@ -158,6 +160,34 @@ class SoulService:
             )
             self.builder.clear_cache()
             return holder["result"]
+
+    def reflect(
+        self,
+        evidence: tuple[ReflectionEvidence, ...],
+        generator,
+        *,
+        now: str | None = None,
+    ) -> ReflectionResult:
+        """Run validated reflection and persist only the locally produced state."""
+        with self._lock:
+            self.initialize()
+            state = self.store.load()
+            result = run_reflection(state, evidence, generator, now=now or utc_now_iso())
+            if result.status == "not_qualified":
+                return result
+            self._state = self.store.transact(
+                lambda _current: result.state,
+                expected_revision=state.revision,
+                reason=f"reflection {result.status}; staged={len(result.staged)}; activated={len(result.activated)}",
+                source="reflection",
+                event="soul.reflection_completed" if result.status == "completed" else "soul.reflection_failed",
+            )
+            self.builder.clear_cache()
+            return replace(result, state=self._state)
+
+    def submit_reflection(self, evidence, generator, *, now: str | None = None) -> bool:
+        """Schedule reflection off the user-response path; enforce single flight."""
+        return self._reflection_runner.submit(lambda: self.reflect(tuple(evidence), generator, now=now))
 
     def _import_companions_once(self, state: SoulState) -> SoulState:
         if COMPANIONS_IMPORT_ID in state.completed_migrations or not self.companions_path.exists():
