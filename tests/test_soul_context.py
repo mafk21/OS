@@ -58,7 +58,7 @@ def test_male_overlay_is_strong_presence_but_explicitly_delivery_only() -> None:
     edition = result.text.split("[EDITION AND VOICE]\n", 1)[1]
     for quality in ("commanding", "grounded", "assertive", "protective"):
         assert quality in edition
-    assert "affects delivery only" in edition
+    assert "affects identity presentation and delivery only" in edition
     assert "capability remain identical across editions" in edition
     assert '"Alex"' in edition
 
@@ -174,13 +174,16 @@ def test_builder_rejects_noncanonical_or_insufficient_budget_configuration() -> 
         SoulContextBuilder(total_budget=1_000)
 
 
-def test_female_overlay_does_not_change_constitution_or_identity() -> None:
+def test_female_is_a_female_friend_without_changing_constitution_or_authority() -> None:
     builder = SoulContextBuilder()
     state = SoulState.new(NOW)
     male = builder.build(state, SoulContextInputs(edition=Edition.MALE, voice_name="Charon")).text
     female = builder.build(state, SoulContextInputs(edition=Edition.FEMALE, voice_name="Aoede")).text
-    male_before_edition = male.split("[EDITION AND VOICE]", 1)[0]
-    female_before_edition = female.split("[EDITION AND VOICE]", 1)[0]
-    assert male_before_edition == female_before_edition
-    assert "Edition: male" in male
-    assert "Edition: female" in female
+    assert male.split("[IDENTITY]", 1)[0] == female.split("[IDENTITY]", 1)[0]
+    assert 'Archetype: "Guardian-Confidante"' in female
+    assert "trusted female friend" in female
+    assert "not a brother, man, mother" in female
+    assert 'Archetype: "Brother-Guardian"' in male
+    assert "Edition: male" in male and "Edition: female" in female
+    for unchanged in ("Intelligence", "safeguards", "permissions", "relationship evidence", "capability"):
+        assert unchanged in female

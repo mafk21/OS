@@ -2,7 +2,7 @@
 
 Status: Phases 0–14 complete; implementation and release hardening gates passed
 Target branch: `arena/cdb91afe-os`
-Personality target: **Brother-Guardian**
+Personality targets: **Brother-Guardian (Male)** and **Guardian-Confidante (Female)**
 
 ## 1. Product contract
 

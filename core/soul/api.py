@@ -7,7 +7,7 @@ from typing import Any
 from .affect import explain_affect
 from .context import SoulContextInputs
 from .models import (
-    AffectState, Edition, IdentityProfile, InitiativePolicy, RelationshipState,
+    AffectState, EDITION_OVERLAYS, Edition, IdentityProfile, InitiativePolicy, RelationshipState,
     SoulState, TraitRange, TraitStatus, ValidationError,
 )
 from .service import SoulService, project_runtime_commitments
@@ -30,6 +30,16 @@ class SoulStudioAPI:
         except Exception:
             inputs = SoulContextInputs()
         context = self.service.builder.build(state, inputs)
+        overlay = EDITION_OVERLAYS[inputs.edition]
+        presentation = {
+            "edition": inputs.edition.value,
+            "label": overlay.label,
+            "archetype": overlay.archetype,
+            "identity_summary": overlay.identity_summary,
+            "presence": list(overlay.presence),
+            "voice_guidance": overlay.voice_guidance,
+            "relationship_guidance": overlay.relationship_guidance,
+        }
         backup = self.service.store.load_backup()
         diagnostics = {
             "schema_version": state.schema_version,
@@ -45,6 +55,7 @@ class SoulStudioAPI:
             "schema_version": state.schema_version, "revision": state.revision,
             "runtime_enabled": bool(cfg.get_soul_enabled()) if 'cfg' in locals() else False,
             "constitution_version": state.constitution_version,
+            "presentation": presentation,
             "identity": state.to_dict()["identity"],
             "affect": explain_affect(state.affect),
             "relationship": state.to_dict()["relationship"],
