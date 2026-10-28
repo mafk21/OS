@@ -323,7 +323,7 @@ def record_long_task_completion(task: dict) -> None:
     )
 
 
-def _runtime_commitment_context() -> tuple[str, ...]:
+def project_runtime_commitments() -> tuple[str, ...]:
     """Best-effort read-only projection from authoritative task/memory stores."""
     try:
         from core.long_tasks import get_long_task_manager
@@ -351,7 +351,7 @@ def build_runtime_context(*, include_personalization: bool | None = None) -> str
             user_name=cfg.get_user_name(),
             voice_name=cfg.get_voice(),
             personalization_enabled=personalized,
-            active_commitments=_runtime_commitment_context() if personalized else (),
+            active_commitments=project_runtime_commitments() if personalized else (),
         )
         return get_default_service().build_context(inputs).text
     except Exception as exc:

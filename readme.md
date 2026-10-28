@@ -694,6 +694,21 @@ OS/
 
 ---
 
+## 🛡️ Soul Studio
+
+The existing APEX Studio now includes a revision-safe **Soul** tab for the
+Brother-Guardian personality. Its eight views cover Identity, Expressive State,
+Relationship, projected Commitments, Initiative, Learned Traits, History, and
+Privacy/Control. Users can inspect explanations and canonical context, tune
+bounded traits, manage initiative/privacy, decide staged traits, selectively
+forget relationship subjects, export, undo, or explicitly reset state.
+
+Commitments are read-only projections over the authoritative long-task and
+memory systems, not a duplicate executor. Every mutation uses optimistic
+revision checks; stale edits reload current state rather than overwriting it.
+Soul remains behind the local `soul_enabled` rollback setting and all existing
+Companions, Interview, Skills, and Themes Studio views remain available.
+
 ## 📄 License
 
 Distributed under the [MIT License](LICENSE).

@@ -7,6 +7,7 @@ import {
   Palette,
   Plus,
   Sparkles,
+  Shield,
   Trash2,
   UserCheck,
   Users,
@@ -17,6 +18,7 @@ import {
   ThemeCustomConfig,
   useJarvis,
 } from "./JarvisBridge";
+import SoulStudioPanel from "./SoulStudioPanel";
 
 type InterviewQ = { id: string; question: string; options: string[] };
 type LearnedRule = { id: string; rule: string; ts: string };
@@ -59,8 +61,8 @@ export default function StudioModal() {
     setThemeCustom,
   } = useJarvis();
 
-  const [tab, setTab] = useState<"companions" | "interview" | "skills" | "themes">(
-    "companions"
+  const [tab, setTab] = useState<"soul" | "companions" | "interview" | "skills" | "themes">(
+    "soul"
   );
   const [data, setData] = useState<StudioSnapshot | null>(null);
   const [statusMsg, setStatusMsg] = useState("");
@@ -266,6 +268,7 @@ export default function StudioModal() {
         >
           {(
             [
+              { id: "soul", label: "SOUL", icon: Shield },
               { id: "companions", label: "COMPANIONS", icon: Users },
               { id: "interview", label: "BEHAVIOR INTERVIEW", icon: UserCheck },
               { id: "skills", label: "SKILLS STUDIO", icon: BookOpen },
@@ -316,6 +319,8 @@ export default function StudioModal() {
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "18px 22px" }}>
+          {tab === "soul" && <SoulStudioPanel primary={PRIMARY} secondary={SECONDARY} />}
+
           {tab === "companions" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
               {/* Existing Companions */}
