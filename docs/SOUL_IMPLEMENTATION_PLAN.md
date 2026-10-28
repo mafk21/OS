@@ -1,6 +1,6 @@
 # JARVIS Persistent Soul — Complete Implementation Plan
 
-Status: Phases 0–7 complete; commitment projection and coaching have not started
+Status: Phases 0–8 complete; evidence-based reflection has not started
 Target branch: `arena/cdb91afe-os`
 Personality target: **Brother-Guardian**
 

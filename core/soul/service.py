@@ -269,6 +269,18 @@ def record_long_task_completion(task: dict) -> None:
     )
 
 
+def _runtime_commitment_context() -> tuple[str, ...]:
+    """Best-effort read-only projection from authoritative task/memory stores."""
+    try:
+        from core.long_tasks import get_long_task_manager
+        from memory.memory_manager import load_memory
+        from .commitments import format_active_commitments, project_long_tasks, project_memory_projects
+        items = (*project_long_tasks(get_long_task_manager().list_detailed()), *project_memory_projects(load_memory()))
+        return format_active_commitments(items)
+    except Exception:
+        return ()
+
+
 def build_runtime_context(*, include_personalization: bool | None = None) -> str:
     """Build canonical context from live config, or return empty on rollback/failure."""
     try:
@@ -285,6 +297,7 @@ def build_runtime_context(*, include_personalization: bool | None = None) -> str
             user_name=cfg.get_user_name(),
             voice_name=cfg.get_voice(),
             personalization_enabled=personalized,
+            active_commitments=_runtime_commitment_context() if personalized else (),
         )
         return get_default_service().build_context(inputs).text
     except Exception as exc:
