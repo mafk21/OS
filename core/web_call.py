@@ -4,14 +4,53 @@ Credentials live in ignored config/web_call.json. Calls are turn-based voice
 sessions delivered through Web Push; no PSTN number or paid carrier is used.
 """
 from __future__ import annotations
-import json, os, re, urllib.error, urllib.request
+import json, os, re, threading, time, urllib.error, urllib.request
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 BASE_DIR=Path(__file__).resolve().parents[1]
 CONFIG_PATH=BASE_DIR/"config"/"web_call.json"
 _ID=re.compile(r"^[0-9a-f-]{36}$",re.I)
+_reply_handler:Callable[[str,str],None]|None=None
+_watchers:set[str]=set()
+_watch_lock=threading.Lock()
+
+def set_reply_handler(handler:Callable[[str,str],None]|None)->None:
+    """Register the live-session bridge used for replies from answered calls."""
+    global _reply_handler
+    _reply_handler=handler
+
+def watch_replies(session_id:str,*,config:dict[str,str]|None=None,poll_seconds:float=1.0)->bool:
+    """Poll one active call and inject each user reply into the live JARVIS session."""
+    if not _ID.match(str(session_id)): raise ValueError("Invalid call session ID")
+    with _watch_lock:
+        if session_id in _watchers: return False
+        _watchers.add(session_id)
+    cfg=dict(config or load_config())
+    def run()->None:
+        seen:set[int]=set()
+        try:
+            while True:
+                try:
+                    data=session_status(session_id,config=cfg)
+                    session=data.get("session") or {}
+                    for message in data.get("messages") or []:
+                        if message.get("sender")!="user": continue
+                        mid=int(message.get("id") or 0)
+                        if mid in seen: continue
+                        seen.add(mid)
+                        body=str(message.get("body") or "").strip()
+                        handler=_reply_handler
+                        if body and handler: handler(session_id,body)
+                    if session.get("status") in {"ended","declined","expired"}: break
+                except Exception:
+                    pass
+                time.sleep(max(.25,poll_seconds))
+        finally:
+            with _watch_lock: _watchers.discard(session_id)
+    threading.Thread(target=run,name=f"web-call-{session_id[:8]}",daemon=True).start()
+    return True
 
 def load_config(path:Path=CONFIG_PATH)->dict[str,str]:
     try: raw=json.loads(path.read_text(encoding="utf-8"))

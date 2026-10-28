@@ -1,4 +1,4 @@
-import io, json
+import io, json, threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -43,6 +43,20 @@ def test_status_and_sender_reply_never_use_pairing_code():
  with patch("urllib.request.urlopen",open_):
   web_call.session_status(sid,config=CFG);web_call.session_action(sid,"reply","On my way",config=CFG)
  assert all(auth=="Bearer secret" for _,_,auth in seen)
+
+def test_reply_watcher_bridges_user_message_once(monkeypatch):
+ sid="12345678-1234-1234-1234-123456789abc"; delivered=[]; done=threading.Event(); calls=iter([
+  {"session":{"status":"answered"},"messages":[{"id":7,"sender":"user","body":"Can you hear me?"}]},
+  {"session":{"status":"ended"},"messages":[{"id":7,"sender":"user","body":"Can you hear me?"}]},
+ ])
+ monkeypatch.setattr(web_call,"session_status",lambda *a,**k:next(calls))
+ web_call.set_reply_handler(lambda session,text:(delivered.append((session,text)),done.set()))
+ assert web_call.watch_replies(sid,config=CFG,poll_seconds=.01)
+ assert done.wait(1)
+ import time; time.sleep(.05)
+ assert delivered==[(sid,"Can you hear me?")]
+ web_call.set_reply_handler(None)
+
 
 def test_schedule_writes_owner_only_script_without_shell_interpolation(tmp_path,monkeypatch):
  from actions import reminder

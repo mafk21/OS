@@ -1,6 +1,6 @@
 """Call the user through their private free JARVIS web-call portal."""
 from datetime import datetime
-from core.web_call import configure, load_config, schedule_call, session_action, session_status, start_call
+from core.web_call import configure, load_config, schedule_call, session_action, session_status, start_call, watch_replies
 
 def web_call(parameters:dict,response=None,player=None,session_memory=None)->str:
     action=str(parameters.get("action") or "start").strip().lower()
@@ -15,7 +15,8 @@ def web_call(parameters:dict,response=None,player=None,session_memory=None)->str
             return f"Web calling is configured for {cfg['url']}. The phone pairing code is installed."
         if action=="start":
             result=start_call(str(parameters.get("message") or ""),str(parameters.get("reason") or "JARVIS is calling"))
-            return f"Call sent. Session {result['session_id']}; {result.get('notifications',0)} paired device notification(s) delivered."
+            watch_replies(result["session_id"])
+            return f"Call sent and live reply bridge started. Session {result['session_id']}; {result.get('notifications',0)} paired device notification(s) delivered."
         if action=="schedule":
             date=str(parameters.get("date") or ""); time=str(parameters.get("time") or "")
             target=datetime.strptime(f"{date} {time}","%Y-%m-%d %H:%M")
