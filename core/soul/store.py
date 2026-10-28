@@ -178,6 +178,12 @@ class SoulStore:
                 pass
         return candidate
 
+    def load_backup(self) -> SoulState | None:
+        """Return the validated previous revision without mutating current state."""
+        with self._lock:
+            state, _error, _migrations = self._read_state(self.backup_path)
+            return state
+
     def read_events(self, *, limit: int = 200) -> list[SoulAuditEvent]:
         limit = max(1, min(int(limit), 1000))
         with self._lock:

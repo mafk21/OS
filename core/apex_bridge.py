@@ -796,6 +796,46 @@ class ApexHudBridge:
 
     # ── Inbound HUD command execution ─────────────────────────────────────────
 
+    def _get_soul_api(self):
+        from core.soul.api import SoulStudioAPI
+        from core.soul.service import get_default_service
+        return SoulStudioAPI(get_default_service())
+
+    def handle_soul_action(self, data: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """Validated Soul Studio mutations with optimistic revision conflicts."""
+        try:
+            from core.soul.store import RevisionConflict
+            api = self._get_soul_api()
+            operation = str(data.get("operation") or "").strip()
+            revision = data.get("expected_revision")
+            if operation == "runtime":
+                if not isinstance(data.get("enabled"), bool):
+                    return 400, {"ok": False, "error": "enabled must be boolean"}
+                cfg.save_soul_enabled(data["enabled"])
+                return 200, {"ok": True, "soul": api.snapshot()}
+            if operation == "identity":
+                state = api.update_identity(data.get("values") if isinstance(data.get("values"), dict) else {}, revision)
+            elif operation == "initiative":
+                state = api.update_initiative(data.get("values") if isinstance(data.get("values"), dict) else {}, revision)
+            elif operation == "privacy":
+                state = api.update_privacy(data.get("values") if isinstance(data.get("values"), dict) else {}, revision)
+            elif operation == "trait":
+                state = api.decide_trait(str(data.get("trait_id") or ""), str(data.get("decision") or ""), revision)
+            elif operation == "forget_relationship":
+                state, claims, contradictions = api.forget_relationship(str(data.get("subject") or ""), revision)
+                return 200, {"ok": True, "revision": state.revision, "forgotten": {"claims": claims, "contradictions": contradictions}, "soul": api.snapshot()}
+            elif operation == "reset":
+                state = api.reset(str(data.get("scope") or ""), revision)
+            elif operation == "undo":
+                state = api.undo(revision)
+            else:
+                return 400, {"ok": False, "error": "unsupported Soul operation"}
+            return 200, {"ok": True, "revision": state.revision, "soul": api.snapshot()}
+        except RevisionConflict as exc:
+            return 409, {"ok": False, "error": str(exc), "code": "revision_conflict"}
+        except Exception as exc:
+            return 400, {"ok": False, "error": str(exc)}
+
     def handle_action(self, data: dict[str, Any]) -> dict[str, Any]:
         action = str(data.get("action") or "").strip()
         ui = self._ui
@@ -1835,6 +1875,31 @@ class ApexHudBridge:
                 companions.get_studio_snapshot, list(TOOL_NODE_MAP.keys())
             )
             return JSONResponse({"ok": True, "studio": st})
+
+        @app.get("/api/hud/soul")
+        async def _soul_get():
+            try:
+                snap = await asyncio.to_thread(self._get_soul_api().snapshot)
+                return JSONResponse({"ok": True, "soul": snap})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+
+        @app.get("/api/hud/soul/export")
+        async def _soul_export():
+            try:
+                export = await asyncio.to_thread(self._get_soul_api().export)
+                return JSONResponse({"ok": True, "export": export})
+            except Exception as exc:
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+
+        @app.post("/api/hud/soul")
+        async def _soul_post(req: Request):
+            try:
+                body = await req.json()
+            except Exception:
+                body = {}
+            status, result = await asyncio.to_thread(self.handle_soul_action, body)
+            return JSONResponse(result, status_code=status)
 
         @app.get("/api/hud/automations")
         async def _automations_get():
