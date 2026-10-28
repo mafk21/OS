@@ -3466,6 +3466,23 @@ class JarvisLive:
                     # Never-nag-twice: skip topics suggested recently
                     continue
 
+                # When Soul is active, durable quiet hours, budget, snooze, and
+                # per-topic cooldown must approve and reserve the interruption
+                # before any message is sent. Legacy heartbeat remains unchanged
+                # while the staged Soul flag is off.
+                try:
+                    from memory.config_manager import get_soul_enabled
+                    if get_soul_enabled():
+                        from core.soul.service import get_default_service
+                        decision = await asyncio.to_thread(
+                            get_default_service().evaluate_initiative_topic, topic
+                        )
+                        if decision.candidate is None:
+                            continue
+                except Exception as e:
+                    print(f"[Soul] Initiative gate failed closed: {e}")
+                    continue
+
                 level = HeartbeatLevel.SUGGEST
                 self._heartbeat.record_suggestion(topic, level)
 

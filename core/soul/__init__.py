@@ -17,6 +17,7 @@ from .commitments import (
 from .constitution import CONSTITUTION_VERSION, RULES, ConstitutionalRule, render_constitution
 from .context import SECTION_BUDGETS, SECTION_ORDER, SoulContext, SoulContextBuilder, SoulContextInputs
 from .events import SoulAuditEvent
+from .initiative import InitiativeCandidate, InitiativeDecision, record_delivery, record_outcome, select_initiative
 from .migrations import COMPANIONS_IMPORT_ID, MigrationResult, import_companion_compatibility, migrate_raw
 from .models import (
     SCHEMA_VERSION,
@@ -28,6 +29,7 @@ from .models import (
     FEMALE_OVERLAY,
     IdentityProfile,
     InitiativePolicy,
+    InitiativeTopicState,
     LearnedTrait,
     MALE_OVERLAY,
     PrivacyPolicy,
@@ -75,7 +77,8 @@ __all__ = [
     "SECTION_BUDGETS", "SECTION_ORDER", "SoulContext", "SoulContextBuilder", "SoulContextInputs",
     "COMPANIONS_IMPORT_ID", "MigrationResult", "import_companion_compatibility", "migrate_raw",
     "AffectDelta", "AffectState", "CoachingMode", "Edition", "EditionOverlay", "FEMALE_OVERLAY", "IdentityProfile",
-    "InitiativePolicy", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
+    "InitiativePolicy", "InitiativeTopicState", "InitiativeCandidate", "InitiativeDecision",
+    "select_initiative", "record_delivery", "record_outcome", "LearnedTrait", "MALE_OVERLAY", "PrivacyPolicy", "ReflectionState",
     "ReflectionEvidence", "ReflectionResult", "ReflectionRunner", "qualifies_for_reflection",
     "reflection_backoff_seconds", "run_reflection",
     "RelationshipClaim", "RelationshipClaimStatus", "RelationshipContradiction", "RelationshipKind",
