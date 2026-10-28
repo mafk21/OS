@@ -1899,7 +1899,9 @@ class JarvisLive:
             "[CALL ROUTING]\n"
             "For requests such as 'call me' or 'ring my phone', invoke web_call. "
             "Never route voice calls through manage_remote and never state that Telegram is required. "
-            "If web_call reports that one-time pairing is needed, ask only for the JARVIS Call website pairing code.\n\n"
+            "If web_call reports that one-time pairing is needed, ask only for the JARVIS Call website pairing code. "
+            "An inbound message whose channel starts with web_call is a live phone turn: answer naturally and concisely by invoking "
+            "web_call action=reply with that session ID; never leave the answer only on the desktop.\n\n"
         )
 
         # Everything the model is told about *itself* is derived here, not
