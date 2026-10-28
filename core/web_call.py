@@ -39,10 +39,11 @@ def watch_replies(session_id:str,*,config:dict[str,str]|None=None,poll_seconds:f
                         if message.get("sender")!="user": continue
                         mid=int(message.get("id") or 0)
                         if mid in seen: continue
-                        seen.add(mid)
                         body=str(message.get("body") or "").strip()
                         handler=_reply_handler
-                        if body and handler: handler(session_id,body)
+                        if body and handler:
+                            handler(session_id,body)
+                            seen.add(mid)
                     if session.get("status") in {"ended","declined","expired"}: break
                 except Exception:
                     pass
