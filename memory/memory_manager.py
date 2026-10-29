@@ -1,7 +1,7 @@
 import json
 import re
 from datetime import date, datetime
-from threading import Lock
+from threading import RLock
 from pathlib import Path
 import sys
 
@@ -14,7 +14,7 @@ def get_base_dir() -> Path:
 
 BASE_DIR         = get_base_dir()
 MEMORY_PATH      = BASE_DIR / "memory" / "long_term.json"
-_lock            = Lock()
+_lock            = RLock()
 MAX_VALUE_LENGTH = 380
 
 # ── Why there are two very different numbers here ────────────────────────────
@@ -38,8 +38,8 @@ MAX_VALUE_LENGTH = 380
 # Everything above the core stays on disk and is fetched on demand by the
 # recall_memory tool — see search_memory() and format_memory_for_prompt().
 MEMORY_MAX_CHARS  = 200_000
-PROMPT_CORE_CHARS = 900
-PROMPT_INDEX_CHARS = 420
+PROMPT_CORE_CHARS = 1800
+PROMPT_INDEX_CHARS = 700
 # Most entries any one category may contribute to the core block, so a person
 # with forty stored preferences still gets their sister into the prompt.
 PROMPT_MAX_PER_CATEGORY = 6
@@ -112,8 +112,11 @@ def dedup_memory(memory: dict) -> list[tuple]:
             val = _entry_value(items[key])
             if not val:
                 continue
-            norm = val.strip().lower()
-            updated = items[key].get("updated", "0000-00-00")
+            # Values alone are not duplicates: two different people can share
+            # a name and one preference can legitimately equal a project note.
+            # Merge only equivalent keys carrying the same value.
+            norm = f"{_pretty(key).lower()}\0{val.strip().lower()}"
+            updated = items[key].get("updated_at") or items[key].get("updated", "0000-00-00")
             if norm in seen:
                 old_cat, old_key, old_updated = seen[norm]
                 if updated >= old_updated:
@@ -191,17 +194,16 @@ def load_memory() -> dict:
     for key in base:
         if key not in data:
             data[key] = {}
-    # Hygiene at load: forget TTL-stale entries, merge duplicates. Done outside
-    # the lock because save_memory re-acquires it (Lock is not reentrant).
-    # Persist the cleaned store so the next session starts clean.
-    removed_expired = expire_memory(data)
+    # Never delete personal facts merely because time passed. Stale context is
+    # ranked lower at recall/prompt time; forgetting remains an explicit user
+    # action. Only unambiguous duplicates are compacted here.
     removed_dups = dedup_memory(data)
-    if removed_expired or removed_dups:
+    if removed_dups:
         try:
             save_memory(data)
         except Exception:
             pass
-        _notify_hygiene(removed_expired, removed_dups)
+        _notify_hygiene([], removed_dups)
     return data
 
 def _all_entries(memory: dict) -> list[tuple]:
@@ -267,17 +269,26 @@ def _trim_to_limit(memory: dict) -> dict:
             pass
     return memory
 
+def _atomic_write(memory: dict) -> None:
+    """Durably replace the memory store without exposing a partial JSON file."""
+    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp = MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".tmp")
+    temp.write_text(json.dumps(memory, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        temp.chmod(0o600)
+    except OSError:
+        pass
+    temp.replace(MEMORY_PATH)
+
+
 def save_memory(memory: dict) -> None:
     if not isinstance(memory, dict):
         return
-    expire_memory(memory)          # forget TTL-stale entries before persisting
+    # Age affects relevance, never existence. Only explicit forget requests or
+    # the runaway storage guard may remove a personal memory.
     memory = _trim_to_limit(memory)
-    MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _lock:
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        _atomic_write(memory)
 
 
 def _truncate_value(val: str) -> str:
@@ -300,10 +311,19 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             if _recursive_update(target[key], value):
                 changed = True
         else:
-            today = datetime.now().strftime("%Y-%m-%d")
-            new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value))
-            entry    = {"value": new_val, "updated": today}
+            now = datetime.now().astimezone()
+            today = now.strftime("%Y-%m-%d")
+            new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value).strip())
+            entry    = {"value": new_val, "updated": today, "updated_at": now.isoformat(timespec="seconds")}
+            if isinstance(value, dict):
+                for meta in ("source", "confidence", "explicit"):
+                    if meta in value:
+                        entry[meta] = value[meta]
             existing = target.get(key, {})
+            if isinstance(existing, dict):
+                for meta in ("source", "confidence", "explicit"):
+                    if meta not in entry and meta in existing:
+                        entry[meta] = existing[meta]
             # Conflict resolution: same key, new value differs from stored.
             # Keep the previous value in _prev history (cap 5) so nothing is
             # silently overwritten; the latest value stays in "value".
@@ -315,7 +335,10 @@ def _recursive_update(target: dict, updates: dict) -> bool:
                 if len(history) > 5:
                     history = history[-5:]
                 entry["_prev"] = history
-            if not isinstance(existing, dict) or existing.get("value") != new_val:
+            if (not isinstance(existing, dict) or existing.get("value") != new_val
+                    or existing.get("updated_at") != entry["updated_at"]):
+                if isinstance(existing, dict) and existing.get("_prev") and "_prev" not in entry:
+                    entry["_prev"] = existing["_prev"]
                 target[key] = entry
                 changed = True
     return changed
@@ -324,11 +347,14 @@ def _recursive_update(target: dict, updates: dict) -> bool:
 def update_memory(memory_update: dict) -> dict:
     if not isinstance(memory_update, dict) or not memory_update:
         return load_memory()
-    memory = load_memory()
-    if _recursive_update(memory, memory_update):
-        save_memory(memory)
-        print(f"[Memory] 💾 Saved: {list(memory_update.keys())}")
-    return memory
+    # One read-modify-write transaction prevents simultaneous tool/session
+    # updates from silently overwriting each other.
+    with _lock:
+        memory = load_memory()
+        if _recursive_update(memory, memory_update):
+            save_memory(memory)
+            print(f"[Memory] 💾 Saved: {list(memory_update.keys())}")
+        return memory
 
 def _entry_value(entry) -> str:
     """Accept both the {'value': ..., 'updated': ...} shape and a bare string,
@@ -418,7 +444,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
             val = _entry_value(entry)
             if not val:
                 continue
-            updated = (entry.get("updated", "") if isinstance(entry, dict) else "") or "0000-00-00"
+            updated = ((entry.get("updated_at") or entry.get("updated", "")) if isinstance(entry, dict) else "") or "0000-00-00"
             rest.append((updated, cat, key, val))
     rest.sort(key=lambda t: t[0], reverse=True)
 
@@ -524,12 +550,16 @@ def search_memory(query: str, limit: int = 8) -> str:
     An empty query is treated as "show me everything you know", capped - the
     model asks that when the user says "what do you remember about me?"."""
     memory = load_memory()
-    words  = [w for w in re.split(r"[^\w]+", (query or "").lower()) if len(w) > 1]
+    stop = {"a", "an", "the", "i", "me", "my", "you", "do", "did", "what", "who", "is", "are", "about", "remember", "know"}
+    raw_words = [w for w in re.split(r"[^\w]+", (query or "").casefold()) if len(w) > 1 and w not in stop]
+    # Tiny language-agnostic-friendly normalization for common English plural
+    # queries (projects -> project, hobbies -> hobby) without a heavy NLP model.
+    words = list(dict.fromkeys(raw_words + [w[:-1] for w in raw_words if len(w) > 3 and w.endswith("s")]))
 
     rows: list[tuple[int, str, str, str]] = []
     for cat, items in memory.items():
         if not isinstance(items, dict):
-            continue                     # skip 'sessions', which is a list
+            continue
         for key, entry in items.items():
             val = _entry_value(entry)
             if not val:
@@ -537,6 +567,19 @@ def search_memory(query: str, limit: int = 8) -> str:
             s = _score(words, cat, key, val) if words else 1
             if s > 0:
                 rows.append((s, cat, key, val))
+    # Session summaries are durable context too. They used to be skipped and
+    # then physically deleted after one startup, making prior conversations
+    # impossible to recall.
+    for i, entry in enumerate(memory.get("sessions", []) if isinstance(memory.get("sessions"), list) else []):
+        if not isinstance(entry, dict):
+            continue
+        val = str(entry.get("summary") or "").strip()
+        if not val:
+            continue
+        key = str(entry.get("date") or entry.get("created_at") or f"session_{i + 1}")
+        s = _score(words, "sessions", key, val) if words else 1
+        if s > 0:
+            rows.append((s, "sessions", key, val))
 
     if not rows:
         return (f"Nothing stored about '{query}'." if query
@@ -572,6 +615,20 @@ def all_entries_for_ui() -> list[dict]:
     rows.sort(key=lambda r: (r["updated"] or "0000-00-00"), reverse=True)
     return rows
 
+_KEY_ALIASES = {
+    "full_name": "name", "user_name": "name", "location": "city", "home_city": "city",
+    "occupation": "job", "work": "job", "preferred_language": "language",
+    "favourite_food": "favorite_food", "fav_food": "favorite_food",
+    "favourite_color": "favorite_color", "fav_color": "favorite_color",
+    "favourite_music": "favorite_music", "fav_music": "favorite_music",
+}
+
+
+def _clean_key(key: str) -> str:
+    cleaned = re.sub(r"[^\w\- ]+", "", str(key or "").strip(), flags=re.UNICODE).strip().replace(" ", "_").lower() or "note"
+    return _KEY_ALIASES.get(cleaned, cleaned)
+
+
 def remember(key: str, value: str, category: str = "notes", *, manual: bool = False) -> str:
     if not manual:
         try:
@@ -583,32 +640,40 @@ def remember(key: str, value: str, category: str = "notes", *, manual: bool = Fa
     valid = {"identity", "preferences", "projects", "relationships", "wishes", "notes"}
     if category not in valid:
         category = "notes"
-    clean_key = re.sub(r"[^a-zA-Z0-9_\- ]+", "", str(key or "").strip()).strip().replace(" ", "_").lower() or "note"
-    update_memory({category: {clean_key: {"value": value}}})
-    return f"Remembered: {category}/{clean_key} = {value}"
+    clean_key = _clean_key(key)
+    clean_value = str(value or "").strip()
+    if not clean_value:
+        return "Nothing to remember: value is empty."
+    update_memory({category: {clean_key: {
+        "value": clean_value,
+        "source": "explicit_user" if manual else "conversation",
+        "confidence": 1.0 if manual else 0.75,
+        "explicit": bool(manual),
+    }}})
+    return f"Remembered: {category}/{clean_key} = {clean_value}"
 
 
 def clear_all_memories() -> str:
     """Wipe all stored memories in long_term.json on explicit user request."""
     empty = _empty_memory()
     with _lock:
-        MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        MEMORY_PATH.write_text(
-            json.dumps(empty, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        _atomic_write(empty)
     return "Cleared all stored personal memories."
 
 
 def forget(key: str, category: str = "notes") -> str:
     memory = load_memory()
-    cat    = memory.get(category, {})
-    if key in cat:
-        del cat[key]
-        memory[category] = cat
+    clean_key = _clean_key(key)
+    candidates = [category] + [c for c in _empty_memory() if c != category]
+    for cat_name in candidates:
+        cat = memory.get(cat_name, {})
+        if not isinstance(cat, dict) or clean_key not in cat:
+            continue
+        del cat[clean_key]
+        memory[cat_name] = cat
         save_memory(memory)
-        return f"Forgotten: {category}/{key}"
-    return f"Not found: {category}/{key}"
+        return f"Forgotten: {cat_name}/{clean_key}"
+    return f"Not found: {clean_key}"
 
 
 forget_memory = forget
@@ -616,7 +681,7 @@ forget_memory = forget
 
 # ── Session memory ─────────────────────────────────────────────────────────────
 
-_SESSION_MAX = 3   # safety cap — in practice 0-1 entries after pop
+_SESSION_MAX = 50  # durable conversation continuity; prompt uses only the newest
 
 
 def save_session_summary(summary: str, language: str = "") -> None:
@@ -624,47 +689,43 @@ def save_session_summary(summary: str, language: str = "") -> None:
     summary = (summary or "").strip()
     if not summary:
         return
-    memory   = load_memory()
-    sessions = memory.get("sessions", [])
-    if not isinstance(sessions, list):
-        sessions = []
+    now = datetime.now().astimezone()
     entry: dict = {
-        "date":    datetime.now().strftime("%Y-%m-%d"),
-        "summary": summary[:280],
+        "date": now.strftime("%Y-%m-%d"),
+        "created_at": now.isoformat(timespec="seconds"),
+        "summary": summary[:600],
+        "briefed": False,
     }
     if language:
         entry["language"] = language
-    sessions.append(entry)
-    memory["sessions"] = sessions[-_SESSION_MAX:]
     with _lock:
-        MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-        MEMORY_PATH.write_text(
-            json.dumps(memory, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        memory = load_memory()
+        sessions = memory.get("sessions", [])
+        if not isinstance(sessions, list):
+            sessions = []
+        sessions.append(entry)
+        memory["sessions"] = sessions[-_SESSION_MAX:]
+        _atomic_write(memory)
     print(f"[Memory] 📝 Session saved ({entry['date']}): {summary[:60]}…")
 
 
 def pop_last_session() -> dict | None:
-    """
-    Return AND remove the most recent session entry.
-    Calling this consumes the entry so it is never repeated in future briefings.
-    """
+    """Return the newest unbriefed session and mark it briefed without erasing it."""
     with _lock:
         if not MEMORY_PATH.exists():
             return None
         try:
-            memory   = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
+            memory = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
             sessions = memory.get("sessions", [])
             if not isinstance(sessions, list) or not sessions:
                 return None
-            entry = sessions.pop()          # remove the last entry
-            memory["sessions"] = sessions
-            MEMORY_PATH.write_text(
-                json.dumps(memory, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-            return entry
+            for entry in reversed(sessions):
+                if not isinstance(entry, dict) or entry.get("briefed"):
+                    continue
+                entry["briefed"] = True
+                _atomic_write(memory)
+                return dict(entry)
+            return None
         except Exception as e:
             print(f"[Memory] ⚠️ pop_last_session error: {e}")
             return None
