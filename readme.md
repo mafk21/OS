@@ -422,7 +422,8 @@ JARVIS never starts from amnesia on reboot (`memory/timeline.py`, `actions/brain
 
 - **Unified Cross-Channel Stream**: Every spoken voice turn, desktop text message, and inbound/outbound Telegram message writes to a single local SQLite WAL timeline (`memory/brain.db`) that reloads automatically on startup.
 - **Automatic Epoch Compression**: As history grows, older stretches compress into searchable executive epoch summaries while preserving full raw transcripts for instant keyword/date search.
-- **Plain-Language Memories & Portability**: Inspect, edit, or **1-click Forget** any learned fact from the `BRAIN` panel (or by voice), plus full **1-click JSON Export & Import**.
+- **Durable, Auditable Personal Memory**: Explicit memories never expire merely because time passed; atomic owner-only writes survive interruption, concurrent updates cannot overwrite each other, corrections retain bounded history, and up to 50 searchable session summaries preserve continuity without repeatedly briefing old sessions.
+- **Plain-Language Memories & Portability**: Inspect, edit, or **1-click Forget** any learned fact from the `BRAIN` panel (or by voice), plus full **1-click JSON Export & Import**. Automatic capture obeys Adaptive Style Learning, while explicit “remember this” requests remain available and preserve the user’s original language and spelling.
 - **Drag-and-Drop Knowledge Docs & Outputs Vault**: Drop `.pdf`, `.md`, `.txt`, `.csv`, `.json`, or `.py` files into the Brain for chunked lexical/semantic retrieval during live voice & chat, and pin/search/copy every generated research brief, code artifact, or plan in the **Outputs Vault**.
 - **Granular Privacy Governance**: Independent live toggles for **Timeline Persistence**, **Personalization**, and **Adaptive Style Learning** (`memory/config_manager.py`).
 

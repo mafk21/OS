@@ -61,7 +61,7 @@ from ui import JarvisUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     save_session_summary, pop_last_session,
-    search_memory, set_trim_notifier,
+    search_memory, set_trim_notifier, remember,
 )
 
 # The file-backed tools (open_app, web_search, browser_control, …) are no longer
@@ -815,11 +815,11 @@ TOOL_DECLARATIONS = [
         "name": "save_memory",
         "description": (
             "Save an important personal fact about the user to long-term memory. "
-            "Call this silently whenever the user reveals something worth remembering: "
-            "name, age, city, job, preferences, hobbies, relationships, projects, or future plans. "
-            "Do NOT call for: weather, reminders, searches, or one-time commands. "
-            "Do NOT announce that you are saving — just call it silently. "
-            "Values must be in English regardless of the conversation language."
+            "Call this when the user explicitly asks you to remember a personal fact. "
+            "When adaptive learning is enabled, it may also save stable facts such as name, city, "
+            "preferences, relationships, or active projects, but never guesses, transient moods, "
+            "weather, reminders, searches, or one-time commands. Preserve names and values in the "
+            "user's own language; do not translate them. Do not announce background saves."
         ),
         "parameters": {
             "type": "OBJECT",
@@ -836,9 +836,10 @@ TOOL_DECLARATIONS = [
                     )
                 },
                 "key":   {"type": "STRING", "description": "Short snake_case key (e.g. name, favorite_food, sister_name)"},
-                "value": {"type": "STRING", "description": "Concise value in English (e.g. pizza, older sister)"},
+                "value": {"type": "STRING", "description": "Concise factual value, preserving the user's language and spelling"},
+                "explicit": {"type": "BOOLEAN", "description": "True only when the user directly asked JARVIS to remember/save this fact"},
             },
-            "required": ["category", "key", "value"]
+            "required": ["category", "key", "value", "explicit"]
         }
     },
     {
@@ -2153,9 +2154,10 @@ class JarvisLive:
             category = args.get("category", "notes")
             key      = args.get("key", "")
             value    = args.get("value", "")
+            explicit = bool(args.get("explicit", False))
             if key and value:
-                update_memory({category: {key: {"value": value}}})
-                print(f"[Memory] 💾 save_memory: {category}/{key} = {value}")
+                result = remember(key, value, category, manual=explicit)
+                print(f"[Memory] 💾 save_memory: {result}")
             _nf = getattr(self.ui, "notify_tool_finish", None)
             if callable(_nf):
                 _nf(_task_id, f"{category}/{key}", "completed")
@@ -2163,7 +2165,7 @@ class JarvisLive:
                 self.ui.set_state("LISTENING")
             return types.FunctionResponse(
                 id=fc.id, name=name,
-                response={"result": "ok", "silent": True}
+                response={"result": result if key and value else "Missing memory key or value.", "silent": True}
             )
 
         loop   = asyncio.get_event_loop()
