@@ -12,9 +12,10 @@ export function voiceQuality(voice:BrowserVoice,language:string):number{
 export function clearVoices<T extends BrowserVoice>(voices:T[],language:string):T[]{
  const ranked=[...voices].sort((a,b)=>voiceQuality(b,language)-voiceQuality(a,language)||a.name.localeCompare(b.name));
  const approved=ranked.filter(v=>voiceQuality(v,language)>=28&&!POOR.test(v.name));
- // Some browsers expose only one plain system voice. Keeping the best matching
- // fallback is better than silently producing no audio.
- return (approved.length?approved:ranked.filter(v=>voiceQuality(v,language)>0).slice(0,1)).slice(0,12);
+ const natural=approved.filter(v=>NATURAL.test(v.name));
+ // If natural/enhanced voices exist, do not let a user accidentally select a
+ // noticeably robotic fallback. Otherwise keep only the best few system voices.
+ return (natural.length?natural:approved.length?approved:ranked.filter(v=>voiceQuality(v,language)>0).slice(0,1)).slice(0,6);
 }
 
 export function voiceLabel(voice:BrowserVoice,language:string):string{
@@ -44,7 +45,7 @@ export function speechText(input:string):string{
 
 /** Mobile speech engines often truncate long utterances. Sentence-sized chunks
  * sound more natural and survive backgrounding better. */
-export function speechChunks(input:string,max=220):string[]{
+export function speechChunks(input:string,max=160):string[]{
  const text=speechText(input); if(!text)return[];
  const sentences=text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[text],out:string[]=[];
  for(const sentence of sentences){
