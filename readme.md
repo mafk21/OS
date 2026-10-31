@@ -1,5 +1,9 @@
 # ⚡ JARVIS OS — The AI Operating Companion
 
+<p align="center">
+  <img src="docs/assets/jarvis-logo.png" alt="JARVIS OS" width="220">
+</p>
+
 > **Not another chatbot. Not a voice skin over an API.**<br>
 > **JARVIS is a local-first AI command center that can see, hear, speak, remember, research, operate your desktop, coordinate specialist agents, connect to your services, and show every moving part inside a cinematic 3D HUD.**
 
