@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import json
@@ -282,9 +283,12 @@ def _open_vscode(project_dir: Path) -> bool:
     ]
     for cmd in vscode_candidates:
         try:
+            launch_args = [cmd, str(project_dir)]
+            if os.name == "nt" and cmd.lower().endswith((".cmd", ".bat")):
+                launch_args = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", cmd, str(project_dir)]
             subprocess.Popen(
-                [cmd, str(project_dir)],
-                shell=True,
+                launch_args,
+                shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )

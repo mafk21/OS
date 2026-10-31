@@ -21,9 +21,20 @@ def start_job(cmd: str, cwd: str = "", shell: bool = True, timeout: int = 300) -
             # Choose shell
             if sys.platform == "win32":
                 shell_cmd = cmd if shell else cmd
-                proc = subprocess.Popen(shell_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(workdir), bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                proc = subprocess.Popen(
+                    shell_cmd, # Owner-approved background task intentionally supports shell syntax.
+                    shell=True,  # nosec B602
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    cwd=str(workdir), bufsize=1,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
             else:
-                proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=str(workdir), bufsize=1, executable="/bin/bash")
+                proc = subprocess.Popen(
+                    cmd, # Owner-approved background task intentionally supports shell syntax.
+                    shell=True,  # nosec B602
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    cwd=str(workdir), bufsize=1, executable="/bin/bash",
+                )
             rec["proc"] = proc
             assert proc.stdout is not None
             for line in proc.stdout:

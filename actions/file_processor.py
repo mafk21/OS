@@ -189,9 +189,9 @@ def _process_pdf(path: Path, action: str, params: dict, speak=None) -> str:
                     text += (page.extract_text() or "") + "\n"
         except ImportError:
             try:
-                import PyPDF2
+                import pypdf
                 with open(path, "rb") as f:
-                    reader = PyPDF2.PdfReader(f)
+                    reader = pypdf.PdfReader(f)
                     for page in reader.pages:
                         text += page.extract_text() + "\n"
             except ImportError:

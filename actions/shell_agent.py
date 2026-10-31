@@ -66,7 +66,8 @@ def _run_once(cmd: str, cwd: str = "", timeout: int = 60, shell_pref: str = "") 
                 shell_options["executable"] = executable
             result = subprocess.run(
                 cmd,
-                shell=True,
+                # Explicit owner-invoked shell tool; commands require action approval.
+                shell=True,  # nosec B602
                 **shell_options,
                 capture_output=True,
                 text=True,
