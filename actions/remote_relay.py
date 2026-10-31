@@ -35,7 +35,7 @@ def manage_remote(parameters: dict, player=None, **_):
 
 TOOL={
     "name":"manage_remote",
-    "description":"Telegram text-command relay and LAN/hosted dashboard access only: status/pairing_code/start/stop/enable_relay/disable_relay. This tool NEVER places voice calls, never rings the user's phone, and must not be used for 'call me' requests; use web_call for those.",
+    "description":"Remote text-command access: status/pairing_code/start/stop/enable_relay/disable_relay. Supports Telegram via BotFather pairing, the LAN dashboard, and an optional hosted internet relay.",
     "parameters":{
         "type":"OBJECT",
         "properties":{
