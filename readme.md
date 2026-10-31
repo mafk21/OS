@@ -1,11 +1,9 @@
 <p align="center">
-  <img src="docs/assets/jarvis-logo.png" alt="JARVIS OS logo" width="140">
+  <img src="docs/assets/jarvis-wordmark.png" alt="JARVIS OS — Operating Companion" width="520">
 </p>
 
-<h1 align="center">JARVIS OS</h1>
-
 <p align="center">
-  <strong>A local-first AI operating companion that can see, speak, remember, and act.</strong>
+  <strong>A local-first AI system that can see, speak, remember, and act.</strong>
 </p>
 
 <p align="center">
