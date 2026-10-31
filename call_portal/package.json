@@ -1,9 +1,0 @@
-{
-  "name": "jarvis-call-portal",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {"dev":"next dev","build":"next build","start":"next start","typecheck":"tsc --noEmit"},
-  "dependencies": {"@supabase/supabase-js":"^2.76.1","next":"16.4.3","react":"^19.2.0","react-dom":"^19.2.0","web-push":"^3.6.7"},
-  "devDependencies": {"@types/node":"^22","@types/react":"^19","@types/react-dom":"^19","@types/web-push":"^3.6.4","typescript":"^5.9.3"},
-  "engines":{"node":">=20.9.0"}
-}

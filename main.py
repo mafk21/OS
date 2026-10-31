@@ -79,7 +79,6 @@ from actions.background_monitor import (
 from core.heartbeat            import HeartbeatEngine, HeartbeatLevel
 from core.screen_memory        import (get_screen_memory, screen_memory_search,
                                        CAPTURE_INTERVAL_SEC)
-from core.web_call            import set_reply_handler as set_web_call_reply_handler
 from core.multi_channel        import (get_gateway, start_webhook, stop_webhook,
                                        multi_channel)
 from core.subagents            import get_subagent_manager, subagent
@@ -1897,12 +1896,6 @@ class JarvisLive:
             f"Always refer to yourself as {self._asst_name}.\n"
             f"{_persona_line}\n"
             f"{_addr}\n\n"
-            "[CALL ROUTING]\n"
-            "For requests such as 'call me' or 'ring my phone', invoke web_call. "
-            "Never route voice calls through manage_remote and never state that Telegram is required. "
-            "If web_call reports that one-time pairing is needed, ask only for the JARVIS Call website pairing code. "
-            "An inbound message whose channel starts with web_call is a live phone turn: answer naturally and concisely by invoking "
-            "web_call action=reply with that session ID; never leave the answer only on the desktop.\n\n"
         )
 
         # Everything the model is told about *itself* is derived here, not
@@ -3700,19 +3693,6 @@ class JarvisLive:
         except Exception as e:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
-
-        # Bridge replies from an answered web call back into this live model
-        # session. The injected instruction makes the next model turn use the
-        # same call session for its answer instead of speaking only on desktop.
-        set_web_call_reply_handler(
-            lambda session_id, text: _inject_inbound(
-                self,
-                f"web_call:{session_id}",
-                "user",
-                text + "\nReply conversationally to this phone call now by invoking "
-                       f"web_call action=reply session_id={session_id}. Do not merely acknowledge on desktop.",
-            )
-        )
 
         # Start multi-channel webhook server (inbound from WhatsApp, Discord,
         # Slack, etc.). Injects inbound messages into the Live session.
