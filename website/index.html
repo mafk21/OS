@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <div class="scroll-progress" aria-hidden="true"></div>
+  <canvas class="signal-field" id="signal-field" aria-hidden="true"></canvas>
   <div class="noise" aria-hidden="true"></div>
   <header class="nav-wrap">
     <nav class="nav container" aria-label="Main navigation">
@@ -55,10 +57,10 @@
 
     <section class="proof-strip">
       <div class="container proof-grid">
-        <div><strong>65K+</strong><span>lines of real systems code</span></div>
-        <div><strong>52</strong><span>action modules</span></div>
-        <div><strong>23</strong><span>native connectors</span></div>
-        <div><strong>3</strong><span>desktop operating systems</span></div>
+        <div><strong data-count="65000" data-suffix="+">0</strong><span>lines of real systems code</span></div>
+        <div><strong data-count="52">0</strong><span>action modules</span></div>
+        <div><strong data-count="23">0</strong><span>native connectors</span></div>
+        <div><strong data-count="3">0</strong><span>desktop operating systems</span></div>
       </div>
     </section>
 
@@ -84,11 +86,11 @@
     <section id="capabilities" class="capabilities container">
       <div class="section-intro reveal"><p class="section-label">02 / ONE OPERATING COMPANION</p><h2>Built for the whole job.</h2><p>Voice, vision, memory, tools, and long-running execution live in one inspectable system—not a pile of disconnected demos.</p></div>
       <div class="bento">
-        <article class="tile tile-wide reveal"><div class="tile-icon">◉</div><p class="tag">LIVE INTERACTION</p><h3>Talk naturally.<br>Interrupt instantly.</h3><p>Full-duplex voice with OpenAI or Gemini, typed input, visual context, provider failover, and optional offline components.</p><div class="wave" aria-hidden="true">▁▃▆▂▇▄▂▅▇▃▁▆▅▂▇▃▁▅▆▂▃</div></article>
-        <article class="tile reveal delay-1"><div class="tile-icon">⌘</div><p class="tag">COMPUTER CONTROL</p><h3>Your OS becomes the tool.</h3><p>Apps, windows, files, browser, terminal, keyboard, mouse, clipboard, media, and settings—with permission gates.</p><div class="mini-window"><div>JARVIS / ACTION</div><p><span>›</span> Organizing workspace</p><small>14 files · reversible</small></div></article>
-        <article class="tile reveal"><div class="tile-icon">∞</div><p class="tag">DURABLE MEMORY</p><h3>Context that survives.</h3><p>A private SQLite timeline, searchable memories, imported knowledge, commitments, preferences, and explicit privacy controls.</p><div class="memory-orbit"><i></i><i></i><i></i><b>YOU</b></div></article>
-        <article class="tile tile-wide reveal delay-1"><div class="tile-icon">↯</div><p class="tag">LONG-RUNNING WORK</p><h3>Real execution. Real evidence.</h3><p>Parallel workers, checkpoints, cancellation, crash-safe recovery, live progress, and verified outputs. JARVIS does not claim completion until the work proves it.</p><div class="workers"><span><i></i>RESEARCH<small>COMPLETE</small></span><span><i></i>BUILD<small>RUNNING</small></span><span><i></i>VERIFY<small>QUEUED</small></span></div></article>
-        <article class="tile tile-full reveal"><div><div class="tile-icon">⌁</div><p class="tag">CONNECTED WHEN YOU CHOOSE</p><h3>One command layer across your work.</h3><p>Connect mail, calendars, cloud drives, messaging, development tools, productivity platforms, social services, REST APIs, webhooks, and MCP servers.</p></div><div class="connector-cloud" aria-label="Supported connectors"><span>GitHub</span><span>Google Drive</span><span>Notion</span><span>Slack</span><span>Telegram</span><span>Spotify</span><span>Linear</span><span>+16</span></div></article>
+        <article class="tile spotlight-card tile-wide reveal"><div class="tile-icon">◉</div><p class="tag">LIVE INTERACTION</p><h3>Talk naturally.<br>Interrupt instantly.</h3><p>Full-duplex voice with OpenAI or Gemini, typed input, visual context, provider failover, and optional offline components.</p><div class="wave" aria-hidden="true">▁▃▆▂▇▄▂▅▇▃▁▆▅▂▇▃▁▅▆▂▃</div></article>
+        <article class="tile spotlight-card reveal delay-1"><div class="tile-icon">⌘</div><p class="tag">COMPUTER CONTROL</p><h3>Your OS becomes the tool.</h3><p>Apps, windows, files, browser, terminal, keyboard, mouse, clipboard, media, and settings—with permission gates.</p><div class="mini-window"><div>JARVIS / ACTION</div><p><span>›</span> Organizing workspace</p><small>14 files · reversible</small></div></article>
+        <article class="tile spotlight-card reveal"><div class="tile-icon">∞</div><p class="tag">DURABLE MEMORY</p><h3>Context that survives.</h3><p>A private SQLite timeline, searchable memories, imported knowledge, commitments, preferences, and explicit privacy controls.</p><div class="memory-orbit"><i></i><i></i><i></i><b>YOU</b></div></article>
+        <article class="tile spotlight-card tile-wide reveal delay-1"><div class="tile-icon">↯</div><p class="tag">LONG-RUNNING WORK</p><h3>Real execution. Real evidence.</h3><p>Parallel workers, checkpoints, cancellation, crash-safe recovery, live progress, and verified outputs. JARVIS does not claim completion until the work proves it.</p><div class="workers"><span><i></i>RESEARCH<small>COMPLETE</small></span><span><i></i>BUILD<small>RUNNING</small></span><span><i></i>VERIFY<small>QUEUED</small></span></div></article>
+        <article class="tile spotlight-card tile-full reveal"><div><div class="tile-icon">⌁</div><p class="tag">CONNECTED WHEN YOU CHOOSE</p><h3>One command layer across your work.</h3><p>Connect mail, calendars, cloud drives, messaging, development tools, productivity platforms, social services, REST APIs, webhooks, and MCP servers.</p></div><div class="connector-cloud" aria-label="Supported connectors"><span>GitHub</span><span>Google Drive</span><span>Notion</span><span>Slack</span><span>Telegram</span><span>Spotify</span><span>Linear</span><span>+16</span></div></article>
       </div>
     </section>
 
