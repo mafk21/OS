@@ -81,7 +81,7 @@ def rag_docs(parameters: dict, player=None, **_) -> str:
                         "file": str(f),
                         "chunk": i,
                         "text": ch[:1000],
-                        "hash": hashlib.md5(ch.encode("utf-8", errors="ignore")).hexdigest()[:8],
+                        "hash": hashlib.sha256(ch.encode("utf-8", errors="ignore")).hexdigest()[:8],
                     })
             except Exception:
                 pass

@@ -160,7 +160,8 @@ class DevTerminalManager:
 
         proc = subprocess.Popen(
             cmd,
-            shell=True,
+            # Interactive owner terminal intentionally supports shell syntax.
+            shell=True,  # nosec B602
             cwd=str(workdir),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

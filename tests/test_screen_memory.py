@@ -28,7 +28,7 @@ def test_store_and_search(tmp_path):
 
     event = {
         "ts": time.monotonic(),
-        "iso_ts": "2026-10-22T12:00:00",
+        "iso_ts": __import__("datetime").datetime.now().isoformat(),
         "app": "Safari",
         "title": "Amazon - laptop search",
         "ocr_text": "MacBook Pro M3 $1999",
@@ -112,7 +112,7 @@ def test_screen_memory_search_tool(tmp_path, monkeypatch):
 
     event = {
         "ts": time.monotonic(),
-        "iso_ts": "2026-10-22T14:30:00",
+        "iso_ts": __import__("datetime").datetime.now().isoformat(),
         "app": "Notes",
         "title": "Grocery list",
         "ocr_text": "milk eggs bread",

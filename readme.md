@@ -102,7 +102,8 @@ runtime-storage paths from becoming tracked files. This is a publication guard,
 not permission to upload arbitrary files: contributors should still inspect
 `git status` and staged changes before every push. If a real secret is ever
 committed, ignoring or deleting it later is insufficient—revoke it immediately
-and purge it from Git history.
+and purge it from Git history. See [`docs/PRIVACY.md`](docs/PRIVACY.md) for the
+complete local/cloud data-flow disclosure and zero-cloud operating requirements.
 
 ## Start in three steps
 

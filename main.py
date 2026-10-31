@@ -1559,11 +1559,24 @@ class JarvisLive:
     def _make_remote_key(self):
         """Called from Qt main thread when user presses Remote Control."""
         if self._dashboard is None:
-            self.ui.write_log(
-                "SYS: Dashboard unavailable. "
-                "Run: pip install fastapi \"uvicorn[standard]\" cryptography"
-            )
-            return None
+            try:
+                from dashboard.server import DashboardServer
+                self._dashboard = DashboardServer()
+                self._dashboard.set_connect_callback(self._on_phone_connected)
+                loop = self._loop
+                if not loop or not loop.is_running():
+                    raise RuntimeError("JARVIS event loop is not running")
+                asyncio.run_coroutine_threadsafe(self._dashboard.serve(), loop)
+                asyncio.run_coroutine_threadsafe(self._process_dashboard_commands(), loop)
+                self.ui.write_log("SYS: Private LAN dashboard started by explicit request.")
+            except Exception as exc:
+                self._dashboard = None
+                self.ui.write_log(
+                    "SYS: Dashboard unavailable. "
+                    "Run: pip install fastapi \"uvicorn[standard]\" cryptography "
+                    f"({exc})"
+                )
+                return None
         key    = self._dashboard.new_key()
         url    = self._dashboard.get_url()
         manual = self._dashboard.get_manual_url()
@@ -3682,17 +3695,9 @@ class JarvisLive:
         # for host-API enumeration on the Qt thread.
         audio_devices.prefetch()
 
-        # Start dashboard (optional — needs: pip install fastapi "uvicorn[standard]" cryptography)
-        try:
-            from dashboard.server import DashboardServer
-            self._dashboard = DashboardServer()
-            self._dashboard.set_connect_callback(self._on_phone_connected)
-            asyncio.create_task(self._dashboard.serve())
-            # Runs for the whole lifetime, not just inside an active session
-            asyncio.create_task(self._process_dashboard_commands())
-        except Exception as e:
-            print(f"[Dashboard] Disabled: {e}")
-            self._dashboard = None
+        # The LAN dashboard is intentionally not started here. It binds a LAN
+        # port and opens a firewall rule, so it starts only after the owner
+        # explicitly presses Remote Control (see _make_remote_key).
 
         # Start multi-channel webhook server (inbound from WhatsApp, Discord,
         # Slack, etc.). Injects inbound messages into the Live session.
