@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/jarvis-logo.png" alt="JARVIS OS logo" width="140">
+  <img src="docs/assets/jarvis-logo.png" alt="JARVIS OS logo" width="220">
 </p>
 
 <h1 align="center">JARVIS OS</h1>
