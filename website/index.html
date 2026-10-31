@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="JARVIS OS is an open-source, local-first AI operating companion for voice, vision, memory, desktop control, long-running work, and connected services.">
+  <meta name="theme-color" content="#05080a">
+  <meta property="og:title" content="JARVIS OS — Intelligence that operates">
+  <meta property="og:description" content="A local-first AI command center that can see, speak, remember, research, and act across your computer.">
+  <title>JARVIS OS — Intelligence that operates</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="nav-wrap">
+    <nav class="nav container" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="JARVIS OS home"><span class="brand-mark">J</span><span>JARVIS <b>OS</b></span></a>
+      <div class="nav-links">
+        <a href="#capabilities">Capabilities</a><a href="#privacy">Privacy</a><a href="#install">Install</a><a href="https://github.com/mafk21/OS/blob/main/docs/PRIVACY.md">Docs</a>
+      </div>
+      <a class="button button-small button-ghost" href="https://github.com/mafk21/OS" target="_blank" rel="noreferrer">View source <span>↗</span></a>
+      <button class="menu" aria-label="Open menu" aria-expanded="false"><span></span><span></span></button>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero container">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><i></i> Open source · Local first · Cross-platform</div>
+        <h1>Intelligence<br>that <em>operates.</em></h1>
+        <p class="hero-lede">Not another chatbot. JARVIS is an AI command center that can see, hear, speak, remember, research, and work across your computer—with you in control.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#install">Install JARVIS <span>↓</span></a>
+          <a class="text-link" href="https://github.com/mafk21/OS" target="_blank" rel="noreferrer"><span class="play">⌁</span> Explore on GitHub</a>
+        </div>
+        <div class="hero-meta"><span><b>Windows</b> 10+</span><span><b>macOS</b> 13+</span><span><b>Linux</b> Desktop</span></div>
+      </div>
+
+      <div class="hero-visual reveal delay-1" aria-label="JARVIS holographic interface preview">
+        <div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="scanline"></div>
+        <div class="edition-switch" role="group" aria-label="Select JARVIS edition">
+          <button class="active" data-edition="male">Guardian</button><button data-edition="female">Confidante</button>
+        </div>
+        <img class="humanoid active" id="male-image" src="assets/jarvis-male.png" alt="Male JARVIS Guardian hologram">
+        <img class="humanoid" id="female-image" src="assets/jarvis-female.png" alt="Female JARVIS Confidante hologram">
+        <div class="status-card status-top"><span class="pulse"></span><div><small>CORE STATUS</small><strong>ONLINE</strong></div></div>
+        <div class="status-card status-bottom"><small>ACTIVE CONTEXT</small><strong>12,840 tokens</strong><div class="meter"><i></i></div></div>
+        <div class="corner corner-tl"></div><div class="corner corner-tr"></div><div class="corner corner-bl"></div><div class="corner corner-br"></div>
+      </div>
+    </section>
+
+    <section class="proof-strip">
+      <div class="container proof-grid">
+        <div><strong>65K+</strong><span>lines of real systems code</span></div>
+        <div><strong>52</strong><span>action modules</span></div>
+        <div><strong>23</strong><span>native connectors</span></div>
+        <div><strong>3</strong><span>desktop operating systems</span></div>
+      </div>
+    </section>
+
+    <section class="manifesto container reveal">
+      <p class="section-label">01 / THE DIFFERENCE</p>
+      <h2>Most assistants answer.<br><span>JARVIS stays and finishes.</span></h2>
+      <p>Give it a goal, not a sequence of clicks. JARVIS can understand the screen, select the right tool, ask before sensitive actions, run the work, and preserve evidence for tomorrow.</p>
+      <div class="command-stage">
+        <div class="command-head"><span><i></i><i></i><i></i></span><b>LIVE TASK / 04</b><small>VOICE + VISION</small></div>
+        <div class="command-body">
+          <div class="prompt"><span>YOU</span><p>“Watch this project, find the error, fix it, run the tests, and show me exactly what changed.”</p></div>
+          <div class="task-flow">
+            <div class="flow-step done"><i>✓</i><span><b>Screen understood</b><small>Editor · terminal · repository</small></span></div>
+            <div class="flow-line active"></div>
+            <div class="flow-step active"><i>02</i><span><b>Fix in progress</b><small>Worker agent · 3 files inspected</small></span></div>
+            <div class="flow-line"></div>
+            <div class="flow-step"><i>03</i><span><b>Verification</b><small>Tests and diff queued</small></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="capabilities" class="capabilities container">
+      <div class="section-intro reveal"><p class="section-label">02 / ONE OPERATING COMPANION</p><h2>Built for the whole job.</h2><p>Voice, vision, memory, tools, and long-running execution live in one inspectable system—not a pile of disconnected demos.</p></div>
+      <div class="bento">
+        <article class="tile tile-wide reveal"><div class="tile-icon">◉</div><p class="tag">LIVE INTERACTION</p><h3>Talk naturally.<br>Interrupt instantly.</h3><p>Full-duplex voice with OpenAI or Gemini, typed input, visual context, provider failover, and optional offline components.</p><div class="wave" aria-hidden="true">▁▃▆▂▇▄▂▅▇▃▁▆▅▂▇▃▁▅▆▂▃</div></article>
+        <article class="tile reveal delay-1"><div class="tile-icon">⌘</div><p class="tag">COMPUTER CONTROL</p><h3>Your OS becomes the tool.</h3><p>Apps, windows, files, browser, terminal, keyboard, mouse, clipboard, media, and settings—with permission gates.</p><div class="mini-window"><div>JARVIS / ACTION</div><p><span>›</span> Organizing workspace</p><small>14 files · reversible</small></div></article>
+        <article class="tile reveal"><div class="tile-icon">∞</div><p class="tag">DURABLE MEMORY</p><h3>Context that survives.</h3><p>A private SQLite timeline, searchable memories, imported knowledge, commitments, preferences, and explicit privacy controls.</p><div class="memory-orbit"><i></i><i></i><i></i><b>YOU</b></div></article>
+        <article class="tile tile-wide reveal delay-1"><div class="tile-icon">↯</div><p class="tag">LONG-RUNNING WORK</p><h3>Real execution. Real evidence.</h3><p>Parallel workers, checkpoints, cancellation, crash-safe recovery, live progress, and verified outputs. JARVIS does not claim completion until the work proves it.</p><div class="workers"><span><i></i>RESEARCH<small>COMPLETE</small></span><span><i></i>BUILD<small>RUNNING</small></span><span><i></i>VERIFY<small>QUEUED</small></span></div></article>
+        <article class="tile tile-full reveal"><div><div class="tile-icon">⌁</div><p class="tag">CONNECTED WHEN YOU CHOOSE</p><h3>One command layer across your work.</h3><p>Connect mail, calendars, cloud drives, messaging, development tools, productivity platforms, social services, REST APIs, webhooks, and MCP servers.</p></div><div class="connector-cloud" aria-label="Supported connectors"><span>GitHub</span><span>Google Drive</span><span>Notion</span><span>Slack</span><span>Telegram</span><span>Spotify</span><span>Linear</span><span>+16</span></div></article>
+      </div>
+    </section>
+
+    <section id="privacy" class="privacy-section">
+      <div class="container privacy-grid">
+        <div class="privacy-copy reveal"><p class="section-label">03 / YOUR MACHINE. YOUR RULES.</p><h2>Local-first,<br>without the fine-print tricks.</h2><p>The HUD, orchestration, memory, automations, encrypted vault, and action history run on your machine. Nothing is quietly made “offline” when it is not.</p><a class="text-link" href="https://github.com/mafk21/OS/blob/main/docs/PRIVACY.md">Read the complete data-flow disclosure <span>→</span></a></div>
+        <div class="privacy-stack reveal delay-1">
+          <div class="privacy-row"><span class="privacy-num">01</span><div><b>Run zero-cloud</b><p>Use local model, speech, and voice components without configuring cloud providers.</p></div><i>LOCAL</i></div>
+          <div class="privacy-row"><span class="privacy-num">02</span><div><b>Connect deliberately</b><p>Cloud providers receive data only when you configure and use those integrations.</p></div><i>OPT-IN</i></div>
+          <div class="privacy-row"><span class="privacy-num">03</span><div><b>Approve sensitive actions</b><p>Confirmation gates, scoped tools, reversible operations, and tamper-evident audit history.</p></div><i>CONTROL</i></div>
+          <div class="privacy-row"><span class="privacy-num">04</span><div><b>Inspect everything</b><p>Open source architecture and documented boundaries—no impossible privacy promises.</p></div><i>OPEN</i></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="comparison container reveal">
+      <p class="section-label">04 / MORE THAN LOCAL CHAT</p><h2>A system, not a text box.</h2>
+      <div class="compare-table" role="table" aria-label="Capability comparison">
+        <div class="compare-row compare-head" role="row"><span>CAPABILITY</span><span>LOCAL CHAT APP</span><span>TERMINAL AGENT</span><span class="jarvis-col">JARVIS OS</span></div>
+        <div class="compare-row"><b>Live voice + visual context</b><span>—</span><span>Limited</span><span class="jarvis-col">● Built in</span></div>
+        <div class="compare-row"><b>Desktop + browser operation</b><span>—</span><span>Partial</span><span class="jarvis-col">● Native</span></div>
+        <div class="compare-row"><b>Durable personal memory</b><span>Partial</span><span>—</span><span class="jarvis-col">● Layered</span></div>
+        <div class="compare-row"><b>Crash-safe long tasks</b><span>—</span><span>Partial</span><span class="jarvis-col">● Checkpointed</span></div>
+        <div class="compare-row"><b>Local + cloud choice</b><span>●</span><span>●</span><span class="jarvis-col">● Owner controlled</span></div>
+        <div class="compare-row"><b>Companion identity + editions</b><span>—</span><span>—</span><span class="jarvis-col">● Guardian / Confidante</span></div>
+      </div>
+      <p class="comparison-note">Category comparison based on common product patterns; individual projects vary by release and configuration.</p>
+    </section>
+
+    <section id="install" class="install container">
+      <div class="install-card reveal">
+        <div class="install-copy"><p class="section-label">05 / WAKE THE SYSTEM</p><h2>Your computer has waited long enough.</h2><p>Free, open source, and yours to inspect. Bring a supported AI provider—or configure local components for zero-cloud operation.</p><div class="os-tabs" role="tablist" aria-label="Installation operating system"><button class="active" data-os="universal">Universal</button><button data-os="windows">Windows</button><button data-os="macos">macOS</button><button data-os="linux">Linux</button></div><div class="install-command"><code id="install-code">git clone https://github.com/mafk21/OS.git &amp;&amp; cd OS<br>python3 install_jarvis.py --install --launch</code><button id="copy-command" aria-label="Copy installation command">COPY</button></div><div class="requirements"><span>Python 3.11+</span><span>Windows · macOS · Linux</span><span>No subscription required</span></div></div>
+        <div class="install-orb"><div class="orb-core">J</div><div class="ring r1"></div><div class="ring r2"></div><div class="ring r3"></div><small>SYSTEM READY</small></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-grid"><div><a class="brand" href="#top"><span class="brand-mark">J</span><span>JARVIS <b>OS</b></span></a><p>Intelligence that operates.</p></div><div><b>PROJECT</b><a href="https://github.com/mafk21/OS">GitHub</a><a href="https://github.com/mafk21/OS#readme">Documentation</a><a href="https://github.com/mafk21/OS/blob/main/docs/PRIVACY.md">Privacy</a></div><div><b>START</b><a href="#install">Install</a><a href="https://github.com/mafk21/OS/issues">Issues</a><a href="https://github.com/mafk21/OS/fork">Fork project</a></div><div class="footer-status"><span><i></i> OPEN SOURCE</span><small>Built in public. Operated in private.</small></div></div>
+    <div class="container footer-bottom"><span>© 2026 JARVIS OS</span><span>OWNER CONTROLLED · LOCAL FIRST</span></div>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>
