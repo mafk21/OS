@@ -49,6 +49,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 scope=scope,
                 notify_message=str(params.get("notify_message") or ""),
                 max_wait_hours=float(params.get("max_wait_hours") or 24),
+                idempotency_key=str(params.get("idempotency_key") or ""),
             )
             return (
                 f"Long-term task armed: {rec['id']}. I will rely on the player's real ended event "
@@ -68,6 +69,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 run_at,
                 title=str(params.get("title") or "Scheduled notification"),
                 notify_message=str(params.get("notify_message") or ""),
+                idempotency_key=str(params.get("idempotency_key") or ""),
             )
             return f"Long-term task armed: {_format(rec)}"
 
@@ -81,6 +83,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 title=str(params.get("title") or ""),
                 notify_message=str(params.get("notify_message") or ""),
                 max_wait_hours=float(params.get("max_wait_hours") or 24 * 7),
+                idempotency_key=str(params.get("idempotency_key") or ""),
             )
             return f"Long-term task armed: {_format(rec)}"
 
@@ -96,6 +99,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 title=str(params.get("title") or "Long-running workflow"),
                 notify_message=str(params.get("notify_message") or ""),
                 max_wait_hours=float(params.get("max_wait_hours") or 24 * 7),
+                idempotency_key=str(params.get("idempotency_key") or ""),
             )
             return (
                 f"Durable workflow started: {rec['id']} with "
@@ -111,6 +115,14 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 f"Resumed {task_id} with resolution {resolution}."
                 if manager.resolve_uncertain(task_id, resolution)
                 else f"Could not resume '{task_id}'; it is not waiting for crash review or the resolution is invalid."
+            )
+
+        if action in ("retry_failed", "retry"):
+            task_id = str(params.get("task_id") or "").strip()
+            return (
+                f"Retrying the failed step for {task_id}."
+                if manager.retry_failed(task_id)
+                else f"Could not retry '{task_id}'; it is not a failed workflow with a retryable step."
             )
 
         if action == "list":
@@ -130,8 +142,8 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
             task_id = str(params.get("task_id") or "").strip()
             return f"Removed long-term task {task_id}." if manager.remove(task_id) else f"Could not remove '{task_id}'; only finished tasks can be removed."
 
-        return "long_task actions: workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | cancel | remove"
-    except (ValueError, OSError) as exc:
+        return "long_task actions: workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | retry_failed | cancel | remove"
+    except (ValueError, OSError, RuntimeError) as exc:
         return f"long_task: {exc}"
 
 
@@ -149,7 +161,7 @@ TOOL = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | cancel | remove"},
+            "action": {"type": "STRING", "description": "workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | retry_failed | cancel | remove"},
             "task_id": {"type": "STRING", "description": "Task ID for status/resume/cancel/remove"},
             "steps": {
                 "type": "ARRAY",
@@ -158,12 +170,16 @@ TOOL = {
                     "properties": {
                         "tool": {"type": "STRING", "description": "Discoverable action name"},
                         "params": {"type": "STRING", "description": "JSON object string of tool parameters; may use ${previous.output} or ${step.N.output}"},
+                        "max_attempts": {"type": "NUMBER", "description": "1-5 attempts; values above 1 require retry_safe=true"},
+                        "retry_delay_seconds": {"type": "NUMBER", "description": "Base delay for bounded exponential retry backoff"},
+                        "retry_safe": {"type": "BOOLEAN", "description": "Explicit assertion that repeating this step cannot duplicate a side effect"},
                     },
                     "required": ["tool", "params"],
                 },
                 "description": "workflow: ordered durable tool steps",
             },
             "resolution": {"type": "STRING", "description": "resume after crash review: retry or mark_done"},
+            "idempotency_key": {"type": "STRING", "description": "Stable caller key that prevents duplicate task creation when a request is retried"},
             "scope": {"type": "STRING", "description": "For media: item or queue. Defaults to queue when a playlist is active."},
             "run_at": {"type": "STRING", "description": "ISO local date/time for at_time"},
             "delay_seconds": {"type": "NUMBER", "description": "Alternative relative delay for at_time"},
