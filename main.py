@@ -87,6 +87,11 @@ from core.session_recycle      import (
     SessionRecycler, parse_go_away_seconds,
     CHECK_INTERVAL_SEC as RECYCLE_CHECK_SEC,
 )
+from core.live_errors import (
+    flatten_error_text as _flatten_error_text,
+    is_realtime_send_stall as _is_realtime_send_stall,
+    leaf_errors as _leaf_errors,
+)
 from actions.web_search        import _news as _fetch_news_sync
 from memory.config_manager     import (
     get_brief_enabled, get_media_resolution, get_persona, get_proactive_audio_enabled,
@@ -933,15 +938,6 @@ def _keep_context_of(exc: BaseException) -> bool:
     return True
 
 
-def _leaf_errors(exc: BaseException):
-    """Yield the non-group exceptions inside a (possibly nested) group."""
-    if isinstance(exc, BaseExceptionGroup):
-        for sub in exc.exceptions:
-            yield from _leaf_errors(sub)
-    else:
-        yield exc
-
-
 class JarvisLive:
     def __init__(self, ui: JarvisUI):
         self.ui             = ui
@@ -1033,6 +1029,7 @@ class JarvisLive:
         self._enhanced_live = True  # proactive audio; auto-disabled if the server rejects it
         self._tuned_live    = True  # turn-taking / media / thinking knobs; same fallback
         self._strip_tool_behavior = False  # strip behavior field if a fallback Live model rejects it
+        self._realtime_send_stalls = 0  # consecutive transport stalls before a successful audio send
 
         _base_dir = Path(__file__).resolve().parent
         _inline_names = {t["name"] for t in TOOL_DECLARATIONS}
@@ -2500,7 +2497,9 @@ class JarvisLive:
                     ),
                     timeout=10.0,
                 )
+                self._realtime_send_stalls = 0
             except asyncio.TimeoutError:
+                self._realtime_send_stalls += 1
                 raise ConnectionError(
                     "timed out: send_realtime_input stalled >10s — forcing reconnect"
                 ) from None
@@ -3899,21 +3898,29 @@ class JarvisLive:
                     self._conn_backoff = 0
                     continue
 
-                err_str = str(e)
-                if isinstance(e, BaseExceptionGroup) and e.exceptions:
-                    # A TaskGroup failure's str() is only "unhandled errors in
-                    # a TaskGroup (1 sub-exception)" — the real reason (timed
-                    # out, quota, 1008 …) lives in the nested exception. Keyword
-                    # classification on the group message sent every in-session
-                    # failure to the generic branch (observed: the 1006
-                    # ping-timeout above never matched a network pattern), so
-                    # flatten to the leaves before classifying.
-                    _leaf = [
-                        f"{type(s).__name__}: {s}"
-                        for s in _leaf_errors(e)
-                    ]
-                    err_str = " | ".join(_leaf) or err_str
-                print(f"[JARVIS] Error ({type(e).__name__}): {e}")
+                # A TaskGroup's own message hides the actionable child error.
+                err_str = _flatten_error_text(e)
+
+                # The realtime sender watchdog is a transport recovery signal,
+                # not evidence that Gemini rejected turn-taking/media tuning.
+                # Previously the substring `realtime_input` incorrectly matched
+                # the API-drift branch below, disabled valid features, dumped an
+                # alarming ExceptionGroup traceback, and reconnected in a tight
+                # loop. Rebuild quietly with bounded consecutive-stall backoff.
+                if _is_realtime_send_stall(err_str):
+                    delay = min(8.0, 2 ** max(0, self._realtime_send_stalls - 1))
+                    print(
+                        f"[JARVIS] Realtime audio transport stalled — "
+                        f"reconnecting in {delay:g}s."
+                    )
+                    self.ui.write_log(
+                        "NET: Live audio transport paused; reconnecting automatically."
+                    )
+                    self._conn_backoff = 0
+                    await asyncio.sleep(delay)
+                    continue
+
+                print(f"[JARVIS] Error ({type(e).__name__}): {err_str}")
                 traceback.print_exc()
 
                 # Out of quota, or this model is not available to this key —
@@ -3987,7 +3994,6 @@ class JarvisLive:
                     or "1007" in err_str
                     or "Unknown name" in err_str
                     or "unexpected keyword" in err_str
-                    or "realtime_input" in err_low
                     or "media_resolution" in err_low
                     or "thinking" in err_low
                 ):
