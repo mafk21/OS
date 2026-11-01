@@ -23,6 +23,9 @@ from typing import Any, Callable
 BASE_DIR = Path(__file__).resolve().parent.parent
 TASKS_FILE = BASE_DIR / "memory" / "long_tasks.json"
 _TERMINAL = {"completed", "cancelled", "expired", "failed"}
+_MAX_TASKS = 200
+_MAX_ACTIVE_TASKS = 100
+_STORE_VERSION = 2
 
 
 def _now_iso(ts: float | None = None) -> str:
@@ -85,25 +88,65 @@ class LongTaskManager:
         self._notifiers: list[Callable[[dict[str, Any]], None]] = []
         self._delivering: set[str] = set()
         self._workflow_threads: set[str] = set()
-        self._executor: Callable[[str, dict[str, Any]], str] | None = None
+        self._executor: Callable[[str, dict[str, Any]], Any] | None = None
+
+    @staticmethod
+    def _decode_store(text: str) -> list[dict[str, Any]]:
+        raw = json.loads(text)
+        rows = raw.get("tasks", []) if isinstance(raw, dict) else raw
+        if not isinstance(rows, list) or any(not isinstance(item, dict) for item in rows):
+            raise ValueError("long-task store has an invalid tasks collection")
+        return [dict(item) for item in rows]
 
     def _load(self) -> list[dict[str, Any]]:
+        """Load persisted tasks without ever treating corruption as an empty store."""
         with self._lock:
             if not self.path.exists():
                 return []
             try:
-                raw = json.loads(self.path.read_text(encoding="utf-8"))
-                rows = raw.get("tasks", []) if isinstance(raw, dict) else raw
-                return [dict(x) for x in rows if isinstance(x, dict)] if isinstance(rows, list) else []
-            except Exception:
-                return []
+                return self._decode_store(self.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError) as primary_error:
+                backup = self.path.with_suffix(self.path.suffix + ".bak")
+                if backup.exists():
+                    try:
+                        return self._decode_store(backup.read_text(encoding="utf-8"))
+                    except (OSError, ValueError, json.JSONDecodeError):
+                        pass
+                raise RuntimeError(
+                    f"Long-task storage is unreadable at {self.path}; the file was preserved. "
+                    "Restore its .bak copy or repair the JSON before creating more tasks."
+                ) from primary_error
 
     def _save(self, rows: list[dict[str, Any]]) -> None:
+        """Atomically persist and fsync tasks, retaining the last valid snapshot."""
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(self.path.suffix + ".tmp")
-            tmp.write_text(json.dumps({"version": 1, "tasks": rows}, indent=2, ensure_ascii=False), encoding="utf-8")
+            backup = self.path.with_suffix(self.path.suffix + ".bak")
+            payload = json.dumps(
+                {"version": _STORE_VERSION, "tasks": rows}, indent=2, ensure_ascii=False
+            )
+            with tmp.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if self.path.exists():
+                try:
+                    # Never replace a good backup with a corrupt primary file.
+                    self._decode_store(self.path.read_text(encoding="utf-8"))
+                    shutil.copy2(self.path, backup)
+                except (OSError, ValueError, json.JSONDecodeError):
+                    pass
             os.replace(tmp, self.path)
+            try:
+                directory_fd = os.open(str(self.path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                # Directory fsync is unavailable on some Windows/filesystem combinations.
+                pass
 
     def add_listener(self, callback: Callable[[], None]) -> None:
         if callable(callback) and callback not in self._listeners:
@@ -113,7 +156,7 @@ class LongTaskManager:
         if callable(callback) and callback not in self._notifiers:
             self._notifiers.append(callback)
 
-    def set_executor(self, callback: Callable[[str, dict[str, Any]], str]) -> None:
+    def set_executor(self, callback: Callable[[str, dict[str, Any]], Any]) -> None:
         """Bind the app's real action registry for durable workflow steps."""
         if callable(callback):
             self._executor = callback
@@ -142,36 +185,58 @@ class LongTaskManager:
         self._stop.set()
 
     def _new(self, *, title: str, condition: str, target: dict[str, Any],
-             notify_message: str, expires_at: float) -> dict[str, Any]:
+             notify_message: str, expires_at: float,
+             idempotency_key: str = "") -> dict[str, Any]:
         now = time.time()
-        rec = {
-            "id": f"long-{uuid.uuid4().hex[:10]}",
-            "kind": "long_task",
-            "title": str(title or "Long-term task").strip()[:120],
-            "condition": condition,
-            "target": target,
-            "notify_message": str(notify_message or "Task completed.").strip()[:500],
-            "status": "waiting",
-            "created_at": now,
-            "updated_at": now,
-            "created_iso": _now_iso(now),
-            "expires_at": float(expires_at),
-            "completed_at": None,
-            "completion_evidence": None,
-            "notified_at": None,
-            "notification_channel": None,
-            "events": [],
-        }
+        key = str(idempotency_key or "").strip()[:160]
         with self._lock:
             rows = self._load()
+            if key:
+                existing = next((row for row in rows if row.get("idempotency_key") == key), None)
+                if existing:
+                    return dict(existing)
+            active_count = sum(1 for row in rows if row.get("status") not in _TERMINAL)
+            if active_count >= _MAX_ACTIVE_TASKS:
+                raise ValueError(
+                    f"The active long-task limit ({_MAX_ACTIVE_TASKS}) has been reached. "
+                    "Finish or cancel existing tasks before adding another."
+                )
+            rec = {
+                "id": f"long-{uuid.uuid4().hex[:10]}",
+                "kind": "long_task",
+                "title": str(title or "Long-term task").strip()[:120],
+                "condition": condition,
+                "target": target,
+                "notify_message": str(notify_message or "Task completed.").strip()[:500],
+                "idempotency_key": key or None,
+                "status": "waiting",
+                "created_at": now,
+                "updated_at": now,
+                "created_iso": _now_iso(now),
+                "expires_at": float(expires_at),
+                "completed_at": None,
+                "completion_evidence": None,
+                "notified_at": None,
+                "notification_channel": None,
+                "events": [{"ts": now, "type": "created"}],
+            }
             rows.append(rec)
-            self._save(rows[-200:])
+            if len(rows) > _MAX_TASKS:
+                # Retention may prune old terminal history, never active work.
+                terminal = sorted(
+                    (row for row in rows if row.get("status") in _TERMINAL),
+                    key=lambda row: float(row.get("updated_at") or row.get("created_at") or 0),
+                )
+                removable = {id(row) for row in terminal[:len(rows) - _MAX_TASKS]}
+                rows = [row for row in rows if id(row) not in removable]
+            self._save(rows)
         self.start()
         self._changed()
         return dict(rec)
 
     def create_media(self, video: dict[str, Any], *, scope: str = "item",
-                     notify_message: str = "", max_wait_hours: float = 24.0) -> dict[str, Any]:
+                     notify_message: str = "", max_wait_hours: float = 24.0,
+                     idempotency_key: str = "") -> dict[str, Any]:
         if not isinstance(video, dict) or not str(video.get("id") or "").strip():
             raise ValueError("No active HUD video is playing. Start the video first.")
         scope = "queue" if scope in ("queue", "playlist", "mix") else "item"
@@ -190,10 +255,12 @@ class LongTaskManager:
         return self._new(
             title=f"Watch until finished — {title}", condition="media_end", target=target,
             notify_message=msg, expires_at=time.time() + max(1.0, min(max_wait_hours, 24 * 30)) * 3600,
+            idempotency_key=idempotency_key,
         )
 
     def create_deadline(self, run_at: float, *, title: str = "Scheduled task",
-                        notify_message: str = "", max_wait_hours: float = 24 * 365) -> dict[str, Any]:
+                        notify_message: str = "", max_wait_hours: float = 24 * 365,
+                        idempotency_key: str = "") -> dict[str, Any]:
         run_at = float(run_at)
         if run_at <= time.time():
             raise ValueError("The completion time must be in the future.")
@@ -201,10 +268,12 @@ class LongTaskManager:
             title=title, condition="time", target={"run_at": run_at, "run_at_iso": _now_iso(run_at)},
             notify_message=notify_message or f"{title} is due.",
             expires_at=run_at + max(1.0, max_wait_hours) * 3600,
+            idempotency_key=idempotency_key,
         )
 
     def create_file(self, path: str, *, changed: bool = False, title: str = "",
-                    notify_message: str = "", max_wait_hours: float = 24 * 7) -> dict[str, Any]:
+                    notify_message: str = "", max_wait_hours: float = 24 * 7,
+                    idempotency_key: str = "") -> dict[str, Any]:
         file_path = Path(path).expanduser().resolve()
         initial = None
         if file_path.exists():
@@ -220,10 +289,12 @@ class LongTaskManager:
             target={"path": str(file_path), "initial": initial},
             notify_message=notify_message or f"{file_path.name} is ready.",
             expires_at=time.time() + max(1.0, min(max_wait_hours, 24 * 365)) * 3600,
+            idempotency_key=idempotency_key,
         )
 
     def create_workflow(self, steps: list[dict[str, Any]], *, title: str = "Long-running workflow",
-                        notify_message: str = "", max_wait_hours: float = 24 * 7) -> dict[str, Any]:
+                        notify_message: str = "", max_wait_hours: float = 24 * 7,
+                        idempotency_key: str = "") -> dict[str, Any]:
         """Persist and execute sequential real actions, checkpointing every step."""
         if not isinstance(steps, list) or not steps:
             raise ValueError("A workflow requires at least one tool step.")
@@ -244,9 +315,23 @@ class LongTaskManager:
                     raise ValueError(f"Workflow step {index} params are not valid JSON: {exc}") from exc
             if not isinstance(params, dict):
                 raise ValueError(f"Workflow step {index} params must be a JSON object.")
+            max_attempts = int(raw.get("max_attempts") or 1)
+            retry_delay = float(raw.get("retry_delay_seconds") or 0)
+            retry_safe = bool(raw.get("retry_safe", False))
+            if max_attempts < 1 or max_attempts > 5:
+                raise ValueError(f"Workflow step {index} max_attempts must be between 1 and 5.")
+            if retry_delay < 0 or retry_delay > 3600:
+                raise ValueError(f"Workflow step {index} retry_delay_seconds must be between 0 and 3600.")
+            if max_attempts > 1 and not retry_safe:
+                raise ValueError(
+                    f"Workflow step {index} requests automatic retries but is not marked retry_safe. "
+                    "Side-effecting steps require manual review instead of blind repetition."
+                )
             normalized.append({
                 "index": index, "tool": tool, "params": params,
                 "status": "queued", "attempts": 0,
+                "max_attempts": max_attempts, "retry_delay_seconds": retry_delay,
+                "retry_safe": retry_safe, "next_attempt_at": None,
                 "started_at": None, "completed_at": None,
                 "output": None, "error": None, "execution_id": None,
             })
@@ -255,6 +340,7 @@ class LongTaskManager:
             target={"steps": normalized, "current_step": 0},
             notify_message=notify_message or f"Workflow finished: {title}",
             expires_at=time.time() + max(1.0, min(max_wait_hours, 24 * 365)) * 3600,
+            idempotency_key=idempotency_key,
         )
         self._launch_workflow(str(rec["id"]))
         return self.get(str(rec["id"])) or rec
@@ -266,7 +352,13 @@ class LongTaskManager:
         return sorted(rows, key=lambda x: float(x.get("created_at") or 0), reverse=True)
 
     def get(self, task_id: str) -> dict[str, Any] | None:
-        return next((x for x in self._load() if x.get("id") == task_id), None)
+        rec = next((x for x in self._load() if x.get("id") == task_id), None)
+        # A status reader is also an opportunity to finish a persisted delivery
+        # that lost the race with completion or survived an application crash.
+        if rec and rec.get("status") == "completed" and not rec.get("notified_at"):
+            self._deliver(rec)
+            rec = next((x for x in self._load() if x.get("id") == task_id), rec)
+        return rec
 
     def list_detailed(self) -> list[dict[str, Any]]:
         now = time.time()
@@ -383,12 +475,33 @@ class LongTaskManager:
             out = out.replace(f"${{step.{step.get('index')}.output}}", str(step.get("output") or ""))
         return out
 
-    def _default_execute(self, tool: str, params: dict[str, Any]) -> str:
+    def _default_execute(self, tool: str, params: dict[str, Any]) -> Any:
         from core.action_loader import discover_actions
         registry = discover_actions(BASE_DIR / "actions", logger=lambda _msg: None)
         if not registry.has(tool):
             raise ValueError(f"Tool '{tool}' is not a discoverable durable action.")
-        return str(registry.run(tool, params, {"player": None, "speak": None}) or "Done.")
+        return registry.run(tool, params, {"player": None, "speak": None})
+
+    @staticmethod
+    def _normalize_execution_result(value: Any) -> tuple[str, bool, bool]:
+        """Interpret structured action results before falling back to legacy text signals."""
+        if isinstance(value, dict):
+            status = str(value.get("status") or "").strip().lower()
+            confirmation = bool(value.get("confirmation_pending")) or status in {
+                "confirmation_pending", "pending_confirmation", "needs_confirmation",
+            }
+            explicit_failure = value.get("ok") is False or value.get("success") is False
+            failed = explicit_failure or status in {"failed", "failure", "error"}
+            return json.dumps(value, ensure_ascii=False, default=str), failed, confirmation
+        if value is False:
+            return "Action returned false.", True, False
+        result = str(value if value is not None else "Done.")
+        result_low = result.strip().lower()
+        confirmation = "[confirmation_pending]" in result_low
+        failed = result_low.startswith((
+            "tool '", "action '", "error", "failed", "could not", "unable to",
+        ))
+        return result, failed, confirmation
 
     def _run_workflow(self, task_id: str) -> None:
         try:
@@ -400,31 +513,50 @@ class LongTaskManager:
                         return
                     target = rec.get("target") or {}
                     steps = target.get("steps") or []
+                    if float(rec.get("expires_at") or 0) and time.time() >= float(rec["expires_at"]):
+                        rec["status"] = "expired"
+                        rec["updated_at"] = time.time()
+                        rec["completion_evidence"] = "Workflow deadline expired before all steps completed."
+                        rec["events"] = (list(rec.get("events") or []) + [{
+                            "ts": time.time(), "type": "expired",
+                        }])[-50:]
+                        self._save(rows)
+                        self._changed()
+                        return
                     queued = next((s for s in steps if s.get("status") == "queued"), None)
                     if queued is None:
                         break
-                    completed = [dict(s) for s in steps if s.get("status") == "completed"]
-                    queued["status"] = "running"
-                    queued["attempts"] = int(queued.get("attempts") or 0) + 1
-                    queued["started_at"] = time.time()
-                    queued["execution_id"] = f"exec-{uuid.uuid4().hex[:10]}"
-                    rec["status"] = "running"
-                    rec["updated_at"] = time.time()
-                    target["current_step"] = int(queued.get("index") or 1)
-                    self._save(rows)  # checkpoint BEFORE any side effect
-                    tool = str(queued.get("tool") or "")
-                    params = self._resolve_workflow_params(dict(queued.get("params") or {}), completed)
-                    execution_id = str(queued["execution_id"])
+                    next_attempt = float(queued.get("next_attempt_at") or 0)
+                    wait_seconds = max(0.0, min(next_attempt - time.time(), 1.0))
+                    if not wait_seconds:
+                        completed = [dict(s) for s in steps if s.get("status") == "completed"]
+                        queued["status"] = "running"
+                        queued["next_attempt_at"] = None
+                        queued["attempts"] = int(queued.get("attempts") or 0) + 1
+                        queued["started_at"] = time.time()
+                        queued["execution_id"] = f"exec-{uuid.uuid4().hex[:10]}"
+                        rec["status"] = "running"
+                        rec["updated_at"] = time.time()
+                        target["current_step"] = int(queued.get("index") or 1)
+                        rec["events"] = (list(rec.get("events") or []) + [{
+                            "ts": rec["updated_at"], "type": "step_started",
+                            "step": queued.get("index"), "tool": queued.get("tool"),
+                            "attempt": queued.get("attempts"),
+                        }])[-50:]
+                        self._save(rows)  # checkpoint BEFORE any side effect
+                        tool = str(queued.get("tool") or "")
+                        params = self._resolve_workflow_params(dict(queued.get("params") or {}), completed)
+                        execution_id = str(queued["execution_id"])
+                if wait_seconds:
+                    self._stop.wait(wait_seconds)
+                    continue
                 self._changed()
 
                 try:
                     executor = self._executor or self._default_execute
-                    result = str(executor(tool, params) or "Done.")
-                    result_low = result.strip().lower()
-                    confirmation_pending = "[confirmation_pending]" in result_low
-                    failed = result_low.startswith((
-                        "tool '", "action '", "error", "failed", "could not", "unable to",
-                    ))
+                    result, failed, confirmation_pending = self._normalize_execution_result(
+                        executor(tool, params)
+                    )
                 except Exception as exc:
                     result = f"{type(exc).__name__}: {exc}"
                     failed = True
@@ -440,6 +572,7 @@ class LongTaskManager:
                     if not step:
                         return
                     now = time.time()
+                    retry_scheduled = False
                     step["completed_at"] = now
                     if confirmation_pending:
                         step["status"] = "uncertain"
@@ -450,10 +583,29 @@ class LongTaskManager:
                             "After approving or rejecting it, resume with mark_done or retry."
                         )
                     elif failed:
-                        step["status"] = "failed"
-                        step["error"] = result[:4000]
-                        rec["status"] = "failed"
-                        rec["completion_evidence"] = f"Step {step.get('index')} ({tool}) failed: {result[:500]}"
+                        attempts = int(step.get("attempts") or 0)
+                        max_attempts = int(step.get("max_attempts") or 1)
+                        if bool(step.get("retry_safe")) and attempts < max_attempts:
+                            delay = float(step.get("retry_delay_seconds") or 0)
+                            # Exponential backoff is bounded by the declared delay and attempt count.
+                            retry_at = now + min(3600.0, delay * (2 ** max(0, attempts - 1)))
+                            step["status"] = "queued"
+                            step["error"] = result[:4000]
+                            step["execution_id"] = None
+                            step["next_attempt_at"] = retry_at
+                            rec["status"] = "waiting"
+                            rec["completion_evidence"] = None
+                            retry_scheduled = True
+                            rec["events"] = (list(rec.get("events") or []) + [{
+                                "ts": now, "type": "step_retry_scheduled",
+                                "step": step.get("index"), "attempt": attempts,
+                                "next_attempt_at": retry_at,
+                            }])[-50:]
+                        else:
+                            step["status"] = "failed"
+                            step["error"] = result[:4000]
+                            rec["status"] = "failed"
+                            rec["completion_evidence"] = f"Step {step.get('index')} ({tool}) failed: {result[:500]}"
                     else:
                         step["status"] = "completed"
                         step["output"] = result[:12000]
@@ -461,9 +613,16 @@ class LongTaskManager:
                         rec["status"] = "waiting"
                         rec["completion_evidence"] = None
                     rec["updated_at"] = now
+                    if not retry_scheduled:
+                        rec["events"] = (list(rec.get("events") or []) + [{
+                            "ts": now,
+                            "type": f"step_{step.get('status')}",
+                            "step": step.get("index"), "tool": tool,
+                            "attempt": step.get("attempts"),
+                        }])[-50:]
                     self._save(rows)
                 self._changed()
-                if failed or confirmation_pending:
+                if confirmation_pending or (failed and not retry_scheduled):
                     return
 
             rec = self.get(task_id)
@@ -502,6 +661,34 @@ class LongTaskManager:
             rec["status"] = "waiting"
             rec["completion_evidence"] = None
             rec["updated_at"] = time.time()
+            self._save(rows)
+        self._changed()
+        self._launch_workflow(task_id)
+        return True
+
+    def retry_failed(self, task_id: str) -> bool:
+        """Explicitly retry the failed workflow step; never automatic for unsafe steps."""
+        with self._lock:
+            rows = self._load()
+            rec = next((row for row in rows if row.get("id") == task_id), None)
+            if not rec or rec.get("condition") != "workflow" or rec.get("status") != "failed":
+                return False
+            steps = (rec.get("target") or {}).get("steps") or []
+            step = next((item for item in steps if item.get("status") == "failed"), None)
+            if not step:
+                return False
+            step["status"] = "queued"
+            step["error"] = None
+            step["execution_id"] = None
+            step["next_attempt_at"] = None
+            step["completed_at"] = None
+            rec["status"] = "waiting"
+            rec["completion_evidence"] = None
+            rec["updated_at"] = time.time()
+            rec["events"] = (list(rec.get("events") or []) + [{
+                "ts": time.time(), "type": "failed_step_retry_requested",
+                "step": step.get("index"),
+            }])[-50:]
             self._save(rows)
         self._changed()
         self._launch_workflow(task_id)

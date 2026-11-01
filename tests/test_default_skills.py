@@ -1,4 +1,4 @@
-"""Tests — 11 Default Ship-With Skills + Improved Backing Actions."""
+"""Tests — 12 Default Ship-With Skills + Improved Backing Actions."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -18,6 +18,7 @@ EXPECTED_DEFAULT_SKILLS = {
     "focus-mode",
     "gui-autopilot",
     "meeting-copilot",
+    "long-task-operator",
     "safe-file-organizer",
     "second-brain",
     "system-doctor",
@@ -32,7 +33,7 @@ def test_all_default_skills_discover_cleanly():
     logs: list[str] = []
     reg = discover_skills(Path("skills"), logger=logs.append)
     assert reg.names() == EXPECTED_DEFAULT_SKILLS
-    assert len(reg) == 11
+    assert len(reg) == 12
     assert not any("rejected" in line.lower() for line in logs)
 
 
@@ -129,7 +130,7 @@ def test_rag_docs_multi_ext_index_and_ranked_search(tmp_path, monkeypatch):
 def test_diagnostics_targeted_skills_and_storage():
     out = diag.diagnostics_check({"action": "storage"})
     assert "storage: ok" in out or "GB free" in out
-    assert "11 active skill(s)" in out
+    assert "12 active skill(s)" in out
 
 
 def test_routines_run_renders_steps():
