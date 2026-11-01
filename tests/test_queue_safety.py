@@ -69,6 +69,19 @@ def test_handler_prints_once_then_counts_repeats(capsys):
         ls._SIG, ls._AT, ls._N = "", 0.0, 0
 
 
+def test_realtime_send_stall_is_unwrapped_and_classified_as_transport_failure():
+    from core.live_errors import flatten_error_text, is_realtime_send_stall
+
+    grouped = ExceptionGroup(
+        "task group failed",
+        [ConnectionError("timed out: send_realtime_input stalled >10s — forcing reconnect")],
+    )
+    text = flatten_error_text(grouped)
+    assert "ConnectionError" in text
+    assert is_realtime_send_stall(text)
+    assert not is_realtime_send_stall("INVALID_ARGUMENT: realtime_input.audio unknown")
+
+
 def test_main_wires_queue_safety():
     m = pathlib.Path("main.py").read_text(encoding="utf-8")
     # mic + phone producers all go through drop-oldest
@@ -79,6 +92,9 @@ def test_main_wires_queue_safety():
     # loop handler installed; stalled sends forced into a reconnect
     assert "set_exception_handler(throttled_loop_exception_handler)" in m
     assert "send_realtime_input stalled >10s" in m
+    assert "_is_realtime_send_stall(err_str)" in m
+    # A send watchdog timeout must not disable valid Live tuning as API drift.
+    assert 'or "realtime_input" in err_low' not in m
     # 1008 race gets a longer backoff; TaskGroup errors classified from leaves
     assert 'elif "already connected" in err_str:' in m
     assert "_leaf_errors" in m
