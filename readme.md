@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/jarvis-wordmark.png" alt="JARVIS OS — Operating Companion" width="700">
+  <img src="docs/assets/jarvis-wordmark.png" alt="JARVIS OS — Operating Companion" width="900">
 </p>
 
 <p align="center">
