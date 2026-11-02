@@ -135,7 +135,8 @@ def speak_text(text: str, voice: str = "", rate: int = 0) -> bool:
     try:
         import asyncio, edge_tts, tempfile, os, subprocess, platform
         async def _edge():
-            tfile = tempfile.mktemp(suffix=".mp3")
+            fd, tfile = tempfile.mkstemp(suffix=".mp3")
+            os.close(fd)
             comm = edge_tts.Communicate(text, voice or "en-US-JennyNeural")
             await comm.save(tfile)
             return tfile
