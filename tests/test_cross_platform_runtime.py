@@ -40,7 +40,10 @@ def test_launcher_reuses_existing_venv(monkeypatch,tmp_path):
 
 
 def test_mac_terminal_quotes_shell_metacharacters_and_never_fakes_success(monkeypatch,tmp_path):
-    folder=tmp_path/'a $(touch SHOULD_NOT_EXIST) "name"';folder.mkdir()
+    # Keep shell metacharacters on every host; double quotes are illegal in
+    # Windows filenames, so use an apostrophe there to retain quote coverage.
+    name = "a $(touch SHOULD_NOT_EXIST) 'name'" if os.name == 'nt' else 'a $(touch SHOULD_NOT_EXIST) "name"'
+    folder=tmp_path/name;folder.mkdir()
     calls=[]
     monkeypatch.setattr(osc,'_SYSTEM','Darwin')
     monkeypatch.setattr(osc,'_fast_pid_set',lambda:set())
