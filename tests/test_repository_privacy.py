@@ -66,6 +66,16 @@ def test_tracked_text_has_no_high_confidence_live_secrets() -> None:
     assert not findings, "Possible live secrets in tracked files: " + ", ".join(findings)
 
 
+def test_production_code_avoids_insecure_temporary_names() -> None:
+    """mktemp creates a race window where another process can claim the path."""
+    findings = []
+    for folder in ("actions", "auth", "core", "dashboard", "marketplace", "memory", "smart_home"):
+        for path in (ROOT / folder).rglob("*.py"):
+            if "tempfile.mktemp(" in path.read_text(encoding="utf-8", errors="replace"):
+                findings.append(str(path.relative_to(ROOT)))
+    assert not findings, "Insecure tempfile.mktemp usage: " + ", ".join(findings)
+
+
 def test_ignore_policy_covers_all_runtime_storage() -> None:
     ignored = [
         "config/api_keys.json", "config/social_preferences.json", "config/.vault.key",
