@@ -229,6 +229,17 @@ def test_male_and_female_hud_decluttered_and_no_speech_box() -> None:
     assert "runningCount > 0 || queuedCount > 0 || activityOpen" in workers_src
 
 
+def test_male_final_stage_has_neural_landscape_without_changing_female_stage() -> None:
+    world_src = (REPO_ROOT / "apex_ui" / "components" / "ApexWorld.tsx").read_text(encoding="utf-8")
+    landscape = REPO_ROOT / "apex_ui" / "public" / "hologram" / "male_neural_landscape.png"
+
+    assert landscape.is_file() and landscape.stat().st_size > 100_000
+    assert "{isMale && (" in world_src
+    assert 'data-testid="male-neural-landscape"' in world_src
+    assert "/hologram/male_neural_landscape.png" in world_src
+    assert "female_neural_landscape" not in world_src
+
+
 def test_female_orb_components_strictly_untouched() -> None:
     female_files = [
         "apex_ui/components/ApexHeroOrb.tsx",
