@@ -71,14 +71,20 @@ python install_jarvis.py --check
 
 HUD development and build instructions are available in the **[documentation](https://jarvis-khaki-eight.vercel.app/docs/)**.
 
-## Contributing
+## Contributing and support
 
-Issues and focused pull requests are welcome. Before submitting changes:
+Issues and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before making changes and use [SUPPORT.md](SUPPORT.md) for help and bug-report guidance.
 
 1. Keep Windows, macOS, and Linux behavior aligned.
 2. Do not commit credentials, runtime databases, memories, recordings, or generated user data.
 3. Run the relevant tests and report real results.
 4. Update documentation when behavior changes.
+
+Security vulnerabilities must not be posted publicly. Follow the private reporting process in [SECURITY.md](SECURITY.md).
+
+## Release status
+
+JARVIS is currently public beta software. Use the latest release, review permissions before approving sensitive actions, and expect rapid changes while installation and packaging mature.
 
 ## License
 

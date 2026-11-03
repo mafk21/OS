@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/mafk21/OS/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue.
+  - name: Documentation
+    url: https://jarvis-khaki-eight.vercel.app/docs/
+    about: Read installation and usage documentation.
+  - name: Community support
+    url: https://github.com/mafk21/OS/discussions
+    about: Ask questions and share ideas in Discussions.

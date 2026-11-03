@@ -137,3 +137,6 @@ memory/learning/
 memory/generated_videos/
 
 *.tsbuildinfo
+
+# Locally generated release archives and checksums.
+/release/
