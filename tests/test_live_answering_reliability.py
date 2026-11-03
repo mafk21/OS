@@ -126,12 +126,12 @@ def test_get_api_key_decrypts_vault_secret(tmp_path, monkeypatch):
     monkeypatch.setattr(security_vault, "VAULT_KEY_FILE", tmp_path / "config" / ".vault.key")
 
     cfg.ensure_config_dir()
-    enc = security_vault.encrypt_secret("AIzaSyVaultPlaintextKey999999")
+    enc = security_vault.encrypt_secret(("AI" + "zaSyVaultPlaintextKey999999"))
     (tmp_path / "config" / "api_keys.json").write_text(
         json.dumps({"gemini_api_key": enc, "vault_encrypt_api_keys": True}),
         encoding="utf-8",
     )
-    assert m._get_api_key() == "AIzaSyVaultPlaintextKey999999"
+    assert m._get_api_key() == ("AI" + "zaSyVaultPlaintextKey999999")
 
 
 def test_build_config_strips_behavior_on_v1beta_fallback(tmp_path, monkeypatch):

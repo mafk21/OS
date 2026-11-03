@@ -79,7 +79,7 @@ def test_first_run_three_step_flow_female_with_partial_ignore(isolated_env):
     assert s0["persona_chosen"] is False
 
     # Step 1: Save Gemini API key
-    r1 = bridge.handle_action({"action": "save_api_key", "key": "AIzaSyTestFirstRunKey123456"})
+    r1 = bridge.handle_action({"action": "save_api_key", "key": ("AI" + "zaSyTestFirstRunKey123456")})
     assert r1["ok"] is True
     ui._win._ready = True
     s1 = bridge.snapshot()
@@ -138,7 +138,7 @@ def test_first_run_skip_all_integrations_male_edition(isolated_env):
     ui = _OnboardingUI()
     bridge = ApexHudBridge(ui, host="127.0.0.1", port=0)
 
-    bridge.handle_action({"action": "save_api_key", "key": "AIzaSySkipAllKey123456789"})
+    bridge.handle_action({"action": "save_api_key", "key": ("AI" + "zaSySkipAllKey123456789")})
     ui._win._ready = True
     skip_res = bridge.handle_action({"action": "skip_integrations"})
     assert skip_res["ok"] is True

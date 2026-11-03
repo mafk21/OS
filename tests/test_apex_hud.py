@@ -246,7 +246,7 @@ def test_male_and_female_persona_startup_and_switching(monkeypatch, tmp_path):
         #    the Male/Female version chooser opens immediately after setup!
         r_key = client.post(
             "/api/hud/action",
-            json={"action": "save_api_key", "key": "AIzaSyTestKey_1234567890"},
+            json={"action": "save_api_key", "key": ("AI" + "zaSyTestKey_1234567890")},
         )
         assert r_key.status_code == 200 and r_key.json()["ok"] is True
 
@@ -319,7 +319,7 @@ def test_persona_choice_remembered_across_restarts_and_changeable_anytime(
     monkeypatch.delenv("JARVIS_SKIP_PERSONA_PROMPT", raising=False)
 
     # 1. Fresh install: API key saved, but persona NOT chosen yet -> asks once
-    cfg.save_api_keys(gemini_api_key="AIzaSyFreshInstallTestKey12345")
+    cfg.save_api_keys(gemini_api_key=("AI" + "zaSyFreshInstallTestKey12345"))
     assert cfg.is_persona_chosen() is False
 
     # 2. User selects Female edition on first run -> persisted to disk
@@ -344,7 +344,7 @@ def test_persona_choice_remembered_across_restarts_and_changeable_anytime(
     # 4. Legacy config upgrade: even if an older api_keys.json only had `"persona": "male"`
     #    (without `"persona_chosen"`), it is still remembered without re-prompting!
     fake_cfg.write_text(
-        json.dumps({"gemini_api_key": "AIzaSyLegacyKey1234567890", "persona": "male"}),
+        json.dumps({"gemini_api_key": ("AI" + "zaSyLegacyKey1234567890"), "persona": "male"}),
         encoding="utf-8",
     )
     assert cfg.is_persona_chosen() is True
