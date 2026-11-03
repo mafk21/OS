@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible JARVIS problem
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: "Remove credentials, tokens, personal data, screenshots, recordings, cookies, and private logs before submitting. Security vulnerabilities must be reported privately through SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: JARVIS version or commit
+      placeholder: v1.0.0-beta.1 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 11, Windows 10, macOS, Ubuntu/Debian, Fedora/RHEL, Arch Linux, Other Linux]
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: Python 3.11.9
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed all credentials, tokens, personal data, and private runtime content.
+          required: true
+        - label: This is not a security vulnerability.
+          required: true

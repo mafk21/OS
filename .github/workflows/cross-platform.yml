@@ -1,5 +1,6 @@
 name: Cross-platform regression
 on:
+  workflow_call:
   # Pull requests run the matrix once. Direct pushes run only after landing on
   # main, avoiding duplicate branch-push + pull-request jobs for the same SHA.
   push:
