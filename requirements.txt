@@ -53,7 +53,7 @@ send2trash                   # file_controller — recoverable deletes
 python-pptx                  # file_processor — presentation reading
 
 # ── Remote dashboard (control from your phone) ────────────────────────────────
-fastapi>=0.110,<1
+fastapi>=0.162.0,<1
 uvicorn[standard]>=0.27,<1
 cryptography>=42,<51
 python-multipart>=0.0.9,<1
