@@ -668,6 +668,32 @@ export default function ApexWorld() {
         }}
       />
 
+      {/* Male edition final-stage environment. The female edition deliberately
+          keeps its existing clean void and rendering unchanged. */}
+      {isMale && (
+        <div
+          aria-hidden="true"
+          data-testid="male-neural-landscape"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            backgroundImage:
+              "linear-gradient(to bottom, rgba(1,4,8,0.1) 0%, rgba(1,4,8,0) 54%, rgba(1,4,8,0.25) 100%), url('/hologram/male_neural_landscape.png')",
+            backgroundPosition: "center bottom",
+            backgroundRepeat: "no-repeat",
+            backgroundSize: "cover",
+            opacity: orbState === "speaking" ? 0.92 : orbState === "thinking" ? 0.86 : 0.78,
+            filter:
+              orbState === "speaking"
+                ? "saturate(1.14) brightness(1.06)"
+                : "saturate(0.96) brightness(0.88)",
+            transform: "scale(1.015)",
+            transition: "opacity 0.7s ease, filter 0.7s ease",
+          }}
+        />
+      )}
 
       <div
         aria-hidden="true"

@@ -1,0 +1,2023 @@
+(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/components/ApexFemaleHumanoid.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "default",
+    ()=>ApexFemaleHumanoid
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ApexMaleHumanoid$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/components/ApexMaleHumanoid.tsx [app-client] (ecmascript)");
+"use client";
+;
+;
+function ApexFemaleHumanoid({ state, trace = null, reducedMotion = false, pulseSignal = 0, constellationVisible = false, onToggleConstellation }) {
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$ApexMaleHumanoid$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["default"], {
+        appearance: "female",
+        state: state,
+        trace: trace,
+        reducedMotion: reducedMotion,
+        pulseSignal: pulseSignal,
+        constellationVisible: constellationVisible,
+        onToggleConstellation: onToggleConstellation
+    }, "female", false, {
+        fileName: "[project]/components/ApexFemaleHumanoid.tsx",
+        lineNumber: 16,
+        columnNumber: 10
+    }, this);
+}
+_c = ApexFemaleHumanoid;
+var _c;
+__turbopack_context__.k.register(_c, "ApexFemaleHumanoid");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/components/ApexFemaleHumanoid.tsx [app-client] (ecmascript, next/dynamic entry)", (function(__turbopack_context__){
+
+__turbopack_context__.n(__turbopack_context__.i("[project]/components/ApexFemaleHumanoid.tsx [app-client] (ecmascript)"));
+}),
+"[project]/components/ApexMaleHumanoid.tsx [app-client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "default",
+    ()=>ApexMaleHumanoid
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/jsx-dev-runtime.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$react$2d$three$2f$fiber$2f$dist$2f$react$2d$three$2d$fiber$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i("[project]/node_modules/@react-three/fiber/dist/react-three-fiber.esm.js [app-client] (ecmascript) <locals>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$react$2d$three$2f$fiber$2f$dist$2f$events$2d$156d8d12$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__D__as__useFrame$3e$__ = __turbopack_context__.i("[project]/node_modules/@react-three/fiber/dist/events-156d8d12.esm.js [app-client] (ecmascript) <export D as useFrame>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2d$dom$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/dist/compiled/react-dom/index.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/three/build/three.core.js [app-client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$JarvisBridge$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/components/JarvisBridge.tsx [app-client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature(), _s1 = __turbopack_context__.k.signature(), _s2 = __turbopack_context__.k.signature();
+"use client";
+;
+;
+;
+;
+;
+const PORTRAIT_URL = "/hologram/male_portrait.png";
+const DEPTH_URL = "/hologram/male_depth.png";
+const WORLD_W = 7.4;
+const CAM_Y = 0.02;
+const CAM_Z = 6.85;
+const DEPTH_Z_MIN = -1.60;
+const DEPTH_Z_SPAN = 3.20;
+const Y_PIVOT = -0.68;
+const Z_PIVOT = 0.08;
+const TORSO_Y_PIVOT = -1.85;
+const ASSEMBLY_DURATION_SECONDS = 2.85;
+const SHOCKWAVE_DURATION_SECONDS = 2.4;
+const MOOD_BLOOM_SECONDS = 0.68;
+// Screen-space eye/head reference center (50% X, 38% Y from top of viewport)
+const EYE_SCREEN_X = 0.5;
+const EYE_SCREEN_Y = 0.38;
+const MAX_HEAD_YAW = 0.36; // ~21 deg sleek 3D head turn
+const MAX_HEAD_PITCH_UP = 0.26; // ~15 deg 3D chin lift
+const MAX_HEAD_PITCH_DOWN = 0.28; // ~16 deg 3D downward nod
+const MOOD_PROFILES = {
+    idle: {
+        cyan: 0.14,
+        warm: 0.16,
+        zone: 0.06,
+        tone: 0.34,
+        shimmer: 0.20
+    },
+    listening: {
+        cyan: 0.60,
+        warm: 0.11,
+        zone: 0.36,
+        tone: 0.05,
+        shimmer: 0.48
+    },
+    thinking: {
+        cyan: 0.22,
+        warm: 0.62,
+        zone: 0.42,
+        tone: 0.78,
+        shimmer: 0.62
+    },
+    speaking: {
+        cyan: 0.24,
+        warm: 0.52,
+        zone: 0.32,
+        tone: 0.86,
+        shimmer: 0.52
+    }
+};
+const SRGB_TO_LINEAR = (()=>{
+    const lut = new Float32Array(256);
+    for(let i = 0; i < 256; i++){
+        const c = i / 255;
+        lut[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    return lut;
+})();
+const cachedAssetsPromises = new Map();
+const cachedParticleTiers = new Map();
+function hash01(v) {
+    const raw = Math.sin(v * 12.9898 + 0.1234) * 43758.5453;
+    return raw - Math.floor(raw);
+}
+function criticallyDampedSpring(current, velocity, target, omega, dt) {
+    const x = current - target;
+    const exp = Math.exp(-omega * dt);
+    const temp = (velocity + omega * x) * dt;
+    const nextPos = target + (x + temp) * exp;
+    const nextVel = (velocity - omega * temp) * exp;
+    return [
+        nextPos,
+        nextVel
+    ];
+}
+function shapeGazeAxis(v) {
+    const clamped = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(v, -1, 1);
+    const mag = Math.abs(clamped);
+    return Math.sign(clamped) * Math.pow(mag, 0.86);
+}
+/**
+ * O(N) 1024-bin counting sort ordering particles back-to-front by world Z (`wz` ascending)
+ * so foreground 3D head/torso naturally occlude deep-space waves & rear-skull shell in one GPU pass.
+ */ function sortParticlesBackToFront(raw) {
+    const n = raw.count;
+    const BINS = 1024;
+    const zMin = -3.0;
+    const zInvSpan = (BINS - 1) / 5.6; // covers [-3.0 .. +2.6]
+    const counts = new Int32Array(BINS);
+    const binOf = new Uint16Array(n);
+    const srcPos = raw.positions;
+    for(let i = 0; i < n; i++){
+        const z = srcPos[i * 3 + 2];
+        let b = (z - zMin) * zInvSpan | 0;
+        if (b < 0) b = 0;
+        else if (b >= BINS) b = BINS - 1;
+        binOf[i] = b;
+        counts[b] += 1;
+    }
+    const offsets = new Int32Array(BINS);
+    let sum = 0;
+    for(let b = 0; b < BINS; b++){
+        offsets[b] = sum;
+        sum += counts[b];
+    }
+    const positions = new Float32Array(n * 3);
+    const colors = new Float32Array(n * 3);
+    const normals = new Float32Array(n * 3);
+    const traits = new Float32Array(n * 4);
+    const assemblySource = new Float32Array(n * 3);
+    const meta = new Float32Array(n * 3);
+    const rig = new Float32Array(n * 2);
+    const srcCol = raw.colors;
+    const srcNrm = raw.normals;
+    const srcTr = raw.traits;
+    const srcAsm = raw.assemblySource;
+    const srcMeta = raw.meta;
+    const srcRig = raw.rig;
+    for(let i = 0; i < n; i++){
+        const dst = offsets[binOf[i]]++;
+        const s3 = i * 3;
+        const d3 = dst * 3;
+        positions[d3] = srcPos[s3];
+        positions[d3 + 1] = srcPos[s3 + 1];
+        positions[d3 + 2] = srcPos[s3 + 2];
+        colors[d3] = srcCol[s3];
+        colors[d3 + 1] = srcCol[s3 + 1];
+        colors[d3 + 2] = srcCol[s3 + 2];
+        normals[d3] = srcNrm[s3];
+        normals[d3 + 1] = srcNrm[s3 + 1];
+        normals[d3 + 2] = srcNrm[s3 + 2];
+        assemblySource[d3] = srcAsm[s3];
+        assemblySource[d3 + 1] = srcAsm[s3 + 1];
+        assemblySource[d3 + 2] = srcAsm[s3 + 2];
+        meta[d3] = srcMeta[s3];
+        meta[d3 + 1] = srcMeta[s3 + 1];
+        meta[d3 + 2] = srcMeta[s3 + 2];
+        const s4 = i * 4;
+        const d4 = dst * 4;
+        traits[d4] = srcTr[s4];
+        traits[d4 + 1] = srcTr[s4 + 1];
+        traits[d4 + 2] = srcTr[s4 + 2];
+        traits[d4 + 3] = srcTr[s4 + 3];
+        const s2 = i * 2;
+        const d2 = dst * 2;
+        rig[d2] = srcRig[s2];
+        rig[d2 + 1] = srcRig[s2 + 1];
+    }
+    return {
+        count: n,
+        tier: raw.tier,
+        worldH: raw.worldH,
+        positions,
+        colors,
+        normals,
+        traits,
+        assemblySource,
+        meta,
+        rig
+    };
+}
+function loadImageElement(src) {
+    return new Promise((resolve, reject)=>{
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.decoding = "async";
+        img.onload = ()=>resolve(img);
+        img.onerror = ()=>reject(new Error(`Failed to load ${src}`));
+        img.src = src;
+    });
+}
+function loadDecodedAssets(appearance = "male") {
+    const cached = cachedAssetsPromises.get(appearance);
+    if (cached) return cached;
+    const promise = Promise.all([
+        loadImageElement(appearance === "female" ? "/hologram/female_portrait.png" : PORTRAIT_URL),
+        loadImageElement(appearance === "female" ? "/hologram/female_depth.png" : DEPTH_URL)
+    ]).then(([portraitImg, depthImg])=>{
+        const width = portraitImg.naturalWidth || 1020;
+        const height = portraitImg.naturalHeight || 634;
+        const c1 = document.createElement("canvas");
+        c1.width = width;
+        c1.height = height;
+        const ctx1 = c1.getContext("2d", {
+            willReadFrequently: true
+        });
+        if (!ctx1) throw new Error("Canvas 2D unavailable");
+        ctx1.drawImage(portraitImg, 0, 0, width, height);
+        const portrait = ctx1.getImageData(0, 0, width, height).data;
+        const c2 = document.createElement("canvas");
+        c2.width = width;
+        c2.height = height;
+        const ctx2 = c2.getContext("2d", {
+            willReadFrequently: true
+        });
+        if (!ctx2) throw new Error("Canvas 2D unavailable");
+        ctx2.drawImage(depthImg, 0, 0, width, height);
+        const depth = ctx2.getImageData(0, 0, width, height).data;
+        return {
+            width,
+            height,
+            portrait,
+            depth
+        };
+    }).catch((err)=>{
+        cachedAssetsPromises.delete(appearance);
+        throw err;
+    });
+    cachedAssetsPromises.set(appearance, promise);
+    return promise;
+}
+function buildProceduralFallback(tier) {
+    const count = tier === "high" ? 260000 : tier === "medium" ? 95000 : 42000;
+    const worldH = 4.6;
+    const positions = new Float32Array(count * 3);
+    const colors = new Float32Array(count * 3);
+    const normals = new Float32Array(count * 3);
+    const traits = new Float32Array(count * 4);
+    const assemblySource = new Float32Array(count * 3);
+    const meta = new Float32Array(count * 3);
+    const rig = new Float32Array(count * 2);
+    for(let i = 0; i < count; i++){
+        const s1 = hash01(i * 1.13 + 0.7);
+        const s2 = hash01(i * 2.41 + 1.9);
+        const s3 = hash01(i * 3.77 + 4.3);
+        const isWave = i > count * 0.72;
+        let wx = 0;
+        let wy = 0;
+        let wz = 0;
+        let skinW = 0;
+        let region = 0.7;
+        let r = 0.15;
+        let g = 0.82;
+        let b = 0.98;
+        let warm = 0;
+        let cyan = 0.85;
+        let voiceW = 0;
+        let snx = 0;
+        let sny = 0;
+        let snz = 1;
+        if (isWave) {
+            wx = (s1 - 0.5) * WORLD_W;
+            const ribbon = Math.floor(s2 * 22) / 22;
+            wz = -1.1 - Math.floor(s2 * 22) % 4 * 0.36 + Math.cos(wx * 1.4 - ribbon * 4.0) * 0.22;
+            wy = -0.25 + (ribbon - 0.5) * 1.35 + Math.sin(wx * 1.6 + ribbon * 5.0) * 0.22;
+            region = 0.12;
+            if (s2 < 0.35) {
+                r = 0.95;
+                g = 0.62;
+                b = 0.2;
+                warm = 0.8;
+                cyan = 0.1;
+            }
+        } else if (s1 < 0.56) {
+            const band = Math.floor(s2 * 96) / 96;
+            const theta = (s3 - 0.5) * Math.PI * 1.85;
+            const ny = 0.09 + band * 0.56;
+            const rx = 0.96 * Math.sqrt(Math.max(0.04, 1 - Math.pow((ny - 0.35) / 0.28, 2)));
+            wx = Math.sin(theta) * rx;
+            wy = (0.5 - ny) * worldH;
+            wz = Math.cos(theta) * rx * 1.15;
+            snx = Math.sin(theta);
+            snz = Math.cos(theta);
+            skinW = 1;
+            region = 0.7;
+            const center = Math.max(0, Math.cos(theta)) * Math.exp(-Math.pow(wx / 0.34, 2)) * Math.exp(-Math.pow((ny - 0.42) / 0.18, 2));
+            r = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(0.1, 1.0, center);
+            g = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(0.84, 0.64, center);
+            b = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(1.0, 0.22, center);
+            warm = center;
+            cyan = 1 - center * 0.8;
+            voiceW = center > 0.35 ? 0.85 : 0;
+        } else {
+            const band = Math.floor(s2 * 64) / 64;
+            const ny = 0.62 + band * 0.35;
+            const theta = (s3 - 0.5) * Math.PI * 1.7;
+            const span = 0.52 + Math.pow((ny - 0.62) / 0.35, 0.78) * 2.25;
+            wx = Math.sin(theta) * span;
+            wy = (0.5 - ny) * worldH;
+            wz = Math.cos(theta) * (0.54 + (ny - 0.62) * 0.85);
+            snx = Math.sin(theta);
+            snz = Math.cos(theta);
+            skinW = Math.max(0, 1 - (ny - 0.62) / 0.15);
+            region = 0.4;
+            const spine = Math.max(0, Math.cos(theta)) * Math.exp(-Math.pow(wx / 0.22, 2));
+            r = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(0.08, 0.98, spine);
+            g = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(0.78, 0.62, spine);
+            b = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(0.96, 0.22, spine);
+            warm = spine;
+            cyan = 1 - spine * 0.75;
+            voiceW = spine > 0.4 ? 0.42 : 0;
+        }
+        const p3 = i * 3;
+        const p4 = i * 4;
+        const p2 = i * 2;
+        positions[p3] = wx;
+        positions[p3 + 1] = wy;
+        positions[p3 + 2] = wz;
+        colors[p3] = r;
+        colors[p3 + 1] = g;
+        colors[p3 + 2] = b;
+        normals[p3] = snx;
+        normals[p3 + 1] = sny;
+        normals[p3 + 2] = snz;
+        traits[p4] = Math.abs(snz) < 0.35 ? 0.85 : 0.15;
+        traits[p4 + 1] = warm;
+        traits[p4 + 2] = cyan;
+        traits[p4 + 3] = voiceW;
+        const angle = s1 * Math.PI * 2;
+        const dist = 2.8 + s2 * 2.6;
+        assemblySource[p3] = Math.cos(angle) * dist;
+        assemblySource[p3 + 1] = (s3 - 0.5) * worldH * 1.25;
+        assemblySource[p3 + 2] = -2.2 + (s2 - 0.5) * 2.8;
+        meta[p3] = isWave ? 0.52 + s3 * 0.2 : 0.03 + s1 * 0.48;
+        meta[p3 + 1] = Math.min(1, Math.hypot(wx / 3.4, (wy - 0.42) / 2.6));
+        meta[p3 + 2] = s3;
+        rig[p2] = skinW;
+        rig[p2 + 1] = region;
+    }
+    return sortParticlesBackToFront({
+        count,
+        tier,
+        worldH,
+        positions,
+        colors,
+        normals,
+        traits,
+        assemblySource,
+        meta,
+        rig
+    });
+}
+function buildHumanoidParticles(assets, tier, appearance = "male") {
+    const cacheKey = `${appearance}:${tier}`;
+    const cached = cachedParticleTiers.get(cacheKey);
+    if (cached) return cached;
+    const { width: W, height: H, portrait, depth } = assets;
+    const step = tier === "high" ? 1 : tier === "medium" ? 2 : 3;
+    const worldH = WORLD_W * (H / W);
+    // 1. Decode 4.0-unit 3D sculptural depth field (`[-2.40 .. +1.60]`) + light 3x3 float smoothing on figure
+    const rawDepth = new Float32Array(W * H);
+    for(let i = 0, n = W * H; i < n; i++){
+        rawDepth[i] = depth[i * 4] / 255 * DEPTH_Z_SPAN + DEPTH_Z_MIN;
+    }
+    const smoothDepth = new Float32Array(W * H);
+    for(let y = 0; y < H; y++){
+        const y0 = y > 0 ? y - 1 : 0;
+        const y2 = y < H - 1 ? y + 1 : H - 1;
+        const r0 = y0 * W;
+        const r1 = y * W;
+        const r2 = y2 * W;
+        for(let x = 0; x < W; x++){
+            const regB = depth[(r1 + x) * 4 + 2] / 255;
+            // Preserve crisp random Z on crown sparks (`regB > 0.85`) and wave planes (`regB < 0.24`)
+            if (regB < 0.24 || regB > 0.85) {
+                smoothDepth[r1 + x] = rawDepth[r1 + x];
+                continue;
+            }
+            const x0 = x > 0 ? x - 1 : 0;
+            const x2 = x < W - 1 ? x + 1 : W - 1;
+            smoothDepth[r1 + x] = (rawDepth[r0 + x0] + rawDepth[r0 + x] * 2 + rawDepth[r0 + x2] + rawDepth[r1 + x0] * 2 + rawDepth[r1 + x] * 4 + rawDepth[r1 + x2] * 2 + rawDepth[r2 + x0] + rawDepth[r2 + x] * 2 + rawDepth[r2 + x2]) * 0.0625;
+        }
+    }
+    // Lush volumetric 3D layers:
+    // 1) waveBridgeCount: seamless behind-head 3D wave ribbons (`Z ~ -0.96`, `skinW = 0`)
+    // 2) internalCoreCount: internal golden 3D cerebral & cervical spinal core strictly inside skull/neck (`r <= 0.34`)
+    // 3) emberCount: subtle deep-space floating light motes strictly outside center face
+    const waveBridgeCount = tier === "high" ? 20000 : tier === "medium" ? 8000 : 3600;
+    const internalCoreCount = tier === "high" ? 12000 : tier === "medium" ? 5000 : 2200;
+    const emberCount = tier === "high" ? 950 : tier === "medium" ? 450 : 220;
+    const cols = Math.ceil(W / step);
+    const rows = Math.ceil(H / step);
+    const maxCount = cols * rows + waveBridgeCount + internalCoreCount + emberCount;
+    const positions = new Float32Array(maxCount * 3);
+    const colors = new Float32Array(maxCount * 3);
+    const normals = new Float32Array(maxCount * 3);
+    const traits = new Float32Array(maxCount * 4);
+    const assemblySource = new Float32Array(maxCount * 3);
+    const meta = new Float32Array(maxCount * 3);
+    const rig = new Float32Array(maxCount * 2);
+    let count = 0;
+    const pushParticle = (wx, wy, wz, rLin, gLin, bLin, snx, sny, snz, edge, warm, cyan, voiceW, skinW, regionClass, nxHint, nyHint)=>{
+        const seed = hash01(count * 1.37 + nxHint * 17.3 + nyHint * 31.7);
+        let assemblyPhase = 0.02 + seed * 0.12;
+        if (regionClass > 0.85) {
+            assemblyPhase = 0.48 + seed * 0.2;
+        } else if (skinW > 0.55) {
+            const headDist = Math.min(1, Math.hypot((nxHint - 0.5) / 0.16, (nyHint - 0.38) / 0.3));
+            assemblyPhase = 0.01 + headDist * 0.16 + seed * 0.08;
+        } else if (regionClass > 0.55) {
+            assemblyPhase = 0.16 + seed * 0.12;
+        } else if (regionClass > 0.25) {
+            const shDist = Math.min(1, Math.abs(nxHint - 0.5) / 0.38);
+            assemblyPhase = 0.32 + shDist * 0.2 + seed * 0.09;
+        } else {
+            const waveDist = Math.min(1, Math.max(0, (Math.abs(nxHint - 0.5) - 0.1) / 0.4));
+            assemblyPhase = 0.44 + waveDist * 0.22 + seed * 0.08;
+        }
+        const streamSide = nxHint < 0.5 ? -1 : 1;
+        const swirlAngle = seed * Math.PI * 2 + nyHint * 3.4 * streamSide;
+        const radialSpread = 1.85 + hash01(count * 2.71 + 3.1) * 2.75;
+        const srcX = wx * 0.38 + Math.cos(swirlAngle) * radialSpread + streamSide * (0.8 + hash01(count * 0.91 + 7.4) * 1.25);
+        const srcY = wy * 0.58 + Math.sin(swirlAngle) * (0.9 + hash01(count * 1.83 + 5.2) * 1.35) - 0.3;
+        const srcZ = -2.1 + (hash01(count * 3.19 + 1.7) - 0.35) * 2.6;
+        const rxBloom = (nxHint - 0.5) / 0.46;
+        const ryBloom = (nyHint - 0.4) / 0.62;
+        const radialZone = Math.min(1, Math.hypot(rxBloom, ryBloom));
+        const o3 = count * 3;
+        const o4 = count * 4;
+        const o2 = count * 2;
+        positions[o3] = wx;
+        positions[o3 + 1] = wy;
+        positions[o3 + 2] = wz;
+        colors[o3] = rLin;
+        colors[o3 + 1] = gLin;
+        colors[o3 + 2] = bLin;
+        normals[o3] = snx;
+        normals[o3 + 1] = sny;
+        normals[o3 + 2] = snz;
+        traits[o4] = edge;
+        traits[o4 + 1] = warm;
+        traits[o4 + 2] = cyan;
+        traits[o4 + 3] = voiceW;
+        assemblySource[o3] = srcX;
+        assemblySource[o3 + 1] = srcY;
+        assemblySource[o3 + 2] = srcZ;
+        meta[o3] = assemblyPhase;
+        meta[o3 + 1] = radialZone;
+        meta[o3 + 2] = seed;
+        rig[o2] = skinW;
+        rig[o2 + 1] = regionClass;
+        count += 1;
+    };
+    // --- LAYER A: Sculpted Front 3D Surface + Outer 3D Waves + 3D Crown Sparks ---
+    const sampleDepthWorld = (sx, sy)=>{
+        const cx = sx < 0 ? 0 : sx >= W ? W - 1 : sx;
+        const cy = sy < 0 ? 0 : sy >= H ? H - 1 : sy;
+        return smoothDepth[cy * W + cx];
+    };
+    const inv2Dx = 1 / (2 * (step / Math.max(1, W - 1) * WORLD_W));
+    const inv2Dy = 1 / (2 * (step / Math.max(1, H - 1) * worldH));
+    for(let y = 0; y < H; y += step){
+        const ny = y / (H - 1);
+        const wyScreen = (0.5 - ny) * worldH;
+        for(let x = 0; x < W; x += step){
+            const pIdx = (y * W + x) * 4;
+            const regionClass = depth[pIdx + 2] / 255;
+            // Skip flat 2D outer bloom halo pixels (`regionClass ~ 0.02`) so zero flat 2D aura ring exists in 3D!
+            if (regionClass < 0.06) continue;
+            const r8 = portrait[pIdx];
+            const g8 = portrait[pIdx + 1];
+            const b8 = portrait[pIdx + 2];
+            const max8 = r8 > g8 ? r8 > b8 ? r8 : b8 : g8 > b8 ? g8 : b8;
+            const brightness = max8 / 255;
+            const minBright = regionClass > 0.85 ? 0.11 : 0.038;
+            if (brightness < minBright) continue;
+            const skinWeight = depth[pIdx + 1] / 255;
+            const nx = x / (W - 1);
+            const wxScreen = (nx - 0.5) * WORLD_W;
+            const faceAbsX = Math.abs(nx - 0.5);
+            const jitter = (hash01(x * 0.37 + y * 0.73) - 0.5) * 0.022;
+            const wz = smoothDepth[y * W + x] + jitter;
+            const perspScale = (CAM_Z - wz) / CAM_Z;
+            const wx = wxScreen * perspScale;
+            const wy = (wyScreen - CAM_Y) * perspScale + CAM_Y;
+            let snx = 0;
+            let sny = 0;
+            let snz = 1;
+            if (regionClass >= 0.24 && regionClass <= 0.85) {
+                const dzdx = (sampleDepthWorld(x + step, y) - sampleDepthWorld(x - step, y)) * inv2Dx;
+                const dzdy = (sampleDepthWorld(x, y - step) - sampleDepthWorld(x, y + step)) * inv2Dy;
+                snx = -dzdx;
+                sny = -dzdy;
+                snz = 1.0;
+                const invLen = 1 / (Math.hypot(snx, sny, snz) || 1);
+                snx *= invLen;
+                sny *= invLen;
+                snz *= invLen;
+            }
+            const warmRatio = r8 > 95 && r8 > b8 * 1.25 ? Math.min(1, (r8 - b8 * 0.75) / 205 * (0.55 + brightness * 0.65)) : 0;
+            const cyanRatio = b8 > r8 * 1.08 && Math.max(g8, b8) > 70 ? Math.min(1, (Math.max(g8, b8) - r8 * 0.65) / 200 * (0.5 + brightness * 0.6)) : 0;
+            let voiceWeight = 0;
+            if (skinWeight > 0.45 && ny > 0.22 && ny < 0.63 && faceAbsX < 0.095 && (warmRatio > 0.16 || brightness > 0.22)) {
+                const centerFalloff = 1 - Math.min(1, faceAbsX / 0.095);
+                voiceWeight = 0.58 + 0.42 * centerFalloff * Math.min(1, brightness * 1.25);
+            } else if (ny >= 0.60 && ny < 0.95 && faceAbsX < 0.115 && (warmRatio > 0.12 || brightness > 0.25)) {
+                const spineFalloff = 1 - Math.min(1, faceAbsX / 0.115);
+                voiceWeight = 0.16 + 0.36 * spineFalloff * Math.min(1, brightness * 1.2);
+            }
+            const edgeTrait = snz < 0.52 ? 1.0 : 0.0;
+            pushParticle(wx, wy, wz, SRGB_TO_LINEAR[r8], SRGB_TO_LINEAR[g8], SRGB_TO_LINEAR[b8], snx, sny, snz, edgeTrait, warmRatio, cyanRatio, voiceWeight, skinWeight, regionClass, nx, ny);
+        }
+    }
+    // --- LAYER B: Seamless 3D Wave Continuity Behind Head (`ny = 0.33..0.63`, `Z ~ -0.92`, `skinW = 0`) ---
+    // Interpolates real left & right wave scanlines from `male_portrait.png` strictly behind the jaw/ears
+    // (never near the bald crown `ny < 0.33`!), eliminating any silhouette cutout gap when the head turns.
+    for(let i = 0; i < waveBridgeCount; i++){
+        const s1 = hash01(i * 2.13 + 0.61);
+        const s2 = hash01(i * 4.67 + 1.83);
+        const s3 = hash01(i * 6.31 + 3.07);
+        const bRow = Math.min(H - 1, Math.floor((0.33 + s1 * 0.30) * (H - 1)));
+        const xLeft = Math.min(W - 1, Math.floor((0.20 + s2 * 0.08) * (W - 1)));
+        const xRight = Math.min(W - 1, Math.floor((0.72 + s2 * 0.08) * (W - 1)));
+        const pL = (bRow * W + xLeft) * 4;
+        const pR = (bRow * W + xRight) * 4;
+        const r8 = Math.round((portrait[pL] * (1 - s3) + portrait[pR] * s3) * 0.85);
+        const g8 = Math.round((portrait[pL + 1] * (1 - s3) + portrait[pR + 1] * s3) * 0.85);
+        const b8 = Math.round((portrait[pL + 2] * (1 - s3) + portrait[pR + 2] * s3) * 0.85);
+        const max8 = r8 > g8 ? r8 > b8 ? r8 : b8 : g8 > b8 ? g8 : b8;
+        if (max8 / 255 < 0.05) continue;
+        const bNy = bRow / (H - 1);
+        const bNx = 0.27 + 0.46 * s3;
+        const wz = -0.92 + 0.32 * Math.sin(bNy * 22.0 + bNx * 3.5) + 0.18 * Math.cos(bNx * 8.5 - bNy * 12.0);
+        const perspB = (CAM_Z - wz) / CAM_Z;
+        const wx = (bNx - 0.5) * WORLD_W * perspB;
+        const wy = ((0.5 - bNy) * worldH - CAM_Y) * perspB + CAM_Y;
+        const warmRatio = r8 > b8 * 1.2 ? 0.72 : 0.05;
+        const cyanRatio = b8 >= r8 ? 0.78 : 0.1;
+        pushParticle(wx, wy, wz, SRGB_TO_LINEAR[r8], SRGB_TO_LINEAR[g8], SRGB_TO_LINEAR[b8], 0, 0, 1, 0, warmRatio, cyanRatio, 0, 0, 0.12, bNx, bNy);
+    }
+    // --- LAYER C: Internal Golden 3D Cerebral & Cervical Spinal Core (`r <= 0.34`, never touches silhouette) ---
+    for(let i = 0; i < internalCoreCount; i++){
+        const s1 = hash01(i * 3.11 + 1.41);
+        const s2 = hash01(i * 5.23 + 2.71);
+        const s3 = hash01(i * 7.09 + 0.33);
+        const nyRaw = 0.22 + s1 * 0.70;
+        const nyC = Math.round(nyRaw * 108) / 108 + (s3 - 0.5) * 0.0025;
+        const isBrain = nyC < 0.55;
+        const rad = isBrain ? 0.02 + s2 * 0.32 : 0.015 + s2 * 0.105;
+        const ang = s3 * Math.PI * 2;
+        const wx = Math.cos(ang) * rad;
+        const wy = (0.5 - nyC) * worldH;
+        const wz = isBrain ? 0.22 + Math.sin(ang) * rad * 0.85 : 0.12 + Math.sin(ang) * rad * 0.75;
+        const tCerv = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp((nyC - 0.575) / (0.76 - 0.575), 0, 1);
+        const skinW = 1 - tCerv * tCerv * (3 - 2 * tCerv);
+        const glow = 0.42 + 0.44 * hash01(i * 1.97 + 4.2);
+        const cR = Math.pow(1.0 * glow, 2.2);
+        const cG = Math.pow(0.66 * glow, 2.2);
+        const cB = Math.pow(0.20 * glow, 2.2);
+        const voiceW = isBrain ? 0.48 : 0.62;
+        pushParticle(wx, wy, wz, cR, cG, cB, 0, 0, 1, 0, 0.92, 0.06, voiceW, skinW, 0.62, 0.5 + wx / WORLD_W, nyC);
+    }
+    // --- LAYER D: Subtle Deep-Space Atmospheric Light Embers (strictly outside face zone) ---
+    for(let i = 0; i < emberCount; i++){
+        const s1 = hash01(i * 5.81 + 0.29);
+        const s2 = hash01(i * 8.17 + 1.19);
+        const s3 = hash01(i * 3.49 + 2.63);
+        const wx = (s1 - 0.5) * 6.8;
+        const wy = (s2 - 0.5) * 4.0;
+        const wz = -1.5 + s3 * 2.9;
+        if (Math.abs(wx) < 1.38 && wy > -0.82 && wy < 1.88) continue;
+        const isGold = hash01(i * 9.31) < 0.32;
+        const fade = 0.30 + 0.42 * hash01(i * 2.47);
+        const cR = Math.pow((isGold ? 1.0 : 0.20) * fade, 2.2);
+        const cG = Math.pow((isGold ? 0.70 : 0.86) * fade, 2.2);
+        const cB = Math.pow((isGold ? 0.25 : 1.0) * fade, 2.2);
+        pushParticle(wx, wy, wz, cR, cG, cB, 0, 0, 1, 0, isGold ? 0.72 : 0, isGold ? 0.1 : 0.82, 0, 0, 0.92, 0.5 + wx / WORLD_W, 0.5 - wy / worldH);
+    }
+    const built = sortParticlesBackToFront({
+        count,
+        tier,
+        worldH,
+        positions: positions.subarray(0, count * 3),
+        colors: colors.subarray(0, count * 3),
+        normals: normals.subarray(0, count * 3),
+        traits: traits.subarray(0, count * 4),
+        assemblySource: assemblySource.subarray(0, count * 3),
+        meta: meta.subarray(0, count * 3),
+        rig: rig.subarray(0, count * 2)
+    });
+    cachedParticleTiers.set(cacheKey, built);
+    return built;
+}
+const VERTEX_SHADER = /* glsl */ `
+attribute vec3 color;
+attribute vec3 aNormal;
+attribute vec4 aTraits;         // x: edge, y: warm, z: cyan, w: voiceWeight
+attribute vec3 aAssemblySource;
+attribute vec3 aMeta;           // x: assemblyPhase, y: radialZone, z: seed
+attribute vec2 aRig;            // x: skinWeight, y: regionClass
+
+uniform float uTime;
+uniform float uDpr;
+uniform float uPointSize;
+uniform vec3 uCamPos;
+uniform float uYaw;
+uniform float uPitch;
+uniform float uRoll;
+uniform float uTorsoYaw;
+uniform float uTorsoPitch;
+uniform float uChest;
+uniform float uAssemblyProgress;
+uniform float uAssemblyEnabled;
+uniform float uShockwaveActive;
+uniform float uShockwaveProgress;
+uniform float uTransitionProgress;
+uniform vec4 uPrevMood;         // x: cyan, y: warm, z: zone, w: tone
+uniform vec4 uNextMood;         // x: cyan, y: warm, z: zone, w: tone
+uniform float uMoodShimmer;
+uniform float uVoice;
+uniform float uBrainActivity;
+uniform float uBrainTone;
+uniform float uEffects;
+uniform float uFemale;
+
+varying vec3 vCoreColor;
+varying vec3 vHaloColor;
+varying float vCoreAlpha;
+varying float vHaloAlpha;
+
+float smoother(float x) {
+  return x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+}
+
+void main() {
+  vec3 p = position;
+  vec3 nrm = aNormal;
+
+  float edgeTrait = aTraits.x;
+  float warmTrait = aTraits.y;
+  float cyanTrait = aTraits.z;
+  float voiceTrait = aTraits.w;
+
+  float assemblyPhase = aMeta.x;
+  float radialZone = aMeta.y;
+  float seed = aMeta.z;
+
+  float skinW = aRig.x;
+  float region = aRig.y;
+
+  // 1. Living 3D wave ribbons undulating through X-Y-Z depth (region ~ 0.12)
+  float waveMask = 1.0 - smoothstep(0.18, 0.28, region);
+  if (waveMask > 0.001 && uEffects > 0.5) {
+    float w1 = sin(p.x * 1.45 - uTime * 0.85 + p.z * 1.8) * 0.055;
+    float w2 = cos(p.x * 2.75 + uTime * 0.60 - p.y * 1.65) * 0.028;
+    p.y += (w1 + w2) * waveMask;
+    p.z += sin(p.x * 1.15 + uTime * 0.72 + seed * 2.4) * 0.095 * waveMask;
+  }
+
+  // 2. Volumetric 3D crown sparks & foreground holographic dust drift (region > 0.85)
+  if (region > 0.85 && uEffects > 0.5) {
+    p.y += sin(uTime * 1.25 + seed * 6.2831853) * 0.042 + 0.010;
+    p.x += cos(uTime * 0.92 + seed * 9.42477) * 0.028;
+    p.z += sin(uTime * 0.84 + seed * 4.71238) * 0.046;
+  }
+
+  // 3. 3D Vocal resonance along visage & internal neural core when speaking
+  if (voiceTrait > 0.40 && uVoice > 0.01 && uEffects > 0.5) {
+    float vocalWave = sin(p.y * 24.0 - uTime * 14.5 + seed * 3.14) * 0.011 * uVoice;
+    p.z += vocalWave * 1.65;
+    p.y += vocalWave * 0.40;
+  }
+
+  // 4. 3D Ribcage breathing + secondary upper-torso 3D rotation
+  float bodyWeight = (1.0 - skinW) * smoothstep(0.24, 0.48, region) * (1.0 - smoothstep(0.80, 0.90, region));
+  p.y += uChest * bodyWeight;
+  p.z += uChest * 0.85 * bodyWeight;
+
+  float torsoVert = smoothstep(${TORSO_Y_PIVOT.toFixed(4)} - 0.35, -0.55, p.y);
+  float torsoMask = smoothstep(0.24, 0.36, region) * (1.0 - smoothstep(0.82, 0.90, region));
+  float torsoFactor = torsoVert * torsoMask * (1.0 - skinW);
+  float ty = uTorsoYaw * torsoFactor;
+  float tp = uTorsoPitch * torsoFactor;
+  if (abs(ty) + abs(tp) > 0.0002) {
+    float cty = cos(ty), sty = sin(ty);
+    float ctp = cos(tp), stp = sin(tp);
+    vec3 trel = vec3(p.x, p.y - (${TORSO_Y_PIVOT.toFixed(4)}), p.z);
+    vec3 tr1 = vec3(trel.x * cty + trel.z * sty, trel.y, -trel.x * sty + trel.z * cty);
+    vec3 tr2 = vec3(tr1.x, tr1.y * ctp - tr1.z * stp, tr1.y * stp + tr1.z * ctp);
+    p = vec3(tr2.x, tr2.y + (${TORSO_Y_PIVOT.toFixed(4)}), tr2.z);
+
+    vec3 tn1 = vec3(nrm.x * cty + nrm.z * sty, nrm.y, -nrm.x * sty + nrm.z * cty);
+    vec3 tn2 = vec3(tn1.x, tn1.y * ctp - tn1.z * stp, tn1.y * stp + tn1.z * ctp);
+    nrm = normalize(tn2);
+  }
+
+  // 5. True 3D Volumetric Head + Internal Brain + Cervical Spine Rotation
+  // Sign convention verified across all 4 quadrants:
+  //   uYaw > 0   -> nose turns RIGHT (+X)
+  //   uYaw < 0   -> nose turns LEFT (-X)
+  //   uPitch > 0 -> nose nods DOWN (-Y), 3D crown tilts forward (+Z)
+  //   uPitch < 0 -> nose tilts UP (+Y), chin & submental shelf lift up
+  if (skinW > 0.001) {
+    float yaw = uYaw * skinW;
+    float pitch = uPitch * skinW;
+    float roll = uRoll * skinW;
+
+    float cy = cos(yaw), sy = sin(yaw);
+    float cp = cos(pitch), sp = sin(pitch);
+    float cr = cos(roll), sr = sin(roll);
+
+    vec3 rel = vec3(p.x, p.y - (${Y_PIVOT.toFixed(4)}), p.z - (${Z_PIVOT.toFixed(4)}));
+
+    // Yaw around Y
+    vec3 r1 = vec3(rel.x * cy + rel.z * sy, rel.y, -rel.x * sy + rel.z * cy);
+    // Pitch around X
+    vec3 r2 = vec3(r1.x, r1.y * cp - r1.z * sp, r1.y * sp + r1.z * cp);
+    // Natural roll around Z
+    vec3 r3 = vec3(r2.x * cr - r2.y * sr, r2.x * sr + r2.y * cr, r2.z);
+
+    p = vec3(r3.x, r3.y + (${Y_PIVOT.toFixed(4)}), r3.z + (${Z_PIVOT.toFixed(4)}));
+
+    vec3 n1 = vec3(nrm.x * cy + nrm.z * sy, nrm.y, -nrm.x * sy + nrm.z * cy);
+    vec3 n2 = vec3(n1.x, n1.y * cp - n1.z * sp, n1.y * sp + n1.z * cp);
+    vec3 n3 = vec3(n2.x * cr - n2.y * sr, n2.x * sr + n2.y * cr, n2.z);
+    nrm = normalize(n3);
+  }
+
+  // 6. 3D View-Normal Backface Occlusion + Grazing 3D Fresnel Rim + Directional Key/Fill + Aerial Z-Depth
+  float isShellSurface = step(0.35, region) * (1.0 - step(0.80, region)) * (1.0 - smoothstep(0.58, 0.64, region) * (1.0 - smoothstep(0.64, 0.67, region)));
+  vec3 viewDir = normalize(uCamPos - p);
+  float ndotv = dot(nrm, viewDir);
+
+  // Attenuate back-turned shell surfaces so far side of skull never ghosts over front face
+  float backfaceVis = mix(1.0, 0.12 + 0.88 * smoothstep(-0.26, 0.22, ndotv), isShellSurface);
+  float fresnelRim = isShellSurface * pow(1.0 - clamp(abs(ndotv), 0.0, 1.0), 2.15) * 0.44;
+
+  vec3 keyLight = normalize(vec3(0.32, 0.34, 0.88));
+  float lambert = clamp(dot(nrm, keyLight), 0.0, 1.0);
+  float depthShade = mix(1.0, 0.76 + 0.36 * lambert, isShellSurface);
+
+  // Aerial Z-perspective: foreground +Z pops crisply, deep -Z waves recede atmospherically into 3D space
+  float aerialDepth = clamp(0.52 + 0.56 * smoothstep(-2.45, 1.35, p.z), 0.44, 1.16);
+
+  // 7. Fluid 3D birth assembly from pure darkness
+  float birthVisibility = 1.0;
+  float assemblyGlow = 0.0;
+  if (uAssemblyEnabled > 0.5 && uAssemblyProgress < 1.0) {
+    float raw = clamp((uAssemblyProgress - assemblyPhase) / 0.34, 0.0, 1.0);
+    float local = smoother(raw);
+    birthVisibility = smoothstep(0.0, 0.18, raw);
+    assemblyGlow = sin(local * 3.14159265) * 0.52;
+
+    float arc = sin(local * 3.14159265);
+    float curvePhase = seed * 6.2831853;
+    float swirl = sin(local * 4.7123889 + curvePhase) * pow(1.0 - local, 1.85) * 0.085;
+
+    p = mix(aAssemblySource, p, local);
+    p.x += swirl;
+    p.y += arc * (0.14 + seed * 0.09);
+    p.z += arc * (0.18 + fract(seed * 7.13) * 0.12);
+  }
+
+  // 8. 3D Radial spherical shockwave bursting outward from sternum/heart nexus
+  float shockProgress = clamp(uShockwaveProgress, 0.0, 1.0);
+  vec3 shockOrigin = vec3(0.0, -0.22, 0.25);
+  vec3 shockVec = p - shockOrigin;
+  float shockRadius = length(shockVec);
+  float travel = clamp((shockProgress - 0.05) / 0.82, 0.0, 1.0);
+  float waveRadius = mix(0.08, 5.25, travel);
+  float ring = 1.0 - smoothstep(0.0, 0.32, abs(shockRadius - waveRadius));
+  float waveFade = smoothstep(0.02, 0.12, shockProgress) * (1.0 - smoothstep(0.80, 1.0, shockProgress));
+  float coreFlash = (1.0 - smoothstep(0.08, 0.88, shockRadius)) * (1.0 - smoothstep(0.02, 0.24, shockProgress));
+  float shockRing = ring * waveFade * uShockwaveActive;
+  float shockCore = coreFlash * uShockwaveActive;
+  float shockEnergy = max(shockRing, shockCore);
+
+  if (shockRing > 0.001) {
+    vec3 dir = shockVec / max(shockRadius, 0.0001);
+    p += dir * shockRing * (1.0 - travel) * 0.072;
+  }
+
+  // 9. Four moods blooming radially outward from the face over 680ms
+  float localBloom = smoothstep(
+    radialZone * 0.58,
+    radialZone * 0.58 + 0.42,
+    clamp(uTransitionProgress, 0.0, 1.0)
+  );
+  vec4 mood = mix(uPrevMood, uNextMood, localBloom);
+  float stateCyan = mood.x;
+  float stateWarm = mood.y;
+  float stateZone = mood.z;
+  float stateTone = mood.w;
+
+  float neuralFlow = 0.5 + 0.5 * sin(p.y * 4.2 - uTime * 3.6 + seed * 3.14159);
+  float moodWave = uMoodShimmer * (0.45 + 0.55 * neuralFlow) * (1.0 - radialZone * 0.55);
+
+  float faceCadence = 0.72 + 0.28 * sin(uTime * 11.2 + p.y * 8.0 + seed * 2.0);
+  float coreCadence = 0.76 + 0.24 * sin(uTime * 6.0 - p.y * 4.5);
+  float isVisageVoice = step(0.55, voiceTrait);
+  float voiceEnergy =
+    voiceTrait *
+    mix(coreCadence, faceCadence, isVisageVoice) *
+    uVoice *
+    1.35;
+
+  float brainRhythm = 0.72 + 0.28 * sin(uTime * 6.6 + seed * 6.2831853);
+  float brainPulse = uBrainActivity * (0.42 + (1.0 - radialZone) * 0.58) * brainRhythm * uEffects;
+
+  // Travelling bio-electric pulses racing outward along wave ribbons & ascending up the golden spine
+  float wavePulse = waveMask * pow(0.5 + 0.5 * sin(abs(p.x) * 2.35 - uTime * 2.25 + seed * 1.4), 5.0) * 0.42 * uEffects;
+  float spinalPulse =
+    warmTrait *
+    (1.0 - smoothstep(0.18, 0.48, abs(p.x))) *
+    pow(0.5 + 0.5 * sin(p.y * 4.4 - uTime * 2.55), 4.0) *
+    (0.32 + uVoice * 0.45) *
+    uEffects;
+
+  float cyanEnergy =
+    cyanTrait * stateCyan +
+    edgeTrait * (0.10 + stateCyan * 0.38) +
+    fresnelRim * 0.96 +
+    wavePulse * 0.85 +
+    moodWave * (1.0 - stateTone) * 0.34 +
+    shockRing * (0.45 + travel * 0.30) +
+    assemblyGlow * 0.28;
+
+  float warmEnergy =
+    warmTrait * stateWarm +
+    spinalPulse * 0.92 +
+    wavePulse * warmTrait * 0.55 +
+    moodWave * stateTone * 0.38 +
+    shockCore * 0.72 +
+    shockRing * (1.0 - travel) * 0.22;
+
+  float zoneEnergy = (1.0 - radialZone * 0.72) * stateZone;
+  float totalEnergy = (cyanEnergy + warmEnergy + voiceEnergy + zoneEnergy + brainPulse * 0.48) * uEffects;
+
+  vec3 electricCyan = mix(vec3(0.20, 0.94, 1.0), vec3(1.0, 0.48, 0.79), uFemale);
+  vec3 moltenAmber = mix(vec3(1.0, 0.66, 0.18), vec3(1.0, 0.74, 0.60), uFemale);
+  vec3 emeraldSignal = vec3(0.38, 1.0, 0.70);
+  vec3 synapticViolet = vec3(0.68, 0.48, 1.0);
+
+  float bt = clamp(uBrainTone, 0.0, 1.0);
+  vec3 brainColor = bt < 0.5
+    ? mix(electricCyan, emeraldSignal, bt * 2.0)
+    : mix(synapticViolet, moltenAmber, (bt - 0.5) * 2.0);
+
+  vec3 moodTint = mix(electricCyan, moltenAmber, clamp(stateTone, 0.0, 1.0));
+
+  vec3 lifted = pow(max(color, vec3(0.0)), vec3(0.84)) * depthShade * aerialDepth;
+  vec3 boosted =
+    lifted * 1.15 +
+    electricCyan * (cyanEnergy * 0.18 + fresnelRim * 0.48) +
+    moltenAmber * (warmEnergy + voiceEnergy * 1.22) * 0.24 +
+    brainColor * brainPulse * 0.16;
+
+  float peak = max(boosted.r, max(boosted.g, boosted.b));
+  if (peak > 1.0) {
+    boosted /= peak;
+  }
+
+  vCoreColor = clamp(boosted, 0.0, 1.0);
+  vCoreAlpha = birthVisibility * backfaceVis;
+
+  float gE = clamp(totalEnergy, 0.0, 1.45);
+  vec3 glowBase = mix(moodTint, vCoreColor, 0.48);
+  vHaloColor =
+    mix(glowBase, brainColor, clamp(brainPulse * 0.36, 0.0, 0.45)) *
+    (0.64 + gE * 0.82) *
+    aerialDepth;
+  vHaloAlpha =
+    clamp(0.024 + gE * 0.115 + shockEnergy * 0.11 + brainPulse * 0.045, 0.0, 0.24) *
+    birthVisibility *
+    mix(0.35, 1.0, backfaceVis);
+
+  vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+  // True 3D perspective sizeAttenuation: closer (+Z) particles scale larger, deep (-Z) particles scale smaller!
+  float perspAtten = clamp(${CAM_Z.toFixed(2)} / max(1.8, -mvPosition.z), 0.52, 1.85);
+
+  gl_PointSize =
+    uPointSize *
+    uDpr *
+    perspAtten *
+    (1.0 + gE * 0.08 + shockEnergy * 0.16 + voiceEnergy * 0.07);
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+const FRAGMENT_SHADER = /* glsl */ `
+varying vec3 vCoreColor;
+varying vec3 vHaloColor;
+varying float vCoreAlpha;
+varying float vHaloAlpha;
+
+void main() {
+  vec2 centered = gl_PointCoord - vec2(0.5);
+  float d2 = dot(centered, centered);
+  if (d2 > 0.25) discard;
+
+  float coreMask = exp(-d2 * 22.0) * vCoreAlpha;
+  float haloMask = (exp(-d2 * 5.2) - exp(-5.2 * 0.25)) * vHaloAlpha;
+
+  vec3 premulRgb = vCoreColor * coreMask + vHaloColor * haloMask * (1.0 - coreMask * 0.55);
+  float outAlpha = clamp(coreMask * 0.92, 0.0, 1.0);
+
+  if (outAlpha < 0.008 && haloMask < 0.004) discard;
+  gl_FragColor = vec4(premulRgb, outAlpha);
+}
+`;
+const LOOK_TARGET = new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Vector3"](0, 0.04, 0.08);
+function HumanoidPointCloud({ data, state, reducedMotion, turntable, audioLevelRef, pointerRef, assemblyRun, pulseSeq, brainEvent, onAssemblyStateChange, onShockwaveTrigger, onLowFpsDetected }) {
+    _s();
+    const springs = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        yaw: 0,
+        yawVel: 0,
+        pitch: 0,
+        pitchVel: 0,
+        roll: 0,
+        rollVel: 0,
+        torsoYaw: 0,
+        torsoYawVel: 0,
+        torsoPitch: 0,
+        torsoPitchVel: 0,
+        camAz: 0,
+        camAzVel: 0,
+        camEl: 0,
+        camElVel: 0,
+        camDist: CAM_Z,
+        camDistVel: 0
+    });
+    const voiceEnvelope = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const brainEnvelope = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        activity: 0,
+        tone: 0.1,
+        seenId: -1
+    });
+    const moodTransition = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        targetState: state,
+        prev: {
+            ...MOOD_PROFILES[state]
+        },
+        next: {
+            ...MOOD_PROFILES[state]
+        },
+        progress: 1
+    });
+    const assemblyClock = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        run: -1,
+        startedAt: 0,
+        completedRun: -1
+    });
+    const shockwaveClock = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        active: false,
+        startedAt: 0,
+        seenPulseSeq: pulseSeq
+    });
+    const fpsMonitor = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        frames: 0,
+        startedAt: 0,
+        reported: false
+    });
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HumanoidPointCloud.useEffect": ()=>{
+            const tr = moodTransition.current;
+            if (tr.targetState === state) return;
+            const blend = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(tr.progress, 0, 1);
+            const snapshot = {
+                cyan: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.cyan, tr.next.cyan, blend),
+                warm: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.warm, tr.next.warm, blend),
+                zone: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.zone, tr.next.zone, blend),
+                tone: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.tone, tr.next.tone, blend),
+                shimmer: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.shimmer, tr.next.shimmer, blend)
+            };
+            tr.targetState = state;
+            tr.prev = snapshot;
+            tr.next = {
+                ...MOOD_PROFILES[state]
+            };
+            tr.progress = reducedMotion ? 1 : 0;
+        }
+    }["HumanoidPointCloud.useEffect"], [
+        state,
+        reducedMotion
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HumanoidPointCloud.useEffect": ()=>{
+            if (brainEvent && brainEvent.id !== brainEnvelope.current.seenId) {
+                brainEnvelope.current.seenId = brainEvent.id;
+                brainEnvelope.current.activity = 0.92;
+                brainEnvelope.current.tone = brainEvent.tone;
+            }
+        }
+    }["HumanoidPointCloud.useEffect"], [
+        brainEvent
+    ]);
+    const geometry = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
+        "HumanoidPointCloud.useMemo[geometry]": ()=>{
+            const g = new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferGeometry"]();
+            g.setAttribute("position", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.positions, 3));
+            g.setAttribute("color", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.colors, 3));
+            g.setAttribute("aNormal", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.normals, 3));
+            g.setAttribute("aTraits", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.traits, 4));
+            g.setAttribute("aAssemblySource", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.assemblySource, 3));
+            g.setAttribute("aMeta", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.meta, 3));
+            g.setAttribute("aRig", new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["BufferAttribute"](data.rig, 2));
+            g.computeBoundingSphere();
+            return g;
+        }
+    }["HumanoidPointCloud.useMemo[geometry]"], [
+        data
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HumanoidPointCloud.useEffect": ()=>({
+                "HumanoidPointCloud.useEffect": ()=>geometry.dispose()
+            })["HumanoidPointCloud.useEffect"]
+    }["HumanoidPointCloud.useEffect"], [
+        geometry
+    ]);
+    const uniforms = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
+        "HumanoidPointCloud.useMemo[uniforms]": ()=>({
+                uFemale: {
+                    value: data.appearance === "female" ? 1 : 0
+                },
+                uTime: {
+                    value: 0
+                },
+                uDpr: {
+                    value: 1
+                },
+                uPointSize: {
+                    value: 2.35
+                },
+                uCamPos: {
+                    value: new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Vector3"](0, CAM_Y, CAM_Z)
+                },
+                uYaw: {
+                    value: 0
+                },
+                uPitch: {
+                    value: 0
+                },
+                uRoll: {
+                    value: 0
+                },
+                uTorsoYaw: {
+                    value: 0
+                },
+                uTorsoPitch: {
+                    value: 0
+                },
+                uChest: {
+                    value: 0
+                },
+                uAssemblyProgress: {
+                    value: reducedMotion ? 1 : 0
+                },
+                uAssemblyEnabled: {
+                    value: reducedMotion ? 0 : 1
+                },
+                uShockwaveActive: {
+                    value: 0
+                },
+                uShockwaveProgress: {
+                    value: 1
+                },
+                uTransitionProgress: {
+                    value: 1
+                },
+                uPrevMood: {
+                    value: new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Vector4"](0.14, 0.16, 0.06, 0.34)
+                },
+                uNextMood: {
+                    value: new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["Vector4"](0.14, 0.16, 0.06, 0.34)
+                },
+                uMoodShimmer: {
+                    value: 0.20
+                },
+                uVoice: {
+                    value: 0
+                },
+                uBrainActivity: {
+                    value: 0
+                },
+                uBrainTone: {
+                    value: 0.1
+                },
+                uEffects: {
+                    value: reducedMotion ? 0.35 : 1
+                }
+            })
+    }["HumanoidPointCloud.useMemo[uniforms]"], // eslint-disable-next-line react-hooks/exhaustive-deps
+    []);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HumanoidPointCloud.useEffect": ()=>{
+            uniforms.uFemale.value = data.appearance === "female" ? 1 : 0;
+        }
+    }["HumanoidPointCloud.useEffect"], [
+        data.appearance,
+        uniforms
+    ]);
+    const material = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
+        "HumanoidPointCloud.useMemo[material]": ()=>new __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["ShaderMaterial"]({
+                uniforms,
+                vertexShader: VERTEX_SHADER,
+                fragmentShader: FRAGMENT_SHADER,
+                transparent: true,
+                depthWrite: false,
+                depthTest: false,
+                blending: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["CustomBlending"],
+                blendEquation: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["AddEquation"],
+                blendSrc: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["OneFactor"],
+                blendDst: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["OneMinusSrcAlphaFactor"]
+            })
+    }["HumanoidPointCloud.useMemo[material]"], [
+        uniforms
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "HumanoidPointCloud.useEffect": ()=>({
+                "HumanoidPointCloud.useEffect": ()=>material.dispose()
+            })["HumanoidPointCloud.useEffect"]
+    }["HumanoidPointCloud.useEffect"], [
+        material
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$react$2d$three$2f$fiber$2f$dist$2f$events$2d$156d8d12$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__D__as__useFrame$3e$__["useFrame"])({
+        "HumanoidPointCloud.useFrame": ({ clock, gl, camera }, rawDt)=>{
+            const dt = Math.min(rawDt, 0.05);
+            const t = clock.elapsedTime;
+            const dpr = gl.getPixelRatio();
+            if (!fpsMonitor.current.reported && t > 3.6) {
+                if (fpsMonitor.current.startedAt === 0) {
+                    fpsMonitor.current.startedAt = t;
+                    fpsMonitor.current.frames = 0;
+                } else {
+                    fpsMonitor.current.frames += 1;
+                    const elapsed = t - fpsMonitor.current.startedAt;
+                    if (elapsed >= 2.2) {
+                        const measuredFps = fpsMonitor.current.frames / elapsed;
+                        if (measuredFps < 26) {
+                            fpsMonitor.current.reported = true;
+                            onLowFpsDetected();
+                        } else {
+                            fpsMonitor.current.startedAt = t;
+                            fpsMonitor.current.frames = 0;
+                        }
+                    }
+                }
+            }
+            const ptr = pointerRef.current;
+            const microLifeYaw = Math.sin(t * 0.52) * 0.018 + Math.sin(t * 1.18 + 1.1) * 0.009;
+            const microLifePitch = Math.sin(t * 0.68 + 0.4) * 0.014;
+            const idleAutonomousYaw = Math.sin(t * 0.46) * 0.095 + Math.sin(t * 1.05 + 1.2) * 0.032;
+            const idleAutonomousPitch = Math.sin(t * 0.58 + 0.6) * 0.042;
+            let baseYaw = 0;
+            let basePitch = 0;
+            if (ptr.inside) {
+                const gx = shapeGazeAxis(ptr.x);
+                const gy = shapeGazeAxis(ptr.y);
+                baseYaw = gx * MAX_HEAD_YAW + microLifeYaw;
+                // gy > 0 when mouse is BELOW eyes -> positive pitch nods 3D head DOWN toward cursor
+                // gy < 0 when mouse is ABOVE eyes -> negative pitch tilts 3D head UP toward cursor
+                basePitch = (gy >= 0 ? gy * MAX_HEAD_PITCH_DOWN : gy * MAX_HEAD_PITCH_UP) + microLifePitch;
+            } else {
+                baseYaw = idleAutonomousYaw;
+                basePitch = idleAutonomousPitch;
+            }
+            let stateYawOffset = 0;
+            let statePitchOffset = 0;
+            let gazeGain = 1.0;
+            if (state === "listening") {
+                gazeGain = 1.08;
+                statePitchOffset = 0.018 + Math.sin(t * 1.45) * 0.008;
+            } else if (state === "thinking") {
+                gazeGain = 0.90;
+                stateYawOffset = Math.sin(t * 0.72) * 0.052;
+                statePitchOffset = -0.020 + Math.sin(t * 0.95) * 0.018;
+            } else if (state === "speaking") {
+                gazeGain = 0.96;
+                stateYawOffset = Math.sin(t * 0.88) * 0.025;
+                statePitchOffset = Math.sin(t * 1.85) * 0.018;
+            }
+            let yawTarget = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(baseYaw * gazeGain + stateYawOffset, -0.42, 0.42);
+            let pitchTarget = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(basePitch * gazeGain + statePitchOffset, -0.30, 0.32);
+            let rollTarget = -yawTarget * 0.085 + (state === "listening" ? 0.014 : 0);
+            // True 3D Perspective Camera Orbit:
+            // - Subtle autonomous 3D figure-8 orbit so scene feels tangibly 3D even with stationary mouse
+            // - Cursor-driven opposing 3D perspective parallax (~+-10 deg azimuth, ~+-5 deg elevation)
+            // - Plus smooth click-drag 3D inspection orbit (up to +-30 deg) or 3D ORBIT showcase
+            const breathAz = Math.sin(t * 0.38) * 0.062 + Math.cos(t * 0.71) * 0.020;
+            const breathEl = Math.cos(t * 0.44) * 0.032;
+            const cursorCamAz = ptr.inside ? -shapeGazeAxis(ptr.x) * 0.16 + breathAz * 0.45 : breathAz;
+            const cursorCamEl = ptr.inside ? shapeGazeAxis(ptr.y) * 0.09 + breathEl * 0.45 : breathEl;
+            const turntableAz = turntable ? Math.sin(t * 0.55) * 0.38 : 0;
+            const turntableEl = turntable ? Math.cos(t * 0.37) * 0.12 : 0;
+            let camAzTarget = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(cursorCamAz + ptr.dragAzimuth + turntableAz, -0.54, 0.54);
+            let camElTarget = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(cursorCamEl + ptr.dragElevation + turntableEl, -0.34, 0.34);
+            const camDistTarget = reducedMotion ? CAM_Z : ptr.zoomDist;
+            if (reducedMotion) {
+                yawTarget *= 0.3;
+                pitchTarget *= 0.3;
+                rollTarget = 0;
+                camAzTarget *= 0.25;
+                camElTarget *= 0.25;
+            }
+            const sp = springs.current;
+            [sp.yaw, sp.yawVel] = criticallyDampedSpring(sp.yaw, sp.yawVel, yawTarget, 10.5, dt);
+            [sp.pitch, sp.pitchVel] = criticallyDampedSpring(sp.pitch, sp.pitchVel, pitchTarget, 10.5, dt);
+            [sp.roll, sp.rollVel] = criticallyDampedSpring(sp.roll, sp.rollVel, rollTarget, 8.5, dt);
+            [sp.torsoYaw, sp.torsoYawVel] = criticallyDampedSpring(sp.torsoYaw, sp.torsoYawVel, yawTarget * 0.16, 5.4, dt);
+            [sp.torsoPitch, sp.torsoPitchVel] = criticallyDampedSpring(sp.torsoPitch, sp.torsoPitchVel, pitchTarget * 0.11, 5.4, dt);
+            [sp.camAz, sp.camAzVel] = criticallyDampedSpring(sp.camAz, sp.camAzVel, camAzTarget, 7.2, dt);
+            [sp.camEl, sp.camElVel] = criticallyDampedSpring(sp.camEl, sp.camElVel, camElTarget, 7.2, dt);
+            [sp.camDist, sp.camDistVel] = criticallyDampedSpring(sp.camDist, sp.camDistVel, camDistTarget, 8.0, dt);
+            // Update actual Three.js 3D PerspectiveCamera along spherical orbit around LOOK_TARGET
+            const cosEl = Math.cos(sp.camEl);
+            const camX = LOOK_TARGET.x + sp.camDist * Math.sin(sp.camAz) * cosEl;
+            const camY = LOOK_TARGET.y + sp.camDist * Math.sin(sp.camEl);
+            const camZ = LOOK_TARGET.z + sp.camDist * Math.cos(sp.camAz) * cosEl;
+            camera.position.set(camX, camY, camZ);
+            camera.lookAt(LOOK_TARGET);
+            const tr = moodTransition.current;
+            if (tr.progress < 1) {
+                tr.progress = Math.min(1, tr.progress + dt / MOOD_BLOOM_SECONDS);
+            }
+            const shimmer = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(tr.prev.shimmer, tr.next.shimmer, tr.progress);
+            const rawLevel = audioLevelRef.current || 0;
+            const speakingActive = state === "speaking";
+            const targetVoice = speakingActive ? Math.max(0.38, Math.min(1, 0.32 + rawLevel * 1.45)) : rawLevel > 0.08 && state === "listening" ? rawLevel * 0.25 : 0;
+            const envSpeed = targetVoice > voiceEnvelope.current ? 15.0 : 6.8;
+            voiceEnvelope.current = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].lerp(voiceEnvelope.current, targetVoice, 1 - Math.exp(-dt * envSpeed));
+            const cadence = reducedMotion ? 0.78 : 0.72 + Math.pow((Math.sin(t * 5.9) + 1) * 0.5, 1.6) * 0.18 + Math.pow((Math.sin(t * 10.4 + 0.8) + 1) * 0.5, 2.1) * 0.10;
+            const voiceSignal = voiceEnvelope.current * cadence;
+            brainEnvelope.current.activity = Math.max(0, brainEnvelope.current.activity - dt * (reducedMotion ? 1.6 : 0.78));
+            let assemblyProgress = 1;
+            let assemblyEnabled = 0;
+            if (!reducedMotion) {
+                if (assemblyClock.current.run !== assemblyRun) {
+                    assemblyClock.current.run = assemblyRun;
+                    assemblyClock.current.startedAt = t;
+                    assemblyClock.current.completedRun = -1;
+                    onAssemblyStateChange(true);
+                }
+                assemblyProgress = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp((t - assemblyClock.current.startedAt) / ASSEMBLY_DURATION_SECONDS, 0, 1);
+                assemblyEnabled = 1;
+                if (assemblyProgress >= 1 && assemblyClock.current.completedRun !== assemblyRun) {
+                    assemblyClock.current.completedRun = assemblyRun;
+                    onAssemblyStateChange(false);
+                    shockwaveClock.current.active = true;
+                    shockwaveClock.current.startedAt = t;
+                    onShockwaveTrigger();
+                }
+            }
+            if (shockwaveClock.current.seenPulseSeq !== pulseSeq) {
+                shockwaveClock.current.seenPulseSeq = pulseSeq;
+                if (!reducedMotion) {
+                    shockwaveClock.current.active = true;
+                    shockwaveClock.current.startedAt = t;
+                    onShockwaveTrigger();
+                }
+            }
+            let shockwaveActive = 0;
+            let shockwaveProgress = 1;
+            if (shockwaveClock.current.active) {
+                shockwaveProgress = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp((t - shockwaveClock.current.startedAt) / SHOCKWAVE_DURATION_SECONDS, 0, 1);
+                shockwaveActive = 1;
+                if (shockwaveProgress >= 1) {
+                    shockwaveClock.current.active = false;
+                    shockwaveActive = 0;
+                }
+            }
+            const chestBreath = reducedMotion ? 0 : Math.sin(t * 1.12) * 0.020;
+            const pointSize = data.tier === "high" ? 2.52 : data.tier === "medium" ? 3.65 : 4.75;
+            uniforms.uTime.value = t;
+            uniforms.uDpr.value = dpr;
+            uniforms.uPointSize.value = pointSize;
+            uniforms.uCamPos.value.set(camX, camY, camZ);
+            uniforms.uYaw.value = sp.yaw;
+            uniforms.uPitch.value = sp.pitch;
+            uniforms.uRoll.value = sp.roll;
+            uniforms.uTorsoYaw.value = sp.torsoYaw;
+            uniforms.uTorsoPitch.value = sp.torsoPitch;
+            uniforms.uChest.value = chestBreath;
+            uniforms.uAssemblyProgress.value = assemblyProgress;
+            uniforms.uAssemblyEnabled.value = assemblyEnabled;
+            uniforms.uShockwaveActive.value = shockwaveActive;
+            uniforms.uShockwaveProgress.value = shockwaveProgress;
+            uniforms.uTransitionProgress.value = tr.progress;
+            uniforms.uPrevMood.value.set(tr.prev.cyan, tr.prev.warm, tr.prev.zone, tr.prev.tone);
+            uniforms.uNextMood.value.set(tr.next.cyan, tr.next.warm, tr.next.zone, tr.next.tone);
+            uniforms.uMoodShimmer.value = shimmer;
+            uniforms.uVoice.value = voiceSignal;
+            uniforms.uBrainActivity.value = brainEnvelope.current.activity;
+            uniforms.uBrainTone.value = brainEnvelope.current.tone;
+            uniforms.uEffects.value = reducedMotion ? 0.35 : 1.0;
+        }
+    }["HumanoidPointCloud.useFrame"]);
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("points", {
+        geometry: geometry,
+        material: material,
+        frustumCulled: false
+    }, void 0, false, {
+        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+        lineNumber: 1583,
+        columnNumber: 10
+    }, this);
+}
+_s(HumanoidPointCloud, "/JR4UiiapmfNT7qIRuv0dQedCPc=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$react$2d$three$2f$fiber$2f$dist$2f$events$2d$156d8d12$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$export__D__as__useFrame$3e$__["useFrame"]
+    ];
+});
+_c = HumanoidPointCloud;
+function AudioLevelProbe({ targetRef }) {
+    _s1();
+    const level = (0, __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$JarvisBridge$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useJarvisAudioLevel"])();
+    targetRef.current = level;
+    return null;
+}
+_s1(AudioLevelProbe, "nSWBlZFrFfpKXd4Qb8eo7GSYRoI=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$JarvisBridge$2e$tsx__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useJarvisAudioLevel"]
+    ];
+});
+_c1 = AudioLevelProbe;
+function ApexMaleHumanoid({ state, trace, reducedMotion = false, constellationVisible = true, onToggleConstellation, pulseSignal = 0, appearance = "male" }) {
+    _s2();
+    const audioLevelRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(0);
+    const [qualityMode, setQualityMode] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])("auto");
+    const [autoFallback, setAutoFallback] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [particleData, setParticleData] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [assemblyRun, setAssemblyRun] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(1);
+    const [assembling, setAssembling] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(true);
+    const [sfxEnabled, setSfxEnabled] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(true);
+    const [turntable, setTurntable] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [mounted, setMounted] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useState"])(false);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>{
+            setMounted(true);
+        }
+    }["ApexMaleHumanoid.useEffect"], []);
+    const sfxEnabledRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(true);
+    const audioCtxRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])(null);
+    const pointerRef = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useRef"])({
+        x: 0,
+        y: 0,
+        inside: false,
+        dragging: false,
+        dragAzimuth: 0,
+        dragElevation: 0,
+        zoomDist: CAM_Z
+    });
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>{
+            sfxEnabledRef.current = sfxEnabled;
+        }
+    }["ApexMaleHumanoid.useEffect"], [
+        sfxEnabled
+    ]);
+    const effectiveTier = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
+        "ApexMaleHumanoid.useMemo[effectiveTier]": ()=>{
+            if (qualityMode === "high") return "high";
+            if (qualityMode === "balanced") return "medium";
+            return autoFallback ? "medium" : "high";
+        }
+    }["ApexMaleHumanoid.useMemo[effectiveTier]"], [
+        qualityMode,
+        autoFallback
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>{
+            let cancelled = false;
+            loadDecodedAssets(appearance).then({
+                "ApexMaleHumanoid.useEffect": (assets)=>{
+                    if (cancelled) return;
+                    const built = buildHumanoidParticles(assets, effectiveTier, appearance);
+                    setParticleData({
+                        ...built,
+                        appearance
+                    });
+                }
+            }["ApexMaleHumanoid.useEffect"]).catch({
+                "ApexMaleHumanoid.useEffect": ()=>{
+                    if (cancelled) return;
+                    setParticleData({
+                        ...buildProceduralFallback(effectiveTier),
+                        appearance
+                    });
+                }
+            }["ApexMaleHumanoid.useEffect"]);
+            return ({
+                "ApexMaleHumanoid.useEffect": ()=>{
+                    cancelled = true;
+                }
+            })["ApexMaleHumanoid.useEffect"];
+        }
+    }["ApexMaleHumanoid.useEffect"], [
+        effectiveTier,
+        appearance
+    ]);
+    // Capture-phase window mouse/pointer/touch gaze + interactive click-drag 3D orbit & wheel zoom
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>{
+            let dragLastX = 0;
+            let dragLastY = 0;
+            const isInteractiveElement = {
+                "ApexMaleHumanoid.useEffect.isInteractiveElement": (target)=>{
+                    if (!(target instanceof HTMLElement)) return false;
+                    return Boolean(target.closest("button, input, textarea, select, a, [role='button'], [role='dialog'], [contenteditable='true']"));
+                }
+            }["ApexMaleHumanoid.useEffect.isInteractiveElement"];
+            const updateFromClientXY = {
+                "ApexMaleHumanoid.useEffect.updateFromClientXY": (clientX, clientY)=>{
+                    const w = Math.max(1, window.innerWidth);
+                    const h = Math.max(1, window.innerHeight);
+                    const nx = (clientX - EYE_SCREEN_X * w) / (0.5 * w);
+                    const dy = clientY - EYE_SCREEN_Y * h;
+                    const ny = dy / (dy < 0 ? 0.35 * h : 0.56 * h);
+                    pointerRef.current.x = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(nx, -1, 1);
+                    pointerRef.current.y = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(ny, -1, 1);
+                    pointerRef.current.inside = true;
+                    if (pointerRef.current.dragging) {
+                        const dxPx = clientX - dragLastX;
+                        const dyPx = clientY - dragLastY;
+                        dragLastX = clientX;
+                        dragLastY = clientY;
+                        pointerRef.current.dragAzimuth = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(pointerRef.current.dragAzimuth - dxPx / w * 1.6, -0.48, 0.48);
+                        pointerRef.current.dragElevation = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(pointerRef.current.dragElevation + dyPx / h * 1.1, -0.32, 0.32);
+                    }
+                }
+            }["ApexMaleHumanoid.useEffect.updateFromClientXY"];
+            const onPointerDown = {
+                "ApexMaleHumanoid.useEffect.onPointerDown": (e)=>{
+                    if (e.button !== 0 || isInteractiveElement(e.target)) return;
+                    pointerRef.current.dragging = true;
+                    dragLastX = e.clientX;
+                    dragLastY = e.clientY;
+                }
+            }["ApexMaleHumanoid.useEffect.onPointerDown"];
+            const onPointerUp = {
+                "ApexMaleHumanoid.useEffect.onPointerUp": ()=>{
+                    pointerRef.current.dragging = false;
+                }
+            }["ApexMaleHumanoid.useEffect.onPointerUp"];
+            const onDoubleClick = {
+                "ApexMaleHumanoid.useEffect.onDoubleClick": (e)=>{
+                    if (isInteractiveElement(e.target)) return;
+                    pointerRef.current.dragAzimuth = 0;
+                    pointerRef.current.dragElevation = 0;
+                    pointerRef.current.zoomDist = CAM_Z;
+                }
+            }["ApexMaleHumanoid.useEffect.onDoubleClick"];
+            const onWheel = {
+                "ApexMaleHumanoid.useEffect.onWheel": (e)=>{
+                    if (isInteractiveElement(e.target)) return;
+                    pointerRef.current.zoomDist = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["MathUtils"].clamp(pointerRef.current.zoomDist + e.deltaY * 0.0022, 5.15, 8.65);
+                }
+            }["ApexMaleHumanoid.useEffect.onWheel"];
+            const onKeyReset = {
+                "ApexMaleHumanoid.useEffect.onKeyReset": (e)=>{
+                    if (e.key === "0" || e.key === "Home") {
+                        pointerRef.current.dragAzimuth = 0;
+                        pointerRef.current.dragElevation = 0;
+                        pointerRef.current.zoomDist = CAM_Z;
+                    }
+                }
+            }["ApexMaleHumanoid.useEffect.onKeyReset"];
+            const onPointerOrMouseMove = {
+                "ApexMaleHumanoid.useEffect.onPointerOrMouseMove": (e)=>{
+                    updateFromClientXY(e.clientX, e.clientY);
+                }
+            }["ApexMaleHumanoid.useEffect.onPointerOrMouseMove"];
+            const onTouchMove = {
+                "ApexMaleHumanoid.useEffect.onTouchMove": (e)=>{
+                    if (e.touches && e.touches.length > 0) {
+                        updateFromClientXY(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                }
+            }["ApexMaleHumanoid.useEffect.onTouchMove"];
+            const onLeaveViewport = {
+                "ApexMaleHumanoid.useEffect.onLeaveViewport": (e)=>{
+                    if (!e.relatedTarget) {
+                        pointerRef.current.inside = false;
+                        pointerRef.current.dragging = false;
+                    }
+                }
+            }["ApexMaleHumanoid.useEffect.onLeaveViewport"];
+            const onWindowBlur = {
+                "ApexMaleHumanoid.useEffect.onWindowBlur": ()=>{
+                    pointerRef.current.inside = false;
+                    pointerRef.current.dragging = false;
+                }
+            }["ApexMaleHumanoid.useEffect.onWindowBlur"];
+            window.addEventListener("pointerdown", onPointerDown, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("pointerup", onPointerUp, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("pointercancel", onPointerUp, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("dblclick", onDoubleClick, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("wheel", onWheel, {
+                passive: true
+            });
+            window.addEventListener("keydown", onKeyReset);
+            window.addEventListener("pointermove", onPointerOrMouseMove, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("mousemove", onPointerOrMouseMove, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("mouseover", onPointerOrMouseMove, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("touchmove", onTouchMove, {
+                passive: true,
+                capture: true
+            });
+            window.addEventListener("touchstart", onTouchMove, {
+                passive: true,
+                capture: true
+            });
+            document.addEventListener("mouseout", onLeaveViewport, {
+                passive: true
+            });
+            window.addEventListener("blur", onWindowBlur);
+            return ({
+                "ApexMaleHumanoid.useEffect": ()=>{
+                    window.removeEventListener("pointerdown", onPointerDown, true);
+                    window.removeEventListener("pointerup", onPointerUp, true);
+                    window.removeEventListener("pointercancel", onPointerUp, true);
+                    window.removeEventListener("dblclick", onDoubleClick, true);
+                    window.removeEventListener("wheel", onWheel);
+                    window.removeEventListener("keydown", onKeyReset);
+                    window.removeEventListener("pointermove", onPointerOrMouseMove, true);
+                    window.removeEventListener("mousemove", onPointerOrMouseMove, true);
+                    window.removeEventListener("mouseover", onPointerOrMouseMove, true);
+                    window.removeEventListener("touchmove", onTouchMove, true);
+                    window.removeEventListener("touchstart", onTouchMove, true);
+                    document.removeEventListener("mouseout", onLeaveViewport);
+                    window.removeEventListener("blur", onWindowBlur);
+                }
+            })["ApexMaleHumanoid.useEffect"];
+        }
+    }["ApexMaleHumanoid.useEffect"], []);
+    const ensureAudioContext = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "ApexMaleHumanoid.useCallback[ensureAudioContext]": async ()=>{
+            if ("TURBOPACK compile-time falsy", 0) //TURBOPACK unreachable
+            ;
+            const Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            let ctx = audioCtxRef.current;
+            if (!ctx) {
+                ctx = new Ctor();
+                audioCtxRef.current = ctx;
+            }
+            if (ctx.state === "suspended") {
+                try {
+                    await ctx.resume();
+                } catch  {
+                    return ctx;
+                }
+            }
+            return ctx;
+        }
+    }["ApexMaleHumanoid.useCallback[ensureAudioContext]"], []);
+    const playBirthShockwaveSound = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "ApexMaleHumanoid.useCallback[playBirthShockwaveSound]": ()=>{
+            if (!sfxEnabledRef.current) return;
+            const ctx = audioCtxRef.current;
+            if (!ctx || ctx.state !== "running") return;
+            const now = ctx.currentTime;
+            const master = ctx.createGain();
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-20, now);
+            compressor.ratio.setValueAtTime(8, now);
+            master.gain.setValueAtTime(0.0001, now);
+            master.gain.exponentialRampToValueAtTime(0.65, now + 0.03);
+            master.gain.exponentialRampToValueAtTime(0.0001, now + 2.05);
+            master.connect(compressor).connect(ctx.destination);
+            const sub = ctx.createOscillator();
+            const subGain = ctx.createGain();
+            sub.type = "sine";
+            sub.frequency.setValueAtTime(78, now);
+            sub.frequency.exponentialRampToValueAtTime(38, now + 0.88);
+            subGain.gain.setValueAtTime(0.0001, now);
+            subGain.gain.exponentialRampToValueAtTime(0.48, now + 0.035);
+            subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.96);
+            sub.connect(subGain).connect(master);
+            sub.start(now);
+            sub.stop(now + 1.0);
+            const shimmer = ctx.createOscillator();
+            const shimmerGain = ctx.createGain();
+            shimmer.type = "triangle";
+            shimmer.frequency.setValueAtTime(160, now + 0.06);
+            shimmer.frequency.exponentialRampToValueAtTime(640, now + 0.74);
+            shimmer.frequency.exponentialRampToValueAtTime(240, now + 1.45);
+            shimmerGain.gain.setValueAtTime(0.0001, now + 0.05);
+            shimmerGain.gain.exponentialRampToValueAtTime(0.18, now + 0.34);
+            shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.52);
+            shimmer.connect(shimmerGain).connect(master);
+            shimmer.start(now + 0.05);
+            shimmer.stop(now + 1.56);
+            const dur = 1.45;
+            const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+            const ch = buf.getChannelData(0);
+            for(let i = 0; i < ch.length; i++){
+                ch[i] = (Math.random() * 2 - 1) * (1 - i / ch.length);
+            }
+            const noise = ctx.createBufferSource();
+            const filter = ctx.createBiquadFilter();
+            const noiseGain = ctx.createGain();
+            noise.buffer = buf;
+            filter.type = "bandpass";
+            filter.frequency.setValueAtTime(780, now + 0.12);
+            filter.frequency.exponentialRampToValueAtTime(180, now + 1.42);
+            filter.Q.setValueAtTime(0.75, now);
+            noiseGain.gain.setValueAtTime(0.0001, now + 0.1);
+            noiseGain.gain.exponentialRampToValueAtTime(0.2, now + 0.32);
+            noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.52);
+            noise.connect(filter).connect(noiseGain).connect(master);
+            noise.start(now + 0.1);
+            noise.stop(now + 1.56);
+        }
+    }["ApexMaleHumanoid.useCallback[playBirthShockwaveSound]"], []);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>{
+            const unlock = {
+                "ApexMaleHumanoid.useEffect.unlock": ()=>{
+                    if (sfxEnabledRef.current) void ensureAudioContext();
+                }
+            }["ApexMaleHumanoid.useEffect.unlock"];
+            window.addEventListener("pointerdown", unlock, {
+                once: true,
+                capture: true
+            });
+            window.addEventListener("keydown", unlock, {
+                once: true,
+                capture: true
+            });
+            return ({
+                "ApexMaleHumanoid.useEffect": ()=>{
+                    window.removeEventListener("pointerdown", unlock, true);
+                    window.removeEventListener("keydown", unlock, true);
+                }
+            })["ApexMaleHumanoid.useEffect"];
+        }
+    }["ApexMaleHumanoid.useEffect"], [
+        ensureAudioContext
+    ]);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "ApexMaleHumanoid.useEffect": ()=>({
+                "ApexMaleHumanoid.useEffect": ()=>{
+                    const ctx = audioCtxRef.current;
+                    audioCtxRef.current = null;
+                    if (ctx && ctx.state !== "closed") {
+                        void ctx.close();
+                    }
+                }
+            })["ApexMaleHumanoid.useEffect"]
+    }["ApexMaleHumanoid.useEffect"], []);
+    const brainEvent = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useMemo"])({
+        "ApexMaleHumanoid.useMemo[brainEvent]": ()=>{
+            if (!trace) return null;
+            const hasTool = Boolean(trace.tool);
+            return {
+                id: trace.n,
+                tone: hasTool ? 0.82 : 0.24
+            };
+        }
+    }["ApexMaleHumanoid.useMemo[brainEvent]"], [
+        trace
+    ]);
+    const triggerRebirth = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "ApexMaleHumanoid.useCallback[triggerRebirth]": async ()=>{
+            pointerRef.current.dragAzimuth = 0;
+            pointerRef.current.dragElevation = 0;
+            pointerRef.current.zoomDist = CAM_Z;
+            const ctx = await ensureAudioContext();
+            if (ctx && ctx.state === "running" && sfxEnabledRef.current) {
+                const now = ctx.currentTime;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(196, now);
+                osc.frequency.exponentialRampToValueAtTime(392, now + 0.42);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.09, now + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+                osc.connect(gain).connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.5);
+            }
+            setAssemblyRun({
+                "ApexMaleHumanoid.useCallback[triggerRebirth]": (r)=>r + 1
+            }["ApexMaleHumanoid.useCallback[triggerRebirth]"]);
+        }
+    }["ApexMaleHumanoid.useCallback[triggerRebirth]"], [
+        ensureAudioContext
+    ]);
+    const cycleQuality = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["useCallback"])({
+        "ApexMaleHumanoid.useCallback[cycleQuality]": ()=>{
+            setQualityMode({
+                "ApexMaleHumanoid.useCallback[cycleQuality]": (prev)=>prev === "auto" ? "high" : prev === "high" ? "balanced" : "auto"
+            }["ApexMaleHumanoid.useCallback[cycleQuality]"]);
+        }
+    }["ApexMaleHumanoid.useCallback[cycleQuality]"], []);
+    const formattedPts = particleData ? `${Math.round(particleData.count / 1000)}K 3D` : "270K 3D";
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        style: {
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            overflow: "hidden"
+        },
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(AudioLevelProbe, {
+                targetRef: audioLevelRef
+            }, void 0, false, {
+                fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                lineNumber: 1980,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                "aria-hidden": "true",
+                style: {
+                    position: "absolute",
+                    inset: 0,
+                    background: "radial-gradient(115% 88% at 50% 44%, rgba(0,0,0,0) 42%, rgba(2,6,12,0.52) 78%, rgba(1,4,9,0.88) 100%), repeating-linear-gradient(to bottom, rgba(79,210,255,0.014) 0 1px, transparent 1px 3px)",
+                    zIndex: 1
+                }
+            }, void 0, false, {
+                fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                lineNumber: 1981,
+                columnNumber: 7
+            }, this),
+            particleData && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                style: {
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 2
+                },
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f40$react$2d$three$2f$fiber$2f$dist$2f$react$2d$three$2d$fiber$2e$esm$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__$3c$locals$3e$__["Canvas"], {
+                    style: {
+                        width: "100%",
+                        height: "100%",
+                        display: "block"
+                    },
+                    camera: {
+                        position: [
+                            0,
+                            CAM_Y,
+                            CAM_Z
+                        ],
+                        fov: 38
+                    },
+                    dpr: effectiveTier === "high" ? [
+                        1,
+                        1.5
+                    ] : 1,
+                    gl: {
+                        antialias: false,
+                        alpha: true,
+                        powerPreference: "high-performance",
+                        toneMapping: __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["NoToneMapping"]
+                    },
+                    onCreated: ({ gl })=>{
+                        gl.setClearColor(0x000000, 0);
+                        gl.outputColorSpace = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["SRGBColorSpace"];
+                        gl.toneMapping = __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$three$2f$build$2f$three$2e$core$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["NoToneMapping"];
+                    },
+                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])(HumanoidPointCloud, {
+                        data: particleData,
+                        state: state,
+                        reducedMotion: reducedMotion,
+                        turntable: turntable,
+                        audioLevelRef: audioLevelRef,
+                        pointerRef: pointerRef,
+                        assemblyRun: assemblyRun,
+                        pulseSeq: pulseSignal,
+                        brainEvent: brainEvent,
+                        onAssemblyStateChange: setAssembling,
+                        onShockwaveTrigger: playBirthShockwaveSound,
+                        onLowFpsDetected: ()=>setAutoFallback(true)
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2010,
+                        columnNumber: 13
+                    }, this)
+                }, void 0, false, {
+                    fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                    lineNumber: 1994,
+                    columnNumber: 11
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                lineNumber: 1993,
+                columnNumber: 9
+            }, this),
+            mounted && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2d$dom$2f$index$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["createPortal"])(/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                style: {
+                    position: "fixed",
+                    left: 16,
+                    bottom: 14,
+                    zIndex: 34,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    background: "rgba(3, 8, 15, 0.50)",
+                    border: "1px solid rgba(79, 210, 255, 0.12)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                    pointerEvents: "auto",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 8.5,
+                    letterSpacing: "0.14em",
+                    color: "rgba(180, 222, 248, 0.66)"
+                },
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                        title: "Active 3D volumetric GPU particle count (drag empty space to orbit in 3D, scroll to zoom)",
+                        style: {
+                            padding: "2px 6px",
+                            color: assembling ? "#ffb347" : "#4fd2ff",
+                            fontWeight: 600
+                        },
+                        children: assembling ? "ASSEMBLING" : formattedPts
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2052,
+                        columnNumber: 13
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: ()=>void triggerRebirth(),
+                        title: "Replay 3D figure-of-light birth assembly & spherical shockwave",
+                        style: {
+                            appearance: "none",
+                            border: "1px solid rgba(79, 210, 255, 0.24)",
+                            background: "rgba(79, 210, 255, 0.08)",
+                            color: "#d7f1ff",
+                            borderRadius: 999,
+                            padding: "3px 8px",
+                            fontSize: 9,
+                            letterSpacing: "0.14em",
+                            fontFamily: "inherit",
+                            cursor: "pointer"
+                        },
+                        children: "REBIRTH"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2063,
+                        columnNumber: 13
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: ()=>setTurntable((v)=>!v),
+                        title: "Toggle continuous 3D camera orbit showcase (or drag empty space anytime to orbit manually)",
+                        style: {
+                            appearance: "none",
+                            border: turntable ? "1px solid rgba(79, 210, 255, 0.36)" : "1px solid transparent",
+                            background: turntable ? "rgba(79, 210, 255, 0.14)" : "transparent",
+                            color: turntable ? "#4fd2ff" : "rgba(165, 212, 240, 0.76)",
+                            borderRadius: 999,
+                            padding: "3px 6px",
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            fontFamily: "inherit",
+                            cursor: "pointer"
+                        },
+                        children: "3D ORBIT"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2083,
+                        columnNumber: 13
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: cycleQuality,
+                        title: "Cycle 3D particle density (AUTO / 340K / BALANCED)",
+                        style: {
+                            appearance: "none",
+                            border: "1px solid transparent",
+                            background: "transparent",
+                            color: "rgba(165, 212, 240, 0.76)",
+                            borderRadius: 999,
+                            padding: "3px 6px",
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            fontFamily: "inherit",
+                            cursor: "pointer"
+                        },
+                        children: qualityMode === "auto" ? "AUTO" : qualityMode === "high" ? "340K" : "BAL"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2105,
+                        columnNumber: 13
+                    }, this),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: async ()=>{
+                            const next = !sfxEnabled;
+                            setSfxEnabled(next);
+                            if (next) await ensureAudioContext();
+                        },
+                        title: "Toggle birth & shockwave sound synthesis",
+                        style: {
+                            appearance: "none",
+                            border: "1px solid transparent",
+                            background: "transparent",
+                            color: sfxEnabled ? "#4fd2ff" : "rgba(148, 163, 184, 0.55)",
+                            borderRadius: 999,
+                            padding: "3px 6px",
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            fontFamily: "inherit",
+                            cursor: "pointer"
+                        },
+                        children: sfxEnabled ? "SFX ON" : "SFX OFF"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2129,
+                        columnNumber: 13
+                    }, this),
+                    onToggleConstellation && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                        type: "button",
+                        onClick: onToggleConstellation,
+                        title: "Toggle surrounding 18-agent constellation visibility",
+                        style: {
+                            appearance: "none",
+                            border: "1px solid transparent",
+                            background: "transparent",
+                            color: constellationVisible ? "#4fd2ff" : "rgba(148, 163, 184, 0.55)",
+                            borderRadius: 999,
+                            padding: "3px 6px",
+                            fontSize: 9,
+                            letterSpacing: "0.12em",
+                            fontFamily: "inherit",
+                            cursor: "pointer"
+                        },
+                        children: constellationVisible ? "WEB ON" : "PURE"
+                    }, void 0, false, {
+                        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                        lineNumber: 2154,
+                        columnNumber: 15
+                    }, this)
+                ]
+            }, void 0, true, {
+                fileName: "[project]/components/ApexMaleHumanoid.tsx",
+                lineNumber: 2030,
+                columnNumber: 11
+            }, this), document.body)
+        ]
+    }, void 0, true, {
+        fileName: "[project]/components/ApexMaleHumanoid.tsx",
+        lineNumber: 1972,
+        columnNumber: 5
+    }, this);
+}
+_s2(ApexMaleHumanoid, "1+2JdDvu2kjSJ2djeX3hMeyIwGI=");
+_c2 = ApexMaleHumanoid;
+var _c, _c1, _c2;
+__turbopack_context__.k.register(_c, "HumanoidPointCloud");
+__turbopack_context__.k.register(_c1, "AudioLevelProbe");
+__turbopack_context__.k.register(_c2, "ApexMaleHumanoid");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+]);
+
+//# sourceMappingURL=components_0ea_weqjnqc8y._.js.map

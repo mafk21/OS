@@ -1,0 +1,67 @@
+/* [project]/app/globals.css [app-client] (css) */
+:root {
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  color: #f0ede8;
+  -webkit-font-smoothing: antialiased;
+  background: #04080f;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  position: absolute !important;
+}
+
+.apex-overview {
+  z-index: 30;
+  width: 540px;
+  max-width: 92vw;
+  position: fixed;
+  top: 10px;
+  left: 0;
+}
+
+@media (max-width: 1000px) {
+  .apex-overview {
+    width: 100%;
+    position: absolute;
+    top: 10px;
+  }
+}
+
+@keyframes agentPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (max-width: 700px) {
+  .sb-hint {
+    display: none;
+  }
+}
+
+/*# sourceMappingURL=app_globals_0yg4wg8plh8sv.css.map*/

@@ -1,0 +1,32 @@
+(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[project]/components/ApexFemaleHumanoid.tsx [app-client] (ecmascript, next/dynamic entry, async loader)", ((__turbopack_context__) => {
+
+__turbopack_context__.v((parentImport) => {
+    return Promise.all([
+  "static/chunks/node_modules_three_build_three_core_18d0oq6so9l-t.js",
+  "static/chunks/node_modules_three_build_three_module_03rsyo66totzs.js",
+  "static/chunks/node_modules_three_build_three_module_1_wgwg8fdd16a.js",
+  "static/chunks/node_modules_@react-three_fiber_dist_0e3k4b4pna-a8._.js",
+  "static/chunks/node_modules_1spg6odjn_5iu._.js",
+  "static/chunks/components_0ea_weqjnqc8y._.js"
+].map((chunk) => __turbopack_context__.l(chunk))).then(() => {
+        return parentImport("[project]/components/ApexFemaleHumanoid.tsx [app-client] (ecmascript, next/dynamic entry)");
+    });
+});
+}),
+"[project]/components/ApexMaleHumanoid.tsx [app-client] (ecmascript, next/dynamic entry, async loader)", ((__turbopack_context__) => {
+
+__turbopack_context__.v((parentImport) => {
+    return Promise.all([
+  "static/chunks/node_modules_three_build_three_core_18d0oq6so9l-t.js",
+  "static/chunks/node_modules_three_build_three_module_03rsyo66totzs.js",
+  "static/chunks/node_modules_three_build_three_module_1_wgwg8fdd16a.js",
+  "static/chunks/node_modules_@react-three_fiber_dist_0e3k4b4pna-a8._.js",
+  "static/chunks/node_modules_1spg6odjn_5iu._.js",
+  "static/chunks/components_ApexMaleHumanoid_tsx_10ossadpwcyy4._.js"
+].map((chunk) => __turbopack_context__.l(chunk))).then(() => {
+        return parentImport("[project]/components/ApexMaleHumanoid.tsx [app-client] (ecmascript, next/dynamic entry)");
+    });
+});
+}),
+]);
