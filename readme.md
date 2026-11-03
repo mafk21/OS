@@ -40,7 +40,8 @@ Requires **Python 3.11 or newer**.
 ```bash
 git clone https://github.com/mafk21/OS.git
 cd OS
-python3 install_jarvis.py --install --launch
+python setup.py
+python main.py
 ```
 
 On Windows, use `py` if `python3` is unavailable.
