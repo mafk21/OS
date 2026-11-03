@@ -52,10 +52,8 @@ def test_tracked_text_has_no_high_confidence_live_secrets() -> None:
     }
     findings = []
     for name in _tracked():
-        # Tests deliberately use unmistakable fake tokens to exercise encryption,
-        # redaction and provider routing. Production/source/config files may not.
-        if name.startswith("tests/"):
-            continue
+        # Test credentials are assembled from fragments so provider-shaped
+        # literals never trigger public-repository secret scanning.
         path = ROOT / name
         if not path.is_file() or path.stat().st_size > 2_000_000:
             continue

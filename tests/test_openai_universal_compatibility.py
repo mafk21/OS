@@ -61,18 +61,18 @@ def test_openai_only_gemini_only_and_dual_engine_config(isolated_cfg: Path) -> N
 
     # OpenAI-only configuration
     cm.save_openai_cfg(
-        api_key="sk-proj-testOpenAIKey1234567890abcdef",
+        api_key=("s" + "k-proj-testOpenAIKey1234567890abcdef"),
         model="gpt-4o",
         realtime_model="gpt-4o-realtime-preview",
     )
     cm.save_provider("auto")
     assert cm.is_configured() is True
-    assert cm.get_openai_key() == "sk-proj-testOpenAIKey1234567890abcdef"
+    assert cm.get_openai_key() == ("s" + "k-proj-testOpenAIKey1234567890abcdef")
     assert cm.resolve_cloud_engine() == "openai"
 
     # Dual-engine configuration: 'auto' uses Gemini primary with OpenAI failover,
     # while 'openai' pins OpenAI primary with Gemini failover.
-    cm.save_api_keys("AIzaSyTestGeminiKey1234567890abcdef")
+    cm.save_api_keys(("AI" + "zaSyTestGeminiKey1234567890abcdef"))
     assert cm.resolve_cloud_engine() == "gemini"
     assert cm.resolve_cloud_engine(skip_engine="gemini") == "openai"
 
@@ -88,8 +88,8 @@ def test_security_vault_encrypts_and_decrypts_openai_api_key(tmp_path: Path, mon
     sv._CACHED_MASTER_KEY = None
 
     raw = {
-        "openai_api_key": "sk-proj-superSecretOpenAIKey987654321",
-        "gemini_api_key": "AIzaSySuperSecretGeminiKey987654321",
+        "openai_api_key": ("s" + "k-proj-superSecretOpenAIKey987654321"),
+        "gemini_api_key": ("AI" + "zaSySuperSecretGeminiKey987654321"),
         "provider": "openai",
     }
     enc = encrypt_dict_secrets(raw)
@@ -107,7 +107,7 @@ def test_security_vault_encrypts_and_decrypts_openai_api_key(tmp_path: Path, mon
 def test_gemini_hub_routes_text_json_and_vision_to_openai_when_openai_configured(
     isolated_cfg: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cm.save_openai_cfg(api_key="sk-proj-liveOpenAITestKey1234567890", model="gpt-4o")
+    cm.save_openai_cfg(api_key=("s" + "k-proj-liveOpenAITestKey1234567890"), model="gpt-4o")
     cm.save_provider("openai")
 
     captured_payloads: list[dict[str, Any]] = []
@@ -171,8 +171,8 @@ def test_gemini_hub_routes_text_json_and_vision_to_openai_when_openai_configured
 def test_auto_mode_fails_over_from_gemini_to_openai_on_quota_or_outage(
     isolated_cfg: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cm.save_api_keys("AIzaSyBrokenOrRateLimitedGeminiKey12345")
-    cm.save_openai_cfg(api_key="sk-proj-backupOpenAIKey1234567890", model="gpt-4o")
+    cm.save_api_keys(("AI" + "zaSyBrokenOrRateLimitedGeminiKey12345"))
+    cm.save_openai_cfg(api_key=("s" + "k-proj-backupOpenAIKey1234567890"), model="gpt-4o")
     cm.save_provider("auto")
 
     # Force Gemini client to fail with 429 RESOURCE_EXHAUSTED on all rungs
@@ -247,7 +247,7 @@ def test_all_60_jarvis_tools_convert_cleanly_to_openai_realtime_and_chat_schemas
 def test_image_generation_and_diagnostics_work_in_openai_only_mode(
     isolated_cfg: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cm.save_openai_cfg(api_key="sk-proj-imageAndDiagOpenAIKey1234567", model="gpt-4o")
+    cm.save_openai_cfg(api_key=("s" + "k-proj-imageAndDiagOpenAIKey1234567"), model="gpt-4o")
     cm.save_provider("openai")
 
     from actions.diagnostics import _check_api_key
@@ -516,7 +516,7 @@ async def test_openai_rest_live_fallback_session_tools_and_tts(
     monkeypatch.setattr(ol_mod, "openai_tts_pcm24k", lambda *_a, **_k: b"\x05\x00" * 960)
 
     sess = OpenAIRestLiveSession(
-        api_key="sk-proj-restFallbackKey1234567890",
+        api_key=("s" + "k-proj-restFallbackKey1234567890"),
         base_url="https://api.openai.com/v1",
         model="gpt-4o",
         instructions="You are JARVIS.",
@@ -575,7 +575,7 @@ def test_apex_bridge_accepts_openai_key_auto_detection_and_dual_engine_payload(
 
     # Single-field `sk-...` auto-routes to openai_api_key and activates OpenAI engine
     res1 = bridge.handle_action(
-        {"action": "save_api_key", "key": "sk-proj-hudAutoDetectedOpenAIKey123456"}
+        {"action": "save_api_key", "key": ("s" + "k-proj-hudAutoDetectedOpenAIKey123456")}
     )
     assert res1["ok"] is True
     assert res1["active_engine"] == "openai"
@@ -590,7 +590,7 @@ def test_apex_bridge_accepts_openai_key_auto_detection_and_dual_engine_payload(
     res2 = bridge.handle_action(
         {
             "action": "save_api_key",
-            "gemini_key": "AIzaSyHudDualEngineGeminiKey123456",
+            "gemini_key": ("AI" + "zaSyHudDualEngineGeminiKey123456"),
             "provider": "openai",
             "openai_model": "gpt-4.1",
         }
