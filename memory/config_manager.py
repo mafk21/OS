@@ -33,8 +33,10 @@ def save_api_keys(gemini_api_key: str) -> None:
 
     data["gemini_api_key"] = gemini_api_key.strip()
 
+    from core.security_vault import encrypt_dict_secrets
+    disk_data = encrypt_dict_secrets(data)
     _write_config_text(
-        json.dumps(data, indent=2),
+        json.dumps(disk_data, indent=2),
         encoding="utf-8"
     )
 
@@ -690,13 +692,9 @@ def save_openai_cfg(
     data["openai_base_url"] = cur["base_url"]
     data["openai_model"] = cur["model"]
     data["openai_realtime_model"] = cur["realtime_model"]
-    if data.get("strict_vault_config") or data.get("vault_encrypt_api_keys"):
-        try:
-            from core.security_vault import encrypt_dict_secrets
-            data = encrypt_dict_secrets(data)
-        except Exception:
-            pass
-    _write_config_text(json.dumps(data, indent=4), encoding="utf-8")
+    from core.security_vault import encrypt_dict_secrets
+    disk_data = encrypt_dict_secrets(data)
+    _write_config_text(json.dumps(disk_data, indent=4), encoding="utf-8")
 
 
 def resolve_cloud_engine(skip_engine: str = "") -> str:

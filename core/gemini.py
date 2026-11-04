@@ -281,12 +281,12 @@ def note_live_failure(model: str, err: str) -> bool:
     """
     if is_quota_error(err):
         _cool(model, _COOLDOWN_SECONDS)
-        print(f"[Gemini] Live model {model} is out of quota — "
+        print(f"[Gemini] Live model is out of quota — "
               f"switching for {_COOLDOWN_SECONDS // 60} minutes.")
         return True
     if is_gone_error(err):
         _cool(model, _GONE_SECONDS)
-        print(f"[Gemini] Live model {model} is unavailable to this key — "
+        print(f"[Gemini] Live model is unavailable to this key — "
               f"setting it aside.")
         return True
     return False

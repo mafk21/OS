@@ -1,4 +1,5 @@
 #desktop.py
+import ast
 import os
 import sys
 import json
@@ -49,6 +50,38 @@ def _safe_sandbox_move(src, dst):
     return shutil.move(str(sp), str(dp))
 
 
+def _safe_sandbox_copy(src, dst, *, tree: bool = False):
+    from actions.file_controller import _is_safe_path
+    sp, dp = Path(src).expanduser(), Path(dst).expanduser()
+    if not _is_safe_path(sp) or not _is_safe_path(dp):
+        raise PermissionError("Sandbox copy outside safe user folders denied")
+    return shutil.copytree(str(sp), str(dp)) if tree else shutil.copy2(str(sp), str(dp))
+
+
+def _validate_generated_code(code: str) -> ast.Module:
+    tree = ast.parse(code, mode="exec")
+    forbidden_nodes = (ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal)
+    forbidden_calls = {"eval", "exec", "compile", "open", "__import__", "getattr", "setattr", "delattr"}
+    allowed_roots = {"pyautogui", "time", "shutil", "os_path", "ctypes", "winreg"}
+    for node in ast.walk(tree):
+        if isinstance(node, forbidden_nodes):
+            raise ValueError(f"Unsafe generated syntax: {type(node).__name__}")
+        if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
+            raise ValueError("Private and dunder attribute access is forbidden")
+        if isinstance(node, ast.Name) and node.id.startswith("__"):
+            raise ValueError("Dunder names are forbidden")
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in forbidden_calls:
+                raise ValueError(f"Unsafe generated call: {node.func.id}")
+            if isinstance(node.func, ast.Attribute):
+                root = node.func.value
+                while isinstance(root, ast.Attribute):
+                    root = root.value
+                if isinstance(root, ast.Name) and root.id not in allowed_roots:
+                    raise ValueError(f"Calls through '{root.id}' are not allowed")
+    return tree
+
+
 def _build_sandbox() -> dict:
     import time
 
@@ -57,7 +90,7 @@ def _build_sandbox() -> dict:
         "len": len, "str": str, "int": int, "float": float,
         "bool": bool, "list": list, "dict": dict, "tuple": tuple,
         "range": range, "enumerate": enumerate, "sorted": sorted,
-        "isinstance": isinstance, "hasattr": hasattr, "getattr": getattr,
+        "isinstance": isinstance,
         "max": max, "min": min, "sum": sum, "abs": abs,
         "zip": zip, "map": map, "filter": filter,
     }
@@ -68,8 +101,8 @@ def _build_sandbox() -> dict:
         "time": time,
         "shutil": type("shutil", (), {
             "move":       _safe_sandbox_move,
-            "copy2":      shutil.copy2,
-            "copytree":   shutil.copytree,
+            "copy2":      lambda src, dst: _safe_sandbox_copy(src, dst),
+            "copytree":   lambda src, dst: _safe_sandbox_copy(src, dst, tree=True),
             "disk_usage": shutil.disk_usage,
         })(),
         "os_path": os.path,  
@@ -109,7 +142,8 @@ def _execute_generated_code(code: str, player=None) -> str:
     sandbox["__builtins__"]["print"] = lambda *a: output_lines.append(" ".join(str(x) for x in a))
 
     try:
-        exec(compile(code, "<jarvis_desktop>", "exec"), sandbox)
+        tree = _validate_generated_code(code)
+        exec(compile(tree, "<jarvis_desktop>", "exec"), sandbox)
         return "\n".join(output_lines) if output_lines else "Done."
     except Exception as e:
         print(f"[Desktop] Exec error: {e}\nCode:\n{code[:300]}")

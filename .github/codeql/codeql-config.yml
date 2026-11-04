@@ -1,0 +1,5 @@
+name: JARVIS CodeQL configuration
+paths-ignore:
+  - "apex_ui/static_hud/**"
+  - "**/*.min.js"
+  - "tests/**"

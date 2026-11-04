@@ -2719,7 +2719,7 @@ class JarvisLive:
                 # mean the assistant cannot hear at all.
                 if _mic_dev is None:
                     raise
-                print(f"[JARVIS] ⚠️  Mic '{_mic_name}' failed: {_e} — using default")
+                print(f"[JARVIS] ⚠️  Selected mic failed ({type(_e).__name__}) — using default")
                 self.ui.write_log(
                     f"SYS: Microphone '{_mic_name}' unavailable — using system default."
                 )
@@ -3004,7 +3004,7 @@ class JarvisLive:
                     )
                     await self._flush_pending_vision()
         except Exception as e:
-            print(f"[JARVIS] ⚠️ Tool batch dispatch error: {e}")
+            print(f"[JARVIS] ⚠️ Tool batch dispatch error ({type(e).__name__})")
             traceback.print_exc()
 
     async def _play_audio(self):
@@ -3034,7 +3034,7 @@ class JarvisLive:
             # cost the user their voice. Fall back to the default and say so.
             if _spk_dev is None:
                 raise
-            print(f"[JARVIS] ⚠️  Output device '{_spk_name}' failed: {_e} — using default")
+            print(f"[JARVIS] ⚠️  Selected output failed ({type(_e).__name__}) — using default")
             self.ui.write_log(f"SYS: Speaker '{_spk_name}' unavailable — using system default.")
             stream = _open_spk(None)
 
@@ -3735,7 +3735,7 @@ class JarvisLive:
 
                 if active_engine == "openai":
                     from core.openai_live import connect_openai_live
-                    print(f"[JARVIS] Live engine: OpenAI ({live_model})")
+                    print("[JARVIS] Live engine: OpenAI")
                     live_cm = connect_openai_live(
                         api_key=_get_openai_key(),
                         live_config=config,
@@ -3743,7 +3743,7 @@ class JarvisLive:
                         persona=get_persona(),
                     )
                 else:
-                    print(f"[JARVIS] Live model: {live_model}")
+                    print("[JARVIS] Live engine: Gemini")
                     # Fresh client on every reconnect — avoids stale HTTP session state.
                     # Older rungs: v1alpha carries the proactivity field.
                     # gemini-3.8-live: GA surface is v1beta (Google's own examples),
