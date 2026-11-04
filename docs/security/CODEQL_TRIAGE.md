@@ -2,7 +2,9 @@
 
 > **Status note:** Remediation decisions below are provisional until the pull request runs a fresh CodeQL analysis. “Remediated” means the source change is implemented and locally tested; it does not claim that GitHub has closed the alert. Intended dismissals likewise require owner-side Security Events permission and per-alert evidence.
 
-Baseline: **60 findings** from the Python and JavaScript SARIF artifacts generated for `main`.
+Baseline: **60 findings** from the original Python and JavaScript SARIF artifacts generated for `main`.
+
+Post-remediation scan (run `41779982285`): **18 findings**. This follow-up removes the 15 remaining actionable flows: seven sensitive log values, four upload path flows, clear-text config persistence, reflective XSS, and two client-side XSS flows. The three remaining findings are the evidence-backed `py/weak-sensitive-data-hashing` false positives at `core/security_vault.py:149`, `:152`, and `:342`; repository-owner Security Events permission is required to dismiss them individually.
 
 Generated output and test fixtures are excluded from CodeQL; production source remains scanned. Dismissals require repository-owner Security Events permission and must use the evidence below.
 

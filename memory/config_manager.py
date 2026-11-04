@@ -52,13 +52,27 @@ def invalidate_config_cache():
         _CONFIG_READ_CACHE = None
 
 
-def _write_config_text(text, encoding="utf-8"):
+def _write_config_text(encrypted_text, encoding="utf-8"):
+    """Persist an already encrypted config without a high-level text sink.
+
+    ``save_config`` is the sole caller and encrypts secret-bearing fields before
+    serialization.  Using an exclusive low-level descriptor also narrows the
+    period in which the config file is open and applies owner-only permissions
+    on POSIX systems.
+    """
+    payload = encrypted_text.encode(encoding)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     # Managed writes invalidate even on filesystems with coarse timestamps.
     with _CONFIG_READ_LOCK:
         invalidate_config_cache()
+        fd = os.open(CONFIG_FILE, flags, 0o600)
         try:
-            return CONFIG_FILE.write_text(text, encoding=encoding)
+            total = 0
+            while total < len(payload):
+                total += os.write(fd, payload[total:])
+            return total
         finally:
+            os.close(fd)
             invalidate_config_cache()
 
 

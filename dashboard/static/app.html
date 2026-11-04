@@ -277,92 +277,70 @@
     }
 
     // ── File upload (phone → computer) ────────────────────────────────────────
-    function _uploadFile(file) {
-      const id = 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-
-      // Create file card in feed
+    function _fileCard(name, size, label, status, id = '') {
       const card = document.createElement('div');
       card.className = 'msg-file';
-      card.id = id;
-      card.innerHTML = `
-        <div class="fc-icon">${_fileIcon(file.name)}</div>
-        <div class="fc-meta">
-          <div class="fc-lbl">Sending</div>
-          <div class="fc-name">${esc(file.name)}</div>
-          <div class="fc-size">${_fmtSize(file.size)}</div>
-          <div class="fc-bar-wrap"><div class="fc-bar" id="${id}_bar"></div></div>
-        </div>
-        <div class="fc-status" id="${id}_st">0%</div>
-      `;
-      feed.appendChild(card);
+      if (id) card.id = id;
+      const icon = document.createElement('div');
+      icon.className = 'fc-icon'; icon.textContent = _fileIcon(name);
+      const meta = document.createElement('div'); meta.className = 'fc-meta';
+      const lbl = document.createElement('div'); lbl.className = 'fc-lbl'; lbl.textContent = label;
+      const filename = document.createElement('div'); filename.className = 'fc-name'; filename.textContent = String(name);
+      const filesize = document.createElement('div'); filesize.className = 'fc-size'; filesize.textContent = _fmtSize(Number(size) || 0);
+      meta.append(lbl, filename, filesize);
+      const state = document.createElement('div');
+      state.className = status === '✓' ? 'fc-status done' : 'fc-status'; state.textContent = status;
+      card.append(icon, meta, state);
+      return {card, meta, lbl, state};
+    }
+
+    function _downloadLink(name, text) {
+      const link = document.createElement('a');
+      link.className = 'fc-dl';
+      link.href = `/uploads/${encodeURIComponent(name)}?token=${encodeURIComponent(_authToken)}`;
+      link.download = String(name); link.textContent = text;
+      return link;
+    }
+
+    function _uploadFile(file) {
+      const id = 'fc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+      const {card, meta, lbl, state} = _fileCard(file.name, file.size, 'Sending', '0%', id);
+      const barWrap = document.createElement('div'); barWrap.className = 'fc-bar-wrap';
+      const bar = document.createElement('div'); bar.className = 'fc-bar';
+      barWrap.appendChild(bar); meta.appendChild(barWrap); feed.appendChild(card);
       feed.scrollTop = feed.scrollHeight;
-
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload');
-      xhr.setRequestHeader('Authorization', `Bearer ${_authToken}`);
-
+      xhr.open('POST', '/api/upload'); xhr.setRequestHeader('Authorization', `Bearer ${_authToken}`);
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return;
         const pct = Math.round(e.loaded / e.total * 100);
-        const bar = document.getElementById(`${id}_bar`);
-        const st  = document.getElementById(`${id}_st`);
-        if (bar) bar.style.width = pct + '%';
-        if (st)  st.textContent  = pct + '%';
+        bar.style.width = pct + '%'; state.textContent = pct + '%';
       };
-
       xhr.onload = () => {
-        const bar  = document.getElementById(`${id}_bar`);
-        const st   = document.getElementById(`${id}_st`);
-        const meta = card.querySelector('.fc-meta');
-        const lbl  = card.querySelector('.fc-lbl');
         if (xhr.status === 200) {
           let savedName = file.name;
           try { savedName = JSON.parse(xhr.responseText).name || file.name; } catch {}
-          const dlUrl = `/uploads/${encodeURIComponent(savedName)}?token=${encodeURIComponent(_authToken)}`;
-          if (bar)  { bar.style.width = '100%'; bar.style.background = 'var(--green)'; }
-          if (st)   { st.textContent = '✓'; st.className = 'fc-status done'; }
-          if (lbl)  lbl.textContent = 'Sent';
-          if (meta) meta.insertAdjacentHTML('beforeend',
-            `<a class="fc-dl" href="${dlUrl}" download="${esc(savedName)}">⬇ Download back</a>`);
-          toast('File sent!');
+          bar.style.width = '100%'; bar.style.background = 'var(--green)';
+          state.textContent = '✓'; state.className = 'fc-status done'; lbl.textContent = 'Sent';
+          meta.appendChild(_downloadLink(savedName, '⬇ Download back')); toast('File sent!');
         } else {
           let errMsg = 'Upload failed';
           try { errMsg = JSON.parse(xhr.responseText).error || errMsg; } catch {}
-          if (bar) bar.style.background = '#f87171';
-          if (st)  { st.textContent = 'ERR'; st.className = 'fc-status err'; }
-          if (lbl) lbl.textContent = errMsg;
+          bar.style.background = '#f87171'; state.textContent = 'ERR'; state.className = 'fc-status err';
+          lbl.textContent = errMsg;
         }
       };
-
       xhr.onerror = () => {
-        const st  = document.getElementById(`${id}_st`);
-        const lbl = card.querySelector('.fc-lbl');
-        if (st)  { st.textContent = 'ERR'; st.className = 'fc-status err'; }
-        if (lbl) lbl.textContent = 'Connection error';
+        state.textContent = 'ERR'; state.className = 'fc-status err'; lbl.textContent = 'Connection error';
       };
-
-      const fd = new FormData();
-      fd.append('file', file);
-      xhr.send(fd);
+      const fd = new FormData(); fd.append('file', file); xhr.send(fd);
     }
 
     // File received by another WebSocket client (e.g., second open tab)
     function _onFileReceived(m) {
-      const dlUrl = `/uploads/${encodeURIComponent(m.name)}?token=${encodeURIComponent(_authToken)}`;
-      const card  = document.createElement('div');
-      card.className = 'msg-file';
-      card.innerHTML = `
-        <div class="fc-icon">${_fileIcon(m.name)}</div>
-        <div class="fc-meta">
-          <div class="fc-lbl">Received</div>
-          <div class="fc-name">${esc(m.name)}</div>
-          <div class="fc-size">${_fmtSize(m.size)}</div>
-          <a class="fc-dl" href="${dlUrl}" download="${esc(m.name)}">⬇ Download</a>
-        </div>
-        <div class="fc-status done">✓</div>
-      `;
-      feed.appendChild(card);
-      feed.scrollTop = feed.scrollHeight;
+      const {card, meta} = _fileCard(m.name, m.size, 'Received', '✓');
+      meta.appendChild(_downloadLink(m.name, '⬇ Download'));
+      feed.appendChild(card); feed.scrollTop = feed.scrollHeight;
       toast('File received on computer!');
     }
 
