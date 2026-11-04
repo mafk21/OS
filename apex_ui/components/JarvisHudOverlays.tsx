@@ -104,6 +104,7 @@ export default function JarvisHudOverlays() {
     sendText,
     toggleMute,
     togglePause,
+    retryConnection,
     interrupt,
     stopAll,
     captureRegion,
@@ -283,7 +284,7 @@ export default function JarvisHudOverlays() {
     : PRIMARY;
 
   const statusText = offline
-    ? `OFFLINE${offlineReason ? ` · ${offlineReason}` : ""}`
+    ? `OFFLINE${offlineReason ? ` · ${offlineReason.slice(0, 42)}${offlineReason.length > 42 ? "…" : ""}` : ""}`
     : muted
     ? "MIC MUTED"
     : paused
@@ -360,6 +361,24 @@ export default function JarvisHudOverlays() {
           />
           {statusText}
         </button>
+
+        {offline && (
+          <button
+            type="button"
+            onClick={() => retryConnection()}
+            title="Retry the live AI connection now"
+            style={{
+              ...pillBase,
+              padding: "5px 10px",
+              fontSize: "0.58rem",
+              background: `${WARN_AMBER}18`,
+              borderColor: `${WARN_AMBER}66`,
+              color: WARN_AMBER,
+            }}
+          >
+            RETRY CONNECTION
+          </button>
+        )}
 
         <button
           type="button"

@@ -296,6 +296,7 @@ export type JarvisContextValue = {
   fireLocalTrace: (nodes: string[]) => void;
   toggleMute: () => void;
   togglePause: () => void;
+  retryConnection: () => Promise<void>;
   interrupt: () => void;
   stopAll: () => void;
   captureRegion: () => void;
@@ -958,6 +959,20 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     sendAction({ action: "toggle_pause" });
   }, [connected, sendAction]);
 
+  const retryConnection = useCallback(async () => {
+    if (!connected) return;
+    setOfflineReason("Retrying live AI connection…");
+    try {
+      await fetch("/api/hud/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry_connection" }),
+      });
+    } catch {
+      sendAction({ action: "retry_connection" });
+    }
+  }, [connected, sendAction]);
+
   const interrupt = useCallback(() => {
     if (!connected) {
       setDemoState("idle");
@@ -1577,6 +1592,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       fireLocalTrace,
       toggleMute,
       togglePause,
+      retryConnection,
       interrupt,
       stopAll,
       captureRegion,
@@ -1670,6 +1686,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       fireLocalTrace,
       toggleMute,
       togglePause,
+      retryConnection,
       interrupt,
       stopAll,
       captureRegion,

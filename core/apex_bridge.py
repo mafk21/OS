@@ -1148,6 +1148,13 @@ class ApexHudBridge:
                     threading.Thread(target=ptt_cb, daemon=True).start()
             return {"ok": True}
 
+        if action == "retry_connection":
+            retry = getattr(ui, "retry_live_connection", None) if ui is not None else None
+            if not callable(retry):
+                return {"ok": False, "error": "Live connection retry is not available yet."}
+            retry()
+            return {"ok": True, "message": "Retrying the live AI connection."}
+
         if action == "toggle_mute" and ui is not None:
             new_muted = not self._is_muted()
             self._invoke_qt(lambda: setattr(ui, "muted", new_muted))
