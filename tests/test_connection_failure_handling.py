@@ -10,7 +10,7 @@ def test_connection_messages_are_actionable():
     assert "firewall" in diagnostics.user_message("ConnectionRefusedError").lower()
 
 
-def test_diagnostic_log_redacts_credentials(monkeypatch, tmp_path):
+def test_diagnostic_log_never_persists_exception_values(monkeypatch, tmp_path):
     log = tmp_path / "connection-errors.log"
     monkeypatch.setattr(diagnostics, "LOG_PATH", log)
     # Assemble provider-shaped values from fragments so public-repository
@@ -27,9 +27,11 @@ def test_diagnostic_log_redacts_credentials(monkeypatch, tmp_path):
     text = written.read_text(encoding="utf-8")
     assert "AIza123" not in text
     assert "sk-123" not in text
-    assert "[REDACTED]" in text or "[REDACTED_GEMINI_KEY]" in text
+    assert "request failed" not in text
+    assert "Authorization" not in text
     assert "engine=gemini" in text
     assert "TimeoutError" in text
+    assert "test_connection_failure_handling.py" in text
 
 
 def test_terminal_traceback_is_replaced_by_diagnostic_logging():

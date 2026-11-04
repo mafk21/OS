@@ -39,7 +39,7 @@ def user_message(error_text: str) -> str:
 
 
 def write_failure(exc: BaseException, *, engine: str = "unknown", model: str = "") -> Path:
-    """Append a redacted traceback to a bounded local diagnostic log."""
+    """Append non-sensitive stack metadata to a bounded local diagnostic log."""
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     if LOG_PATH.exists() and LOG_PATH.stat().st_size > _MAX_BYTES:
         rotated = LOG_PATH.with_suffix(".log.1")
@@ -49,10 +49,20 @@ def write_failure(exc: BaseException, *, engine: str = "unknown", model: str = "
         except OSError:
             pass
     stamp = datetime.now(timezone.utc).isoformat()
-    detail = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    entry = redact(
-        f"\n[{stamp}] engine={engine} model={model or 'unknown'} "
-        f"error={type(exc).__name__}\n{detail}\n"
+    # Exception messages from HTTP/WebSocket libraries can contain request URLs,
+    # headers, or provider credentials. Do not persist that tainted text at all.
+    # Frame metadata retains the useful debugging trail without values or locals.
+    safe_engine = engine if engine in {"gemini", "openai"} else "unknown"
+    safe_model = re.sub(r"[^A-Za-z0-9._/-]", "_", str(model or "unknown"))[:120]
+    safe_error = re.sub(r"[^A-Za-z0-9_]", "", type(exc).__name__)[:80] or "Exception"
+    frames = traceback.extract_tb(exc.__traceback__)
+    stack = "\n".join(
+        f"  {Path(frame.filename).name}:{frame.lineno} in {frame.name}"
+        for frame in frames[-20:]
+    )
+    entry = (
+        f"\n[{stamp}] engine={safe_engine} model={safe_model} "
+        f"error={safe_error}\n{stack}\n"
     )
     with LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(entry)
