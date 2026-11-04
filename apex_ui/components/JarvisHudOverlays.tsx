@@ -33,6 +33,7 @@ import HudVideoModal from "./HudVideoModal";
 import IntegrationsModal from "./IntegrationsModal";
 import SecurityModal from "./SecurityModal";
 import StudioModal from "./StudioModal";
+import TasteModal from "./TasteModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
 import { ActivityTimelineHud } from "./WorkerOrbsLayer";
@@ -49,6 +50,8 @@ export default function JarvisHudOverlays() {
     privacy,
     desktopShortcut,
     updateDesktopShortcut,
+    tasteProfile,
+    setTasteModalOpen,
     brainCounts,
     aiProviders,
     persona,
@@ -306,6 +309,7 @@ export default function JarvisHudOverlays() {
       <AutomationsModal />
       <DevWorkspaceModal />
       <SecurityModal />
+      <TasteModal />
       {/* ── Unified Sleek Top-Right HUD Controls (Male Cyan & Female Rose-Orchid) ── */}
       <div
         style={{
@@ -1461,6 +1465,21 @@ export default function JarvisHudOverlays() {
                 >
                   <KeyRound size={12} />
                   AI ENGINES ({(aiProviders.activeEngine || "gemini").toUpperCase()})
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setTasteModalOpen(true);
+                  }}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${SECONDARY}55`,
+                    color: SECONDARY,
+                  }}
+                >
+                  TASTE PROFILE ({tasteProfile.entry_count})
                 </button>
 
                 <button

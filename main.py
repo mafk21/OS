@@ -1999,6 +1999,13 @@ class JarvisLive:
         if mem_str:
             parts.append(mem_str)
         try:
+            from memory.taste_manager import format_for_prompt
+            taste_context = format_for_prompt()
+            if taste_context:
+                parts.append(taste_context)
+        except Exception:
+            pass
+        try:
             from memory.timeline import format_timeline_for_prompt
             tl_str = format_timeline_for_prompt(recent_limit=8)
             if tl_str:
