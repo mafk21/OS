@@ -22,7 +22,7 @@ def test_diagnostic_log_never_persists_exception_values(monkeypatch, tmp_path):
             f"request failed api_key={gemini_like} Authorization: {openai_like}"
         )
     except TimeoutError as exc:
-        written = diagnostics.write_failure(exc, engine="gemini", model="live-test")
+        written = diagnostics.write_failure(exc, engine="gemini")
 
     text = written.read_text(encoding="utf-8")
     assert "AIza123" not in text

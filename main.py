@@ -3962,7 +3962,6 @@ class JarvisLive:
                     diagnostic_path = _write_connection_failure(
                         e,
                         engine=getattr(self, "_active_engine", "unknown"),
-                        model=str(live_model or ""),
                     )
                 except OSError:
                     diagnostic_path = None
