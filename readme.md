@@ -38,8 +38,8 @@ For the complete feature guide and architecture, visit the **[documentation webs
 Requires **Python 3.11 or newer**.
 
 ```bash
-git clone https://github.com/mafk21/OS.git
-cd OS
+git clone https://github.com/mafk21/jarvis.git
+cd jarvis
 python setup.py
 python main.py
 ```
