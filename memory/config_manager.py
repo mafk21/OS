@@ -159,6 +159,22 @@ def save_integrations_onboarding_done(done: bool = True) -> None:
     _save_flag("integrations_onboarding_done", bool(done))
 
 
+def get_desktop_shortcut_preference() -> dict:
+    """Return whether first-run shortcut choice was shown and accepted."""
+    data = load_api_keys()
+    return {
+        "prompted": bool(data.get("desktop_shortcut_prompted", False)),
+        "enabled": bool(data.get("desktop_shortcut_enabled", False)),
+    }
+
+
+def save_desktop_shortcut_preference(enabled: bool, *, prompted: bool = True) -> None:
+    _patch_config(
+        desktop_shortcut_prompted=bool(prompted),
+        desktop_shortcut_enabled=bool(enabled),
+    )
+
+
 # ── Brain & Privacy Tier Toggles ─────────────────────────────────────────────
 
 def get_personalization_enabled() -> bool:

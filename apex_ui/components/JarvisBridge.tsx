@@ -82,6 +82,13 @@ export type IntegrationsSummary = {
   onboarding_done: boolean;
 };
 
+export type DesktopShortcutState = {
+  exists: boolean;
+  path: string;
+  supported: boolean;
+  prompt_pending: boolean;
+};
+
 export type PrivacySettings = {
   personalization_enabled: boolean;
   adaptive_learning_enabled: boolean;
@@ -190,6 +197,8 @@ export type JarvisContextValue = {
   integrationsReady: boolean;
   integrations: IntegrationsSummary;
   privacy: PrivacySettings;
+  desktopShortcut: DesktopShortcutState;
+  updateDesktopShortcut: (operation: "create" | "remove" | "decline") => Promise<boolean>;
   brainCounts: BrainCounts;
   workers: WorkerItem[];
   terminalSessions: TerminalSession[];
@@ -372,6 +381,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     personalization_enabled: true,
     adaptive_learning_enabled: true,
     timeline_persistence_enabled: true,
+  });
+  const [desktopShortcut, setDesktopShortcut] = useState<DesktopShortcutState>({
+    exists: false,
+    path: "",
+    supported: true,
+    prompt_pending: false,
   });
   const [brainCounts, setBrainCounts] = useState<BrainCounts>({
     memories: 0,
@@ -566,6 +581,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       }
       if (d.privacy && typeof d.privacy === "object") {
         setPrivacyState(d.privacy as PrivacySettings);
+      }
+      if (d.desktop_shortcut && typeof d.desktop_shortcut === "object") {
+        setDesktopShortcut(d.desktop_shortcut as DesktopShortcutState);
       }
       if (d.brain_counts && typeof d.brain_counts === "object") {
         setBrainCounts(d.brain_counts as BrainCounts);
@@ -1215,6 +1233,26 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateDesktopShortcut = useCallback(
+    async (operation: "create" | "remove" | "decline") => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "desktop_shortcut", operation }),
+        });
+        const data = await r.json();
+        if (data.desktop_shortcut && typeof data.desktop_shortcut === "object") {
+          setDesktopShortcut(data.desktop_shortcut as DesktopShortcutState);
+        }
+        return Boolean(r.ok && data.ok);
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
   const updatePrivacy = useCallback(
     async (patch: Partial<PrivacySettings>) => {
       setPrivacyState((prev) => ({ ...prev, ...patch }));
@@ -1459,6 +1497,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrationsReady,
       integrations,
       privacy,
+      desktopShortcut,
+      updateDesktopShortcut,
       brainCounts,
       workers,
       terminalSessions,
@@ -1563,6 +1603,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       integrationsReady,
       integrations,
       privacy,
+      desktopShortcut,
+      updateDesktopShortcut,
       brainCounts,
       workers,
       terminalSessions,
