@@ -87,6 +87,10 @@ from core.session_recycle      import (
     SessionRecycler, parse_go_away_seconds,
     CHECK_INTERVAL_SEC as RECYCLE_CHECK_SEC,
 )
+from core.connection_diagnostics import (
+    user_message as _connection_user_message,
+    write_failure as _write_connection_failure,
+)
 from core.live_errors import (
     flatten_error_text as _flatten_error_text,
     is_realtime_send_stall as _is_realtime_send_stall,
@@ -988,6 +992,8 @@ class JarvisLive:
         self.ui.on_voice_change   = self._on_voice_change     # voice picker → rebuild session
         self.ui.on_audio_device_change = self._on_audio_device_change
         self.ui.on_integrations_change = self._on_integrations_change
+        self.ui.retry_live_connection = self.request_connection_retry
+        self._retry_connection_requested = threading.Event()
         self._reconnect_event: asyncio.Event | None = None
         self._reconnect_keep = True   # False → next rebuild drops the resumption handle
 
@@ -1324,7 +1330,7 @@ class JarvisLive:
         except Exception:
             pass
         try:
-            self.ui.set_offline(True, reason[:18])
+            self.ui.set_offline(True, reason[:120])
             self.ui.set_state("LISTENING")
         except Exception:
             pass
@@ -1405,6 +1411,33 @@ class JarvisLive:
                 self.ui.write_log("SYS: Offline model failing — waiting 15s…")
                 await asyncio.sleep(15)
                 consecutive_fails = 0
+
+    def request_connection_retry(self) -> None:
+        """Interrupt offline/backoff waiting so the owner can retry immediately."""
+        self._retry_connection_requested.set()
+        self._conn_backoff = 0
+        if getattr(self, "_offline_mode", False):
+            self._offline_mode = False
+            loop = getattr(self, "_loop", None)
+            queue = getattr(self, "_offline_q", None)
+            if loop is not None and queue is not None:
+                try:
+                    loop.call_soon_threadsafe(queue.put_nowait, "")
+                except RuntimeError:
+                    pass
+        try:
+            self.ui.write_log("NET: Retrying the live AI connection now…")
+            self.ui.set_offline(False)
+        except Exception:
+            pass
+
+    async def _wait_before_reconnect(self, delay: float) -> None:
+        remaining = max(0.0, float(delay))
+        while remaining > 0 and not self._retry_connection_requested.is_set():
+            step = min(0.25, remaining)
+            await asyncio.sleep(step)
+            remaining -= step
+        self._retry_connection_requested.clear()
 
     def _exit_offline_mode(self):
         if getattr(self, '_offline_mode', False):
@@ -3920,8 +3953,29 @@ class JarvisLive:
                     await asyncio.sleep(delay)
                     continue
 
-                print(f"[JARVIS] Error ({type(e).__name__}): {err_str}")
-                traceback.print_exc()
+                _network_markers = (
+                    "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
+                    "ConnectionRefusedError", "OSError", "Cannot connect",
+                )
+                _looks_like_network = any(marker in err_str for marker in _network_markers)
+                try:
+                    diagnostic_path = _write_connection_failure(
+                        e,
+                        engine=getattr(self, "_active_engine", "unknown"),
+                        model=str(live_model or ""),
+                    )
+                except OSError:
+                    diagnostic_path = None
+                if _looks_like_network:
+                    friendly = _connection_user_message(err_str)
+                    print(f"[JARVIS] {friendly}")
+                    self.ui.write_log(f"NET: {friendly}")
+                    if diagnostic_path is not None:
+                        print(f"[JARVIS] Technical details saved to {diagnostic_path}")
+                else:
+                    # Keep the console concise; the complete redacted traceback is
+                    # available in the diagnostic log for support and debugging.
+                    print(f"[JARVIS] Connection error ({type(e).__name__}): {err_str[:240]}")
 
                 # Out of quota, or this model is not available to this key —
                 # step down the ladder and reconnect straight away. If Gemini
@@ -4051,10 +4105,7 @@ class JarvisLive:
                         continue
 
                 # Network / timeout errors — log clearly and back off
-                is_net_err = any(k in err_str for k in (
-                    "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
-                    "ConnectionRefusedError", "OSError", "Cannot connect",
-                ))
+                is_net_err = _looks_like_network
                 if is_net_err:
                     # Phase 2.1 — offer local LLM instead of just backing off
                     try:
@@ -4065,7 +4116,10 @@ class JarvisLive:
                             except Exception:
                                 pass
                             try:
-                                await asyncio.wait_for(self._run_offline_mode(reason=err_str[:48] or "network error"), timeout=600)
+                                await asyncio.wait_for(
+                                    self._run_offline_mode(reason=_connection_user_message(err_str)),
+                                    timeout=600,
+                                )
                             except asyncio.TimeoutError:
                                 pass
                             except Exception as e:
@@ -4081,8 +4135,8 @@ class JarvisLive:
                     _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
                     self._conn_backoff = _conn_backoff
                     self.ui.write_log(
-                        f"NET: Connection failed — retrying in {_conn_backoff}s. "
-                        "(a VPN may be required)"
+                        f"NET: Retrying automatically in {_conn_backoff}s. "
+                        "Use Retry Connection to try immediately."
                     )
                 elif "already connected" in err_str:
                     # 1008 — the server still holds the session that just died
@@ -4106,7 +4160,7 @@ class JarvisLive:
 
             delay = getattr(self, "_conn_backoff", 3)
             print(f"[JARVIS] Reconnecting in {delay}s...")
-            await asyncio.sleep(delay)
+            await self._wait_before_reconnect(delay)
 
 def _parse_cli_persona(argv: list[str]) -> str | None:
     for idx, arg in enumerate(argv):
