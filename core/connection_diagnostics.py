@@ -38,7 +38,7 @@ def user_message(error_text: str) -> str:
     return "The live AI connection was interrupted. JARVIS will keep local features available while it retries."
 
 
-def write_failure(exc: BaseException, *, engine: str = "unknown", model: str = "") -> Path:
+def write_failure(exc: BaseException, *, engine: str = "unknown") -> Path:
     """Append non-sensitive stack metadata to a bounded local diagnostic log."""
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     if LOG_PATH.exists() and LOG_PATH.stat().st_size > _MAX_BYTES:
@@ -53,7 +53,6 @@ def write_failure(exc: BaseException, *, engine: str = "unknown", model: str = "
     # headers, or provider credentials. Do not persist that tainted text at all.
     # Frame metadata retains the useful debugging trail without values or locals.
     safe_engine = engine if engine in {"gemini", "openai"} else "unknown"
-    safe_model = re.sub(r"[^A-Za-z0-9._/-]", "_", str(model or "unknown"))[:120]
     safe_error = re.sub(r"[^A-Za-z0-9_]", "", type(exc).__name__)[:80] or "Exception"
     frames = traceback.extract_tb(exc.__traceback__)
     stack = "\n".join(
@@ -61,8 +60,7 @@ def write_failure(exc: BaseException, *, engine: str = "unknown", model: str = "
         for frame in frames[-20:]
     )
     entry = (
-        f"\n[{stamp}] engine={safe_engine} model={safe_model} "
-        f"error={safe_error}\n{stack}\n"
+        f"\n[{stamp}] engine={safe_engine} error={safe_error}\n{stack}\n"
     )
     with LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(entry)
