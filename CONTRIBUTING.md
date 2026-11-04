@@ -14,8 +14,8 @@ Thank you for helping improve JARVIS. Contributions should be focused, cross-pla
 Requires Python 3.11 or newer and Node.js 22 for HUD development.
 
 ```bash
-git clone https://github.com/mafk21/OS.git
-cd OS
+git clone https://github.com/mafk21/jarvis.git
+cd jarvis
 python -m venv .venv
 # Windows: .venv\Scripts\python -m pip install -r requirements.txt
 # macOS/Linux:
