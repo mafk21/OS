@@ -47,6 +47,8 @@ export default function JarvisHudOverlays() {
     integrationsReady,
     integrations,
     privacy,
+    desktopShortcut,
+    updateDesktopShortcut,
     brainCounts,
     aiProviders,
     persona,
@@ -123,6 +125,7 @@ export default function JarvisHudOverlays() {
   const [maleContentExpanded, setMaleContentExpanded] = useState(false);
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [shortcutBusy, setShortcutBusy] = useState(false);
   const [providerPref, setProviderPref] = useState<string>("auto");
   const [openaiModelInput, setOpenaiModelInput] = useState<string>("gpt-4o");
   const [openaiRealtimeInput, setOpenaiRealtimeInput] = useState<string>(
@@ -1463,6 +1466,24 @@ export default function JarvisHudOverlays() {
 
               <button
                 type="button"
+                disabled={shortcutBusy}
+                onClick={async () => {
+                  setShortcutBusy(true);
+                  await updateDesktopShortcut(desktopShortcut.exists ? "remove" : "create");
+                  setShortcutBusy(false);
+                }}
+                style={{
+                  ...pillBase,
+                  borderColor: `${PRIMARY}66`,
+                  color: PRIMARY,
+                  opacity: shortcutBusy ? 0.55 : 1,
+                }}
+              >
+                {desktopShortcut.exists ? "REMOVE DESKTOP SHORTCUT" : "ADD DESKTOP SHORTCUT"}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   stopAll();
                   setSettingsOpen(false);
@@ -1475,6 +1496,72 @@ export default function JarvisHudOverlays() {
               >
                 <Square size={11} />
                 EMERGENCY STOP
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* First-run desktop shortcut offer. Declining is remembered, while the
+          same action remains available in Settings and through voice/text. */}
+      {desktopShortcut.prompt_pending && !setupOpen && !integrationsModalOpen && !personaModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create JARVIS desktop shortcut"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 90,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 18,
+            background: "rgba(2, 6, 12, 0.78)",
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div style={{
+            width: "min(430px, 94vw)",
+            padding: "26px 24px",
+            borderRadius: 18,
+            border: `1px solid ${PRIMARY}55`,
+            background: theme.panelBg,
+            boxShadow: `0 0 50px ${PRIMARY}22, 0 20px 60px rgba(0,0,0,.75)`,
+          }}>
+            <div style={{ color: PRIMARY, fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".2em" }}>
+              READY FOR QUICK LAUNCH
+            </div>
+            <h2 style={{ margin: "12px 0 8px", color: "#f0ede8", fontSize: 22 }}>
+              Add JARVIS to your Desktop?
+            </h2>
+            <p style={{ color: "rgba(240,237,232,.68)", fontSize: 13, lineHeight: 1.6, margin: "0 0 20px" }}>
+              Create a native shortcut so JARVIS launches like a real desktop app. You can always add it later from Settings or just ask JARVIS.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                disabled={shortcutBusy}
+                onClick={async () => {
+                  setShortcutBusy(true);
+                  await updateDesktopShortcut("decline");
+                  setShortcutBusy(false);
+                }}
+                style={{ ...pillBase, color: "rgba(240,237,232,.65)" }}
+              >
+                NOT NOW
+              </button>
+              <button
+                type="button"
+                disabled={shortcutBusy}
+                onClick={async () => {
+                  setShortcutBusy(true);
+                  await updateDesktopShortcut("create");
+                  setShortcutBusy(false);
+                }}
+                style={{ ...pillBase, color: "#061016", background: PRIMARY, borderColor: PRIMARY, fontWeight: 700 }}
+              >
+                {shortcutBusy ? "CREATING…" : "CREATE SHORTCUT"}
               </button>
             </div>
           </div>

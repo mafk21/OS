@@ -44,6 +44,7 @@ from core import (
     audio_devices,
     automations,
     companions,
+    desktop_shortcut,
     dev_workspace,
     mcp_adapter,
     security_vault,
@@ -298,6 +299,14 @@ class ApexHudBridge:
         gkey = cfg.get_gemini_key() or ""
         okey = cfg.get_openai_key() or ""
         ocfg = cfg.get_openai_cfg()
+        shortcut_pref = cfg.get_desktop_shortcut_preference()
+        shortcut_state = desktop_shortcut.status()
+        shortcut_state["prompt_pending"] = bool(
+            self._is_ready()
+            and self._is_integrations_ready()
+            and self._is_persona_chosen()
+            and not shortcut_pref["prompted"]
+        )
 
         def _mask_key(k: str) -> str:
             if not k or len(k) < 10:
@@ -325,6 +334,7 @@ class ApexHudBridge:
             "openai_base_url": ocfg.get("base_url", "https://api.openai.com/v1"),
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
+            "desktop_shortcut": shortcut_state,
             "assistant_name": cfg.get_assistant_name(),
             "raw_state": raw_state,
             "muted": self._is_muted(),
@@ -959,6 +969,31 @@ class ApexHudBridge:
             )
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "desktop_shortcut":
+            operation = str(data.get("operation") or "status").strip().lower()
+            try:
+                if operation == "create":
+                    path = desktop_shortcut.create()
+                    cfg.save_desktop_shortcut_preference(True)
+                    result = {"ok": True, "message": f"Desktop shortcut created at {path}."}
+                elif operation == "remove":
+                    desktop_shortcut.remove()
+                    cfg.save_desktop_shortcut_preference(False)
+                    result = {"ok": True, "message": "Desktop shortcut removed."}
+                elif operation == "decline":
+                    cfg.save_desktop_shortcut_preference(False)
+                    result = {"ok": True, "message": "You can add it later from Settings or by asking JARVIS."}
+                else:
+                    result = {"ok": True}
+            except (OSError, subprocess.SubprocessError) as exc:
+                result = {"ok": False, "error": f"Could not update the desktop shortcut ({type(exc).__name__})."}
+            result["desktop_shortcut"] = {
+                **desktop_shortcut.status(),
+                "prompt_pending": False,
+            }
+            self._broadcast_threadsafe(self.snapshot())
+            return result
 
         if action == "disconnect_integration":
             svc = str(data.get("service") or "").strip().lower()
