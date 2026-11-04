@@ -54,7 +54,7 @@ from memory import accounts
 from memory import config_manager as cfg
 from memory import memory_manager as mm
 from memory import timeline
-from memory import config_manager as cfg
+from memory import taste_manager
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_HUD_DIR = BASE_DIR / "apex_ui" / "static_hud"
@@ -301,10 +301,16 @@ class ApexHudBridge:
         ocfg = cfg.get_openai_cfg()
         shortcut_pref = cfg.get_desktop_shortcut_preference()
         shortcut_state = desktop_shortcut.status()
+        onboarding_complete = bool(
+            self._is_ready() and self._is_integrations_ready() and self._is_persona_chosen()
+        )
+        taste_state = taste_manager.status()
+        taste_state["prompt_pending"] = bool(
+            onboarding_complete and not taste_state["prompted"]
+        )
         shortcut_state["prompt_pending"] = bool(
-            self._is_ready()
-            and self._is_integrations_ready()
-            and self._is_persona_chosen()
+            onboarding_complete
+            and taste_state["prompted"]
             and not shortcut_pref["prompted"]
         )
 
@@ -335,6 +341,7 @@ class ApexHudBridge:
             "persona": cfg.get_persona(),
             "persona_chosen": self._is_persona_chosen(),
             "desktop_shortcut": shortcut_state,
+            "taste_profile": taste_state,
             "assistant_name": cfg.get_assistant_name(),
             "raw_state": raw_state,
             "muted": self._is_muted(),
@@ -969,6 +976,45 @@ class ApexHudBridge:
             )
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "summary": accounts.get_integrations_status_summary()}
+
+        if action == "taste_profile":
+            operation = str(data.get("operation") or "get").strip().lower()
+            try:
+                if operation == "save_onboarding":
+                    state = taste_manager.save_onboarding(data.get("values") or {})
+                    message = "Taste profile saved."
+                elif operation == "skip":
+                    state = taste_manager.mark_onboarding_complete()
+                    message = "Taste setup skipped. You can complete it later in Settings."
+                elif operation == "add":
+                    taste_manager.add_preference(
+                        data.get("domain", "other"), data.get("item", ""),
+                        data.get("sentiment", "like"), data.get("contexts") or [],
+                        kind=data.get("kind", "preference"),
+                    )
+                    state, message = taste_manager.status(), "Taste preference saved."
+                elif operation == "remove":
+                    taste_manager.remove_preference(str(data.get("entry_id") or ""))
+                    state, message = taste_manager.status(), "Taste preference removed."
+                elif operation == "set_discovery":
+                    state = taste_manager.set_discovery(data.get("domain", "other"), data.get("mode", "balanced"))
+                    message = "Discovery preference updated."
+                elif operation == "clear":
+                    taste_manager.clear_profile()
+                    state, message = taste_manager.status(), "Taste profile cleared."
+                else:
+                    state, message = taste_manager.status(), ""
+                state["prompt_pending"] = False
+                self._broadcast_threadsafe(self.snapshot())
+                return {"ok": True, "taste_profile": state, "message": message}
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc), "taste_profile": taste_manager.status()}
+            except OSError as exc:
+                return {
+                    "ok": False,
+                    "error": f"Taste profile could not be saved ({type(exc).__name__}).",
+                    "taste_profile": taste_manager.status(),
+                }
 
         if action == "desktop_shortcut":
             operation = str(data.get("operation") or "status").strip().lower()

@@ -82,6 +82,26 @@ export type IntegrationsSummary = {
   onboarding_done: boolean;
 };
 
+export type TasteEntry = {
+  id: string;
+  domain: string;
+  item: string;
+  sentiment: string;
+  kind: "preference" | "restriction";
+  contexts: string[];
+  source: "explicit";
+  updated_at: string;
+};
+
+export type TasteProfileState = {
+  prompted: boolean;
+  prompt_pending: boolean;
+  entry_count: number;
+  entries: TasteEntry[];
+  discovery: Record<string, string>;
+  domains: string[];
+};
+
 export type DesktopShortcutState = {
   exists: boolean;
   path: string;
@@ -199,6 +219,10 @@ export type JarvisContextValue = {
   privacy: PrivacySettings;
   desktopShortcut: DesktopShortcutState;
   updateDesktopShortcut: (operation: "create" | "remove" | "decline") => Promise<boolean>;
+  tasteProfile: TasteProfileState;
+  updateTasteProfile: (operation: string, payload?: Record<string, unknown>) => Promise<boolean>;
+  tasteModalOpen: boolean;
+  setTasteModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   brainCounts: BrainCounts;
   workers: WorkerItem[];
   terminalSessions: TerminalSession[];
@@ -389,6 +413,15 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     supported: true,
     prompt_pending: false,
   });
+  const [tasteProfile, setTasteProfile] = useState<TasteProfileState>({
+    prompted: false,
+    prompt_pending: false,
+    entry_count: 0,
+    entries: [],
+    discovery: {},
+    domains: ["music", "food", "drinks", "entertainment", "style", "travel", "other"],
+  });
+  const [tasteModalOpen, setTasteModalOpen] = useState(false);
   const [brainCounts, setBrainCounts] = useState<BrainCounts>({
     memories: 0,
     files: 0,
@@ -585,6 +618,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       }
       if (d.desktop_shortcut && typeof d.desktop_shortcut === "object") {
         setDesktopShortcut(d.desktop_shortcut as DesktopShortcutState);
+      }
+      if (d.taste_profile && typeof d.taste_profile === "object") {
+        setTasteProfile(d.taste_profile as TasteProfileState);
       }
       if (d.brain_counts && typeof d.brain_counts === "object") {
         setBrainCounts(d.brain_counts as BrainCounts);
@@ -1268,6 +1304,26 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateTasteProfile = useCallback(
+    async (operation: string, payload: Record<string, unknown> = {}) => {
+      try {
+        const r = await fetch("/api/hud/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "taste_profile", operation, ...payload }),
+        });
+        const data = await r.json();
+        if (data.taste_profile && typeof data.taste_profile === "object") {
+          setTasteProfile(data.taste_profile as TasteProfileState);
+        }
+        return Boolean(r.ok && data.ok);
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
   const updatePrivacy = useCallback(
     async (patch: Partial<PrivacySettings>) => {
       setPrivacyState((prev) => ({ ...prev, ...patch }));
@@ -1514,6 +1570,10 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       desktopShortcut,
       updateDesktopShortcut,
+      tasteProfile,
+      updateTasteProfile,
+      tasteModalOpen,
+      setTasteModalOpen,
       brainCounts,
       workers,
       terminalSessions,
@@ -1621,6 +1681,10 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       privacy,
       desktopShortcut,
       updateDesktopShortcut,
+      tasteProfile,
+      updateTasteProfile,
+      tasteModalOpen,
+      setTasteModalOpen,
       brainCounts,
       workers,
       terminalSessions,
