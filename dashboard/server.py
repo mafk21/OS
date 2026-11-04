@@ -472,6 +472,7 @@ class DashboardServer:
         self._connect_callback            = None
         self._pending_keys: dict[str, float] = {}
         self._device_sessions: dict[str, dict] = {}  # device_token → {session_key}
+        self._pairing_handoffs: dict[str, dict] = {}  # one-time browser bootstrap data
         self._phone_audio_queue: asyncio.Queue    = asyncio.Queue(maxsize=200)
         self._uploads_dir                 = UPLOADS_DIR
         self._login_html                  = _read("login.html")
@@ -621,22 +622,43 @@ class DashboardServer:
                 {"type": "sys", "text": "Remote connection established via QR code."}
             ))
 
-            return HTMLResponse(f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width">
-<style>
-  body{{background:#07090f;color:#dde3ed;font-family:sans-serif;
-       display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}}
-  p{{color:#5e6a7e;font-size:14px}}
-</style></head>
-<body>
-<script>
-  sessionStorage.setItem('jarvis_token',{json.dumps(tok)});
-  sessionStorage.setItem('jarvis_key',{json.dumps(key)});
-  localStorage.setItem('jarvis_device_token',{json.dumps(dev_tok)});
-  setTimeout(function(){{location.replace('/')}},400);
-</script>
-<p>Connecting to JARVIS…</p>
-</body></html>""")
+            handoff = secrets.token_urlsafe(32)
+            self._pairing_handoffs[handoff] = {
+                "token": tok, "session_key": key, "device_token": dev_tok,
+                "expires": time.time() + 60,
+            }
+            response = HTMLResponse("""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width"></head>
+<body><p>Connecting to JARVIS…</p><script>
+fetch('/api/pairing-handoff', {method:'POST'}).then(r => {
+  if (!r.ok) throw new Error('pairing failed'); return r.json();
+}).then(v => {
+  sessionStorage.setItem('jarvis_token', v.token);
+  sessionStorage.setItem('jarvis_key', v.session_key);
+  localStorage.setItem('jarvis_device_token', v.device_token);
+  location.replace('/');
+}).catch(() => { document.querySelector('p').textContent = 'Pairing expired. Please scan a new QR code.'; });
+</script></body></html>""")
+            response.set_cookie(
+                "jarvis_handoff", handoff, max_age=60, httponly=True,
+                samesite="strict", path="/api/pairing-handoff",
+            )
+            return response
+
+        @app.post("/api/pairing-handoff")
+        async def pairing_handoff(req: Request):
+            handoff = req.cookies.get("jarvis_handoff", "")
+            data = self._pairing_handoffs.pop(handoff, None) if handoff else None
+            if not data or data["expires"] <= time.time():
+                response = JSONResponse({"error": "Expired pairing"}, status_code=401)
+            else:
+                response = JSONResponse({
+                    "token": data["token"],
+                    "session_key": data["session_key"],
+                    "device_token": data["device_token"],
+                })
+            response.delete_cookie("jarvis_handoff", path="/api/pairing-handoff")
+            return response
 
         @app.post("/api/device-login")
         async def device_login_ep(req: Request):
@@ -808,10 +830,11 @@ class DashboardServer:
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
             safe = _safe_filename(filename)
             root = self._uploads_dir.resolve()
-            path = (root / safe).resolve()
-            if path.parent != root:
-                return JSONResponse({"error": "Invalid filename"}, status_code=400)
-            if not path.exists() or not path.is_file():
+            path = next(
+                (item for item in root.iterdir() if item.is_file() and item.name == safe),
+                None,
+            )
+            if path is None:
                 return JSONResponse({"error": "Not found"}, status_code=404)
             return FileResponse(str(path), filename=safe)
 

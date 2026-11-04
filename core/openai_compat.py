@@ -422,11 +422,11 @@ def openai_generate_content(
                     )
             if resp.status_code == 429:
                 _cool_model(model, 180.0)
-                print(f"[OpenAI] {model}: rate-limited (429) — trying next rung")
+                print("[OpenAI] Model rate-limited (429) — trying next rung")
                 continue
             if resp.status_code in (403, 404):
                 _cool_model(model, 1800.0)
-                print(f"[OpenAI] {model}: unavailable ({resp.status_code}) — trying next rung")
+                print("[OpenAI] Model unavailable — trying next rung")
                 continue
             resp.raise_for_status()
             data = resp.json()

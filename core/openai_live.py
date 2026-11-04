@@ -898,7 +898,7 @@ async def connect_openai_live(
                     )
                     await rt_sess.start()
                     session_obj = rt_sess
-                    print(f"[OpenAI Live] ⚡ Connected via Realtime WebSocket ({rt_model})")
+                    print("[OpenAI Live] ⚡ Connected via Realtime WebSocket")
                     break
                 except Exception as ws_exc:
                     emsg = str(ws_exc).lower()
@@ -926,7 +926,7 @@ async def connect_openai_live(
         )
         await rest_sess.start()
         session_obj = rest_sess
-        print(f"[OpenAI Live] 🌐 Connected via Universal REST Live ({chat_model} + Whisper + TTS)")
+        print("[OpenAI Live] 🌐 Connected via Universal REST Live")
 
     try:
         yield session_obj

@@ -2709,7 +2709,7 @@ class JarvisLive:
             _mic_name = get_input_device()
             _mic_dev  = audio_devices.resolve(_mic_name, "input")
             if _mic_dev is not None:
-                print(f"[JARVIS] 🎤 Input device: {_mic_name}")
+                print("[JARVIS] 🎤 Configured input device selected")
             try:
                 _mic_stream = _open_mic(_mic_dev)
             except Exception as _e:
@@ -3013,7 +3013,7 @@ class JarvisLive:
         _spk_name = get_output_device()
         _spk_dev  = audio_devices.resolve(_spk_name, "output")
         if _spk_dev is not None:
-            print(f"[JARVIS] 🔊 Output device: {_spk_name}")
+            print("[JARVIS] 🔊 Configured output device selected")
 
         def _open_spk(dev):
             st = sd.RawOutputStream(
