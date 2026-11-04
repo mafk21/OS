@@ -167,6 +167,13 @@ class MixDownloadResult:
 # ── Helpers: Platform, URL, Mix/Playlist Detection, Clipboard & FFmpeg ───────
 
 
+def _host_is(host: str, domain: str) -> bool:
+    """Match an exact DNS name or subdomain, never an attacker-controlled substring."""
+    host = host.rstrip(".").lower()
+    domain = domain.rstrip(".").lower()
+    return host == domain or host.endswith("." + domain)
+
+
 def clean_media_url(url: str) -> str:
     """Unescape HTML entities (e.g. `&amp;list=RD...`) and rescue bare YouTube RD mix links."""
     u = html.unescape((url or "").strip().strip('"').strip("'")).rstrip(".,;!")
@@ -175,7 +182,7 @@ def clean_media_url(url: str) -> str:
     try:
         parsed = urlparse(u)
         host = (parsed.hostname or "").lower()
-        if "youtube.com" in host or "youtu.be" in host:
+        if _host_is(host, "youtube.com") or _host_is(host, "youtu.be"):
             qs = parse_qs(parsed.query)
             list_id = (qs.get("list") or [""])[0].strip()
             v_id = (qs.get("v") or [""])[0].strip()
@@ -187,7 +194,7 @@ def clean_media_url(url: str) -> str:
                 and re.fullmatch(r"[A-Za-z0-9_-]{11}", list_id[2:])
             ):
                 seed = list_id[2:]
-                base_host = "music.youtube.com" if "music.youtube.com" in host else "www.youtube.com"
+                base_host = "music.youtube.com" if _host_is(host, "music.youtube.com") else "www.youtube.com"
                 return f"https://{base_host}/watch?v={seed}&list={list_id}"
     except Exception:
         pass
@@ -212,7 +219,7 @@ def classify_mix_or_playlist(url: str) -> dict[str, Any]:
         qs = parse_qs(parsed.query)
         list_id = (qs.get("list") or [""])[0].strip()
         v_id = (qs.get("v") or [""])[0].strip()
-        if not v_id and "youtu.be" in host:
+        if not v_id and _host_is(host, "youtu.be"):
             seg = (parsed.path or "").strip("/").split("/")[0]
             if re.fullmatch(r"[A-Za-z0-9_-]{11}", seg):
                 v_id = seg
@@ -227,7 +234,7 @@ def classify_mix_or_playlist(url: str) -> dict[str, Any]:
                 "seed_video_id": v_id,
             }
 
-        if "youtube.com" in host and path_low.startswith("/playlist"):
+        if _host_is(host, "youtube.com") and path_low.startswith("/playlist"):
             return {
                 "is_collection": True,
                 "is_mix": False,
@@ -236,8 +243,8 @@ def classify_mix_or_playlist(url: str) -> dict[str, Any]:
                 "seed_video_id": "",
             }
 
-        if ("soundcloud.com" in host and "/sets/" in path_low) or (
-            "vimeo.com" in host and ("/showcase/" in path_low or "/album/" in path_low)
+        if (_host_is(host, "soundcloud.com") and "/sets/" in path_low) or (
+            _host_is(host, "vimeo.com") and ("/showcase/" in path_low or "/album/" in path_low)
         ):
             return {
                 "is_collection": True,

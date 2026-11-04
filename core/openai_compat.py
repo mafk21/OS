@@ -18,6 +18,7 @@ import time
 import wave
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -346,7 +347,7 @@ def openai_generate_content(
     }
 
     # 1. If grounded search requested, try OpenAI native web-search model first, then DDG-grounded chat
-    if is_search and not has_images and "api.openai.com" in base_url:
+    if is_search and not has_images and (urlparse(base_url).hostname or "").lower() == "api.openai.com":
         for smodel in ("gpt-4o-search-preview", "gpt-4o-mini-search-preview"):
             if _is_cooling(smodel):
                 continue
@@ -434,7 +435,7 @@ def openai_generate_content(
             if txt:
                 return CompatResponse(txt)
         except Exception as exc:
-            print(f"[OpenAI] {model}: {type(exc).__name__}: {str(exc)[:140]}")
+            print(f"[OpenAI] request failed ({type(exc).__name__}); trying next model")
             continue
 
     return None

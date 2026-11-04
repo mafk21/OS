@@ -27,6 +27,7 @@ from contextlib import asynccontextmanager
 import json
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import numpy as np
@@ -845,7 +846,7 @@ async def connect_openai_live(
     session_obj: OpenAIRealtimeSession | OpenAIRestLiveSession | None = None
 
     # Attempt Tier 1: Native OpenAI Realtime WebSocket when pointing at OpenAI (or wss-capable host)
-    if "api.openai.com" in base_url:
+    if (urlparse(base_url).hostname or "").lower() == "api.openai.com":
         try:
             import websockets
 
@@ -902,15 +903,15 @@ async def connect_openai_live(
                 except Exception as ws_exc:
                     emsg = str(ws_exc).lower()
                     if "401" in emsg or "invalid api key" in emsg or "incorrect api key" in emsg:
-                        raise RuntimeError(f"Invalid API key: {ws_exc}") from ws_exc
+                        raise RuntimeError("Invalid API key") from ws_exc
                     print(
-                        f"[OpenAI Live] Realtime model {rt_model} unavailable ({ws_exc}) — trying next..."
+                        f"[OpenAI Live] Realtime model unavailable ({type(ws_exc).__name__}) — trying next..."
                     )
                     continue
         except RuntimeError:
             raise
         except Exception as outer_exc:
-            print(f"[OpenAI Live] Realtime WebSocket unavailable ({outer_exc}) — falling back to REST Live")
+            print(f"[OpenAI Live] Realtime WebSocket unavailable ({type(outer_exc).__name__}) — falling back to REST Live")
 
     # Tier 2: Universal OpenAI REST Live Session
     if session_obj is None:

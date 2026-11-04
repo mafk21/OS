@@ -417,5 +417,5 @@ def resolve(name: str, kind: str):
               f"{_RATES.get(kind)} Hz on any host API — using system default")
         return None
     except Exception as e:
-        print(f"[Audio] resolve({kind}) failed: {e} — using system default")
+        print(f"[Audio] resolve({kind}) failed ({type(e).__name__}) — using system default")
         return None

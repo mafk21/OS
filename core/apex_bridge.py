@@ -10,6 +10,7 @@ APEX-UI desktop HUD.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import mimetypes
 import os
@@ -899,10 +900,10 @@ class ApexHudBridge:
             os_name = platform.system()
             existing.setdefault("os_system", os_name)
 
-            to_write = dict(existing)
-            if to_write.get("vault_encrypt_api_keys") or to_write.get("strict_vault_config"):
-                to_write = security_vault.encrypt_dict_secrets(to_write)
-            cfg.CONFIG_FILE.write_text(
+            # Credentials are always encrypted at rest; the legacy opt-in flags
+            # remain readable only for backwards compatibility.
+            to_write = security_vault.encrypt_dict_secrets(dict(existing))
+            cfg._write_config_text(
                 json.dumps(to_write, indent=4), encoding="utf-8"
             )
             try:
@@ -1882,7 +1883,7 @@ class ApexHudBridge:
                 snap = await asyncio.to_thread(self._get_soul_api().snapshot)
                 return JSONResponse({"ok": True, "soul": snap})
             except Exception as exc:
-                return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+                return JSONResponse({"ok": False, "error": "Service temporarily unavailable"}, status_code=503)
 
         @app.get("/api/hud/soul/export")
         async def _soul_export():
@@ -1890,7 +1891,7 @@ class ApexHudBridge:
                 export = await asyncio.to_thread(self._get_soul_api().export)
                 return JSONResponse({"ok": True, "export": export})
             except Exception as exc:
-                return JSONResponse({"ok": False, "error": str(exc)}, status_code=503)
+                return JSONResponse({"ok": False, "error": "Service temporarily unavailable"}, status_code=503)
 
         @app.post("/api/hud/soul")
         async def _soul_post(req: Request):
@@ -2030,7 +2031,7 @@ class ApexHudBridge:
                 up_resp = await client.send(up_req, stream=True)
             except Exception as exc:
                 await client.aclose()
-                return JSONResponse({"error": f"Upstream media error: {exc}"}, status_code=502)
+                return JSONResponse({"error": "Upstream media unavailable"}, status_code=502)
 
             out_headers: dict[str, str] = {"Accept-Ranges": "bytes"}
             for hk in ("content-length", "content-range", "accept-ranges"):
@@ -2066,7 +2067,7 @@ class ApexHudBridge:
             if err or not code:
                 return HTMLResponse(
                     f"<html><body style='background:#050b14;color:#ff8090;font-family:sans-serif;padding:40px;text-align:center'>"
-                    f"<h2>Google Authorization Cancelled</h2><p>{err or 'No authorization code received.'}</p></body></html>",
+                    f"<h2>Google Authorization Cancelled</h2><p>{html.escape(err or 'No authorization code received.')}</p></body></html>",
                     status_code=400,
                 )
             rec = accounts.get_account("gmail") or accounts.get_account("google_drive") or {}
@@ -2090,7 +2091,7 @@ class ApexHudBridge:
             except Exception as exc:
                 return HTMLResponse(
                     f"<html><body style='background:#050b14;color:#ff8090;font-family:sans-serif;padding:40px;text-align:center'>"
-                    f"<h2>Google OAuth Error</h2><p>{exc}</p></body></html>",
+                    "<h2>Google OAuth Error</h2><p>Authorization failed. Return to JARVIS and try again.</p></body></html>",
                     status_code=500,
                 )
 

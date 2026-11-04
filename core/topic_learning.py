@@ -113,7 +113,9 @@ def _fetch_source(url: str) -> str:
         try:
             sock.connect(address)
             if parts.scheme == 'https':
-                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=parts.hostname)
+                context = ssl.create_default_context()
+                context.minimum_version = ssl.TLSVersion.TLSv1_2
+                sock = context.wrap_socket(sock, server_hostname=parts.hostname)
             conn.sock = sock
             path = parts.path or '/'
             if parts.query:

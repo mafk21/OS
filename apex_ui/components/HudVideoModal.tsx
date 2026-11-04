@@ -12,6 +12,20 @@ import {
 } from "lucide-react";
 import { useJarvis } from "./JarvisBridge";
 
+function safeMediaUrl(value?: string, allowExternalPage = false): string | undefined {
+  const raw = (value || "").trim();
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    const allowed = allowExternalPage
+      ? parsed.protocol === "https:" || parsed.protocol === "http:"
+      : parsed.protocol === "https:" || parsed.protocol === "http:" || parsed.protocol === "blob:";
+    return allowed ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function formatSec(sec?: number): string {
   if (!sec || sec <= 0) return "";
   const m = Math.floor(sec / 60);
@@ -77,6 +91,9 @@ export default function HudVideoModal() {
   if (!video) return null;
 
   const isFemale = activePersona === "female";
+  const sourceUrl = safeMediaUrl(video.webpage_url, true);
+  const videoUrl = safeMediaUrl(video.video_url);
+  const audioUrl = safeMediaUrl(video.audio_url);
   const primary = theme.primary;
   const secondary = theme.secondary;
   const platformLabel = (video.platform || "VIDEO").toUpperCase();
@@ -301,9 +318,9 @@ export default function HudVideoModal() {
           {video.muted ? "MUTED" : "SOUND ON"}
         </button>
 
-        {video.webpage_url && (
+        {sourceUrl && (
           <a
-            href={video.webpage_url}
+            href={sourceUrl}
             target="_blank"
             rel="noopener noreferrer"
             title="Open original page"
@@ -365,7 +382,7 @@ export default function HudVideoModal() {
         <video
           key={video.id}
           ref={videoRef}
-          src={video.video_url}
+          src={videoUrl}
           autoPlay
           playsInline
           controls
@@ -383,11 +400,11 @@ export default function HudVideoModal() {
             display: "block",
           }}
         />
-        {video.audio_url && (
+        {audioUrl && (
           <audio
             key={`${video.id}-aud`}
             ref={audioRef}
-            src={video.audio_url}
+            src={audioUrl}
             autoPlay
             muted={video.muted}
             style={{ display: "none" }}

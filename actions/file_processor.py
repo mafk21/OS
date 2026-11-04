@@ -746,7 +746,8 @@ def _process_archive(path: Path, action: str, params: dict, speak=None) -> str:
             return f"Access denied (destination): {dest}"
         dest.mkdir(parents=True, exist_ok=True)
         try:
-            shutil.unpack_archive(path, dest)
+            from core.archive_safety import extract_archive
+            extract_archive(path, dest)
             return f"Extracted to: {dest}"
         except Exception as e:
             return f"Extract failed: {e}"
