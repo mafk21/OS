@@ -32,8 +32,11 @@ def venv_python(venv_dir: Path = VENV_DIR) -> Path:
     return venv_dir / "bin" / "python3"
 
 
+SUPPORTED_PYTHON = ((3, 11), (3, 12))
+
+
 def check_environment() -> dict:
-    py_ok = sys.version_info >= (3, 11)
+    py_ok = sys.version_info[:2] in SUPPORTED_PYTHON
     hud_ok = HUD_INDEX.is_file()
     req_ok = REQ_FILE.is_file()
     return {
@@ -112,7 +115,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if status["ok"] else 1
 
     if not status["python_ok"]:
-        print("ERROR: Python 3.11 or newer is required.", file=sys.stderr)
+        print(
+            "ERROR: JARVIS requires Python 3.11 or 3.12; newer versions may not "
+            "yet have Windows wheels for all dependencies.",
+            file=sys.stderr,
+        )
+        if platform.system() == "Windows":
+            print("Install Python 3.12, then run: py -3.12 install_jarvis.py --install", file=sys.stderr)
         return 1
 
     if args.shortcuts:

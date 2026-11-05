@@ -35,7 +35,7 @@ For the complete feature guide and architecture, visit the **[documentation webs
 
 ## Install
 
-Requires **Python 3.11 or newer**.
+Requires **Python 3.11 or 3.12**. Newer Python releases may not yet have Windows wheels for all native dependencies.
 
 ```bash
 git clone https://github.com/mafk21/jarvis.git

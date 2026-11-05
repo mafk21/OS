@@ -79,6 +79,7 @@ def test_prompt_teaches_interruption():
 def test_setup_supports_current_python():
     import pathlib
     s = pathlib.Path("setup.py").read_text(encoding="utf-8")
-    assert "MAX_PY = (3, 15)" in s
+    assert "MAX_PY = (3, 12)" in s
+    assert "py -3.12 setup.py" in s
     r = pathlib.Path("requirements.txt").read_text(encoding="utf-8")
     assert "google-genai>=2.32.0" in r

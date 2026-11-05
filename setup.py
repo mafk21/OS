@@ -21,7 +21,7 @@ OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 HERE = Path(__file__).resolve().parent
 
 MIN_PY = (3, 11)        # hard floor: below this the syntax used here won't parse
-MAX_PY = (3, 15)        # current stable line (3.15.0 released 2026-10-09)
+MAX_PY = (3, 12)        # tested line with wheels for the complete dependency set
 
 
 def _run(label: str, args: list[str]) -> None:
@@ -37,15 +37,24 @@ def _check_python() -> None:
     """
     v = sys.version_info[:2]
     if v > MAX_PY:
-        # Newer is a warning, not a wall. Turning away someone who installed
-        # today's Python is a worse first impression than a version that
-        # turns out to work fine, and if a wheel really is missing pip says
-        # so plainly.
-        print(f"\n⚠️  Python {v[0]}.{v[1]} is newer than the "
-              f"{MAX_PY[0]}.{MAX_PY[1]} this is tested on. Continuing — if a "
-              f"package has no wheel yet, install Python "
-              f"{MAX_PY[0]}.{MAX_PY[1]} and run setup with that.")
-        return
+        print(
+            f"\n❌ Python {v[0]}.{v[1]} detected, but JARVIS currently supports "
+            f"Python {MIN_PY[0]}.{MIN_PY[1]}–{MAX_PY[0]}.{MAX_PY[1]}."
+        )
+        print(
+            "   New Python releases often arrive before native dependency wheels "
+            "(for example PyYAML on Windows)."
+        )
+        if OS == "Windows":
+            print("   Install Python 3.12, then run:")
+            print("     py -3.12 setup.py")
+            print("     py -3.12 main.py")
+        else:
+            print("   Install Python 3.12, then run:")
+            print("     python3.12 setup.py")
+            print("     python3.12 main.py")
+        print("   Microsoft C++ Build Tools are not required when using Python 3.12.")
+        sys.exit(1)
     if v < MIN_PY:
         print(f"\n❌ Python {v[0]}.{v[1]} detected — MARK LIV needs at "
               f"least Python {MIN_PY[0]}.{MIN_PY[1]}.")
