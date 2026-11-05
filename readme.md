@@ -33,28 +33,59 @@ It is open source and runs on **Windows, macOS, and Linux**.
 
 For the complete feature guide and architecture, visit the **[documentation website](https://jarvis-khaki-eight.vercel.app/docs/)**.
 
+## Requirements
+
+Before installing JARVIS, make sure you have:
+
+- **Windows 10/11, macOS, or Linux** on a 64-bit computer.
+- **Python 3.11 or 3.12 (64-bit).** Python 3.12 is recommended. Python 3.13+ is not currently supported because some native packages may not provide compatible wheels yet.
+- **Git** for cloning and updating the repository.
+- **An internet connection** for the initial Python dependencies and Playwright browser download.
+- **At least 2 GB of free disk space.** Keep 5 GB free for a more comfortable installation; local Ollama models require additional space.
+- **A microphone and speakers/headphones** for voice features. Text input can be used without them.
+- **At least one supported AI provider** configured during onboarding, such as a Gemini or OpenAI API key, unless you configure a supported local model.
+
+You do **not** need Microsoft Visual C++ Build Tools when using the supported Python 3.12 installation.
+
 ## Install
 
-Requires **Python 3.11 or 3.12**. Newer Python releases may not yet have Windows wheels for all native dependencies.
+### Windows (PowerShell)
+
+Use Python 3.12 explicitly so Windows does not accidentally launch a newer, unsupported Python installation:
+
+```powershell
+git clone https://github.com/mafk21/jarvis.git
+cd jarvis
+py -3.12 setup.py
+py -3.12 main.py
+```
+
+If `py -3.12` is unavailable, install Python 3.12 first:
+
+```powershell
+winget install -e --id Python.Python.3.12
+```
+
+Close and reopen PowerShell after installation, then run the Windows commands above.
+
+### macOS or Linux
 
 ```bash
 git clone https://github.com/mafk21/jarvis.git
 cd jarvis
-python setup.py
-python main.py
+python3.12 setup.py
+python3.12 main.py
 ```
 
-On Windows, use `py` if `python3` is unavailable.
+The setup command installs the required Python packages and Playwright browsers. Configure Gemini, OpenAI, or supported local AI components during onboarding. Credentials and model files are not included in the repository.
 
-After setup, launch JARVIS with the native script for your system:
+After setup, you can also use the native launcher included for your system:
 
 | Platform | Launcher |
 | --- | --- |
 | Windows | `Start_JARVIS.bat` |
 | macOS | `./Start_JARVIS.command` |
 | Linux | `./Start_JARVIS.sh` |
-
-Configure OpenAI, Gemini, or supported local AI components during onboarding. Credentials and model files are not included in the repository.
 
 ## Local-first, clearly
 
