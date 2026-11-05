@@ -1,13 +1,15 @@
 """Cross-platform JARVIS desktop shortcut management.
 
-The shortcut always points at the installed application (when frozen) or the
-repository's supported launch script.  No user-provided command is embedded.
+Shortcuts launch the exact Python interpreter currently running JARVIS, rather
+than relying on the machine's ambiguous ``python`` command. No user-provided
+command is embedded in a launcher.
 """
 from __future__ import annotations
 
 import os
 import platform
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -15,6 +17,7 @@ from pathlib import Path
 
 APP_NAME = "JARVIS"
 _ROOT = Path(__file__).resolve().parent.parent
+_MAIN = _ROOT / "main.py"
 _ICON = _ROOT / "config" / "jarvis.ico"
 _LINUX_ICON = _ROOT / "docs" / "assets" / "jarvis-logo.png"
 
@@ -24,9 +27,32 @@ def _desktop_exec_arg(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _windows_desktop_directory() -> Path | None:
+    """Read Windows' redirected Desktop path (including OneDrive Desktop)."""
+    try:
+        import winreg
+
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            value, _ = winreg.QueryValueEx(key, "Desktop")
+        expanded = os.path.expandvars(str(value)).strip()
+        return Path(expanded) if expanded else None
+    except (ImportError, OSError, TypeError):
+        return None
+
+
 def desktop_directory() -> Path:
-    """Return the user's real Desktop folder, respecting XDG when available."""
-    if platform.system() == "Linux":
+    """Return the user's real Desktop folder, including OS redirection."""
+    system = platform.system()
+    if system == "Windows":
+        known = _windows_desktop_directory()
+        if known is not None:
+            return known
+        # Useful fallback for OneDrive systems whose registry lookup is blocked.
+        one_drive = os.environ.get("OneDrive") or os.environ.get("OneDriveConsumer")
+        if one_drive and (Path(one_drive) / "Desktop").is_dir():
+            return Path(one_drive) / "Desktop"
+    elif system == "Linux":
         config = Path.home() / ".config" / "user-dirs.dirs"
         try:
             for line in config.read_text(encoding="utf-8").splitlines():
@@ -44,17 +70,21 @@ def shortcut_path() -> Path:
 
 
 def _launch_target() -> tuple[Path, list[str]]:
+    """Return a stable executable and argv for the current installation."""
+    executable = Path(sys.executable).resolve()
     if getattr(sys, "frozen", False):
-        executable = Path(sys.executable).resolve()
         return executable, [str(executable)]
-    script_name = {
-        "Windows": "Start_JARVIS.bat",
-        "Darwin": "Start_JARVIS.command",
-    }.get(platform.system(), "Start_JARVIS.sh")
-    script = (_ROOT / script_name).resolve()
-    if not script.is_file():
-        raise FileNotFoundError(f"JARVIS launcher not found: {script}")
-    return script, [str(script)]
+    if not _MAIN.is_file():
+        raise FileNotFoundError(f"JARVIS entry point not found: {_MAIN}")
+    if not executable.is_file():
+        raise FileNotFoundError(f"Python interpreter not found: {executable}")
+    if platform.system() == "Windows":
+        # A .lnk can launch pythonw directly, avoiding both a console flash and
+        # the wrong Python selected by the global `python` command.
+        pythonw = executable.with_name("pythonw.exe")
+        if pythonw.is_file():
+            executable = pythonw
+    return executable, [str(executable), str(_MAIN)]
 
 
 def exists() -> bool:
@@ -76,13 +106,15 @@ def create() -> Path:
         env.update(
             JARVIS_SHORTCUT=str(destination),
             JARVIS_TARGET=str(target),
-            JARVIS_WORKDIR=str(target.parent),
+            JARVIS_ARGUMENTS=subprocess.list2cmdline(argv[1:]),
+            JARVIS_WORKDIR=str(_ROOT),
             JARVIS_ICON=str(_ICON),
         )
         script = (
             "$w=New-Object -ComObject WScript.Shell;"
             "$s=$w.CreateShortcut($env:JARVIS_SHORTCUT);"
             "$s.TargetPath=$env:JARVIS_TARGET;"
+            "$s.Arguments=$env:JARVIS_ARGUMENTS;"
             "$s.WorkingDirectory=$env:JARVIS_WORKDIR;"
             "$s.Description='Launch JARVIS';"
             "if(Test-Path $env:JARVIS_ICON){$s.IconLocation=$env:JARVIS_ICON};"
@@ -98,7 +130,7 @@ def create() -> Path:
     elif system == "Darwin":
         command = " ".join(shlex.quote(part) for part in argv)
         destination.write_text(
-            "#!/bin/sh\ncd " + shlex.quote(str(target.parent)) + "\nexec " + command + "\n",
+            "#!/bin/sh\ncd " + shlex.quote(str(_ROOT)) + "\nexec " + command + "\n",
             encoding="utf-8",
         )
         destination.chmod(destination.stat().st_mode | stat.S_IXUSR)
@@ -111,20 +143,25 @@ def create() -> Path:
             "Name=JARVIS\n"
             "Comment=Launch JARVIS\n"
             f"Exec={command}\n"
-            f"Path={target.parent}\n"
+            f"Path={_ROOT}\n"
             f"{icon_line}"
             "Terminal=false\n"
             "Categories=Utility;\n",
             encoding="utf-8",
         )
         destination.chmod(destination.stat().st_mode | stat.S_IXUSR)
+    if not destination.exists():
+        raise OSError(f"Shortcut was not created at {destination}")
     return destination
 
 
 def remove() -> bool:
     path = shortcut_path()
     try:
-        path.unlink()
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
         return True
     except FileNotFoundError:
         return False
@@ -132,4 +169,4 @@ def remove() -> bool:
 
 def status() -> dict[str, object]:
     path = shortcut_path()
-    return {"exists": path.is_file(), "path": str(path), "supported": True}
+    return {"exists": path.exists(), "path": str(path), "supported": True}

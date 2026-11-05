@@ -60,7 +60,7 @@ def write_native_launchers(target_dir: Path = BASE_DIR) -> list[str]:
         ") else if exist \".venv\\Scripts\\python.exe\" (\r\n"
         "    \".venv\\Scripts\\python.exe\" main.py\r\n"
         ") else (\r\n"
-        "    python install_jarvis.py --install --launch\r\n"
+        "    py -3.12 main.py\r\n"
         ")\r\n",
         encoding="utf-8",
     )

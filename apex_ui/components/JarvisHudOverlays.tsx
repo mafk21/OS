@@ -130,6 +130,7 @@ export default function JarvisHudOverlays() {
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [shortcutBusy, setShortcutBusy] = useState(false);
+  const [shortcutFeedback, setShortcutFeedback] = useState("");
   const [providerPref, setProviderPref] = useState<string>("auto");
   const [openaiModelInput, setOpenaiModelInput] = useState<string>("gpt-4o");
   const [openaiRealtimeInput, setOpenaiRealtimeInput] = useState<string>(
@@ -1507,7 +1508,12 @@ export default function JarvisHudOverlays() {
                 disabled={shortcutBusy}
                 onClick={async () => {
                   setShortcutBusy(true);
-                  await updateDesktopShortcut(desktopShortcut.exists ? "remove" : "create");
+                  setShortcutFeedback("");
+                  const operation = desktopShortcut.exists ? "remove" : "create";
+                  const ok = await updateDesktopShortcut(operation);
+                  setShortcutFeedback(ok
+                    ? (operation === "create" ? `Shortcut created at ${desktopShortcut.path}` : "Desktop shortcut removed.")
+                    : "Could not update the shortcut. Check Desktop permissions and try again.");
                   setShortcutBusy(false);
                 }}
                 style={{
@@ -1519,6 +1525,16 @@ export default function JarvisHudOverlays() {
               >
                 {desktopShortcut.exists ? "REMOVE DESKTOP SHORTCUT" : "ADD DESKTOP SHORTCUT"}
               </button>
+              {shortcutFeedback && (
+                <div role="status" style={{
+                  color: shortcutFeedback.startsWith("Could not") ? RED : PRIMARY,
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere",
+                }}>
+                  {shortcutFeedback}
+                </div>
+              )}
 
               <button
                 type="button"
@@ -1576,6 +1592,11 @@ export default function JarvisHudOverlays() {
             <p style={{ color: "rgba(240,237,232,.68)", fontSize: 13, lineHeight: 1.6, margin: "0 0 20px" }}>
               Create a native shortcut so JARVIS launches like a real desktop app. You can always add it later from Settings or just ask JARVIS.
             </p>
+            {shortcutFeedback && (
+              <p role="alert" style={{ color: RED, fontSize: 12, lineHeight: 1.5, margin: "0 0 14px" }}>
+                {shortcutFeedback}
+              </p>
+            )}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -1594,7 +1615,11 @@ export default function JarvisHudOverlays() {
                 disabled={shortcutBusy}
                 onClick={async () => {
                   setShortcutBusy(true);
-                  await updateDesktopShortcut("create");
+                  setShortcutFeedback("");
+                  const ok = await updateDesktopShortcut("create");
+                  if (!ok) {
+                    setShortcutFeedback("Could not create the shortcut. Check Desktop permissions and try again.");
+                  }
                   setShortcutBusy(false);
                 }}
                 style={{ ...pillBase, color: "#061016", background: PRIMARY, borderColor: PRIMARY, fontWeight: 700 }}
