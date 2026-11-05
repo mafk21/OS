@@ -1034,11 +1034,9 @@ class ApexHudBridge:
                     result = {"ok": True}
             except (OSError, subprocess.SubprocessError) as exc:
                 result = {"ok": False, "error": f"Could not update the desktop shortcut ({type(exc).__name__})."}
-            result["desktop_shortcut"] = {
-                **desktop_shortcut.status(),
-                "prompt_pending": False,
-            }
-            self._broadcast_threadsafe(self.snapshot())
+            snapshot = self.snapshot()
+            result["desktop_shortcut"] = snapshot["desktop_shortcut"]
+            self._broadcast_threadsafe(snapshot)
             return result
 
         if action == "disconnect_integration":

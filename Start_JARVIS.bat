@@ -5,5 +5,5 @@ if exist ".venv\Scripts\pythonw.exe" (
 ) else if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" main.py
 ) else (
-    python install_jarvis.py --install --launch
+    py -3.12 main.py
 )

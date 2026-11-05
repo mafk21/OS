@@ -1,6 +1,8 @@
 """Create or remove the JARVIS desktop shortcut on the user's request."""
 from __future__ import annotations
 
+import subprocess
+
 from core import desktop_shortcut
 
 
@@ -8,11 +10,17 @@ def manage_desktop_shortcut(parameters=None, **_kwargs) -> str:
     params = parameters or {}
     action = str(params.get("action") or "create").strip().lower()
     if action in {"create", "add", "install"}:
-        path = desktop_shortcut.create()
-        return f"JARVIS desktop shortcut created at {path}."
+        try:
+            path = desktop_shortcut.create()
+            return f"JARVIS desktop shortcut created at {path}."
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"I could not create the Desktop shortcut ({type(exc).__name__}). Check Desktop permissions and try again."
     if action in {"remove", "delete", "uninstall"}:
-        removed = desktop_shortcut.remove()
-        return "JARVIS desktop shortcut removed." if removed else "No JARVIS desktop shortcut was present."
+        try:
+            removed = desktop_shortcut.remove()
+            return "JARVIS desktop shortcut removed." if removed else "No JARVIS desktop shortcut was present."
+        except OSError as exc:
+            return f"I could not remove the Desktop shortcut ({type(exc).__name__})."
     if action in {"status", "check"}:
         state = desktop_shortcut.status()
         return (
