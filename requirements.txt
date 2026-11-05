@@ -113,5 +113,7 @@ nvidia-ml-py>=13.590.44      # maintained pynvml module for system_monitor + HUD
 # tools (pactl / brightnessctl / osascript / systemd), so no extra Python
 # packages are needed there — nothing Windows-specific is ever pulled in.
 
-# Unprivileged official Ollama Linux release archives (.tar.zst).
-zstandard>=0.23,<1
+# Unprivileged official Ollama Linux release archives (.tar.zst). Windows uses
+# ZIP and macOS uses .tgz, so installing this C extension there is unnecessary
+# and can fail on a newly released Python before Windows wheels are published.
+zstandard>=0.23,<1; sys_platform == "linux"
