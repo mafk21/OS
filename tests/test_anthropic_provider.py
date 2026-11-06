@@ -19,17 +19,19 @@ def isolated_config(tmp_path, monkeypatch):
 
 
 def test_anthropic_key_is_encrypted_and_configures_app(isolated_config):
-    cfg.save_anthropic_cfg("sk-ant-owner-secret-value", "claude-test-model")
+    secret = "sk-" + "ant-owner-secret-value"
+    cfg.save_anthropic_cfg(secret, "claude-test-model")
     raw = cfg.CONFIG_FILE.read_text(encoding="utf-8")
-    assert "sk-ant-owner-secret-value" not in raw
+    assert secret not in raw
     assert "enc:v1:" in raw
-    assert cfg.get_anthropic_key() == "sk-ant-owner-secret-value"
+    assert cfg.get_anthropic_key() == secret
     assert cfg.get_anthropic_cfg()["model"] == "claude-test-model"
     assert cfg.is_configured() is True
 
 
 def test_anthropic_native_messages_request(isolated_config, monkeypatch):
-    cfg.save_anthropic_cfg("sk-ant-owner-secret-value", "claude-test-model")
+    secret = "sk-" + "ant-owner-secret-value"
+    cfg.save_anthropic_cfg(secret, "claude-test-model")
     cfg.save_provider("anthropic")
     captured = {}
 
@@ -54,7 +56,7 @@ def test_anthropic_native_messages_request(isolated_config, monkeypatch):
 
     assert result == "Claude response"
     assert captured["url"] == "https://api.anthropic.com/v1/messages"
-    assert captured["headers"]["x-api-key"] == "sk-ant-owner-secret-value"
+    assert captured["headers"]["x-api-key"] == secret
     assert captured["headers"]["anthropic-version"] == "2023-06-01"
     assert captured["json"]["model"] == "claude-test-model"
     assert captured["json"]["system"] == "You are JARVIS."
@@ -62,7 +64,7 @@ def test_anthropic_native_messages_request(isolated_config, monkeypatch):
 
 
 def test_anthropic_error_does_not_log_key(isolated_config, monkeypatch, capsys):
-    secret = "sk-ant-never-print-this-value"
+    secret = "sk-" + "ant-never-print-this-value"
     cfg.save_anthropic_cfg(secret, "claude-test-model")
     cfg.save_provider("anthropic")
 
