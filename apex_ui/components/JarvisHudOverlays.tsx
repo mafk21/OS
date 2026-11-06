@@ -129,6 +129,8 @@ export default function JarvisHudOverlays() {
   const [maleContentExpanded, setMaleContentExpanded] = useState(false);
   const [openaiKeyInput, setOpenaiKeyInput] = useState("");
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [anthropicKeyInput, setAnthropicKeyInput] = useState("");
+  const [anthropicModelInput, setAnthropicModelInput] = useState("claude-sonnet-4-5");
   const [shortcutBusy, setShortcutBusy] = useState(false);
   const [shortcutFeedback, setShortcutFeedback] = useState("");
   const [providerPref, setProviderPref] = useState<string>("auto");
@@ -203,6 +205,7 @@ export default function JarvisHudOverlays() {
   useEffect(() => {
     if (setupOpen) {
       setProviderPref(aiProviders.provider || "auto");
+      setAnthropicModelInput(aiProviders.anthropicModel || "claude-sonnet-4-5");
       setOpenaiModelInput(aiProviders.openaiModel || "gpt-4o");
       setOpenaiRealtimeInput(
         aiProviders.openaiRealtimeModel || "gpt-4o-realtime-preview"
@@ -212,6 +215,7 @@ export default function JarvisHudOverlays() {
   }, [
     setupOpen,
     aiProviders.provider,
+    aiProviders.anthropicModel,
     aiProviders.openaiModel,
     aiProviders.openaiRealtimeModel,
   ]);
@@ -220,10 +224,11 @@ export default function JarvisHudOverlays() {
     e.preventDefault();
     const oClean = openaiKeyInput.trim();
     const gClean = geminiKeyInput.trim();
-    const hasAlready = aiProviders.hasOpenaiKey || aiProviders.hasGeminiKey;
-    if (oClean.length < 15 && gClean.length < 15 && !hasAlready) {
+    const aClean = anthropicKeyInput.trim();
+    const hasAlready = aiProviders.hasOpenaiKey || aiProviders.hasGeminiKey || aiProviders.hasAnthropicKey;
+    if (oClean.length < 15 && gClean.length < 15 && aClean.length < 15 && !hasAlready) {
       setKeyError(
-        "Enter your OpenAI API key (sk-...), Gemini API key (AIza...), or both."
+        "Enter a Claude (sk-ant-...), OpenAI (sk-...), or Gemini (AIza...) API key."
       );
       return;
     }
@@ -232,7 +237,9 @@ export default function JarvisHudOverlays() {
     const ok = await saveApiKey({
       openai_key: oClean || undefined,
       gemini_key: gClean || undefined,
+      anthropic_key: aClean || undefined,
       provider: providerPref,
+      anthropic_model: anthropicModelInput,
       openai_model: openaiModelInput,
       openai_realtime_model: openaiRealtimeInput,
     });
@@ -242,6 +249,7 @@ export default function JarvisHudOverlays() {
     } else {
       setOpenaiKeyInput("");
       setGeminiKeyInput("");
+      setAnthropicKeyInput("");
     }
   };
 
@@ -1983,11 +1991,35 @@ export default function JarvisHudOverlays() {
                 color: "rgba(240,237,232,0.75)",
               }}
             >
-              Connect your <strong>OpenAI API Key</strong>,{" "}
-              <strong>Google Gemini API Key</strong>, or <strong>both</strong>{" "}
-              (automatic dual-engine failover) for full-duplex voice, vision,
-              web search, image generation, and all 60 autonomous tools across{" "}
-              <strong>Male</strong> &amp; <strong>Female</strong> editions.
+              Connect <strong>Claude</strong>, <strong>OpenAI</strong>, or{" "}
+              <strong>Google Gemini</strong>. Claude powers high-quality text reasoning;
+              realtime voice still requires OpenAI or Gemini.
+            </div>
+
+            {/* Anthropic Claude API Key */}
+            <div style={{ display: "grid", gap: 5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: "0.14em", color: "rgba(240,237,232,0.7)" }}>
+                <span>ANTHROPIC CLAUDE API KEY (TEXT REASONING)</span>
+                {aiProviders.hasAnthropicKey && (
+                  <span style={{ color: GREEN }}>✓ {aiProviders.anthropicKeyMasked || "CONFIGURED"}</span>
+                )}
+              </div>
+              <input
+                type="password"
+                value={anthropicKeyInput}
+                onChange={(e) => setAnthropicKeyInput(e.target.value)}
+                placeholder={aiProviders.hasAnthropicKey ? "Leave blank to keep saved Claude key" : "sk-ant-..."}
+                autoFocus={!aiProviders.hasAnthropicKey && !aiProviders.hasOpenaiKey && !aiProviders.hasGeminiKey}
+                style={{ background: theme.inputBg, color: "#f0ede8", border: `1px solid ${SECONDARY}55`, borderRadius: 10, padding: "9px 12px", fontSize: 12.5, outline: "none", fontFamily: "var(--font-mono)" }}
+              />
+              <input
+                type="text"
+                value={anthropicModelInput}
+                onChange={(e) => setAnthropicModelInput(e.target.value)}
+                aria-label="Claude model ID"
+                placeholder="claude-sonnet-4-5"
+                style={{ background: theme.inputBg, color: "#f0ede8", border: `1px solid ${SECONDARY}33`, borderRadius: 10, padding: "8px 12px", fontSize: 11.5, outline: "none", fontFamily: "var(--font-mono)" }}
+              />
             </div>
 
             {/* OpenAI API Key */}
@@ -2019,7 +2051,7 @@ export default function JarvisHudOverlays() {
                     ? "Leave blank to keep saved OpenAI key (sk-...)"
                     : "sk-proj-..."
                 }
-                autoFocus={!aiProviders.hasOpenaiKey}
+                autoFocus={!aiProviders.hasOpenaiKey && !aiProviders.hasAnthropicKey && !aiProviders.hasGeminiKey}
                 style={{
                   background: theme.inputBg,
                   color: "#f0ede8",
@@ -2107,7 +2139,8 @@ export default function JarvisHudOverlays() {
                     fontFamily: "var(--font-mono)",
                   }}
                 >
-                  <option value="auto">AUTO (Dual Failover)</option>
+                  <option value="auto">AUTO (Cloud Failover)</option>
+                  <option value="anthropic">CLAUDE PRIMARY (TEXT)</option>
                   <option value="openai">OPENAI PRIMARY</option>
                   <option value="gemini">GEMINI PRIMARY</option>
                 </select>

@@ -144,10 +144,20 @@ def get_openai_key() -> str | None:
     return val or None
 
 
+def get_anthropic_key() -> str | None:
+    val = (load_api_keys().get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+    return val or None
+
+
 def is_configured() -> bool:
     gkey = get_gemini_key()
     okey = get_openai_key()
-    return bool((gkey and len(gkey) > 15) or (okey and len(okey) > 15))
+    akey = get_anthropic_key()
+    return bool(
+        (gkey and len(gkey) > 15)
+        or (okey and len(okey) > 15)
+        or (akey and len(akey) > 15)
+    )
 
 
 def is_integrations_onboarding_done() -> bool:
@@ -674,7 +684,7 @@ def get_pause_enabled() -> bool:
 # Provider abstraction + offline fallback controls. All additive; existing
 # gemini_api_key install keeps behaving exactly as before (provider=auto).
 
-PROVIDERS = ("auto", "gemini", "openai", "local", "ollama", "lmstudio")
+PROVIDERS = ("auto", "gemini", "openai", "anthropic", "local", "ollama", "lmstudio")
 
 def get_provider() -> str:
     v = str(load_api_keys().get("provider", "auto")).strip().lower()
@@ -725,6 +735,27 @@ def save_openai_cfg(
     from core.security_vault import encrypt_dict_secrets
     disk_data = encrypt_dict_secrets(data)
     _write_config_text(json.dumps(disk_data, indent=4), encoding="utf-8")
+
+
+def get_anthropic_cfg() -> dict:
+    cfg = load_api_keys()
+    return {
+        "api_key": str(cfg.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY") or "").strip(),
+        "model": str(cfg.get("anthropic_model", "claude-sonnet-4-5") or "claude-sonnet-4-5").strip(),
+    }
+
+
+def save_anthropic_cfg(api_key: str = None, model: str = None) -> None:
+    cur = get_anthropic_cfg()
+    if api_key is not None:
+        cur["api_key"] = str(api_key or "").strip()
+    if model is not None:
+        cur["model"] = str(model or "claude-sonnet-4-5").strip()
+    data = load_api_keys()
+    data["anthropic_api_key"] = cur["api_key"]
+    data["anthropic_model"] = cur["model"]
+    from core.security_vault import encrypt_dict_secrets
+    _write_config_text(json.dumps(encrypt_dict_secrets(data), indent=4), encoding="utf-8")
 
 
 def resolve_cloud_engine(skip_engine: str = "") -> str:
