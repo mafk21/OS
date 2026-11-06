@@ -12,6 +12,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 APP_NAME = "JARVIS"
@@ -104,34 +105,60 @@ def create() -> Path:
     system = platform.system()
 
     if system == "Windows":
-        # WScript.Shell is the native Windows shortcut API. Values travel over
-        # environment variables, not interpolated PowerShell source.
+        # Build a new shortcut beside the destination, verify every launch
+        # field through Windows' own shortcut API, and only then replace the
+        # public shortcut. This prevents a stale same-named .lnk (for example
+        # from another checkout) from surviving while creation reports success.
+        temporary = destination.with_name(f".{APP_NAME}.{uuid.uuid4().hex}.lnk")
         env = os.environ.copy()
         env.update(
             JARVIS_SHORTCUT=str(destination),
+            JARVIS_SHORTCUT_TEMP=str(temporary),
             JARVIS_TARGET=str(target),
             JARVIS_ARGUMENTS=" ".join(_windows_shortcut_argument(Path(arg)) for arg in argv[1:]),
             JARVIS_WORKDIR=str(_ROOT),
             JARVIS_ICON=str(_ICON),
         )
         script = (
+            "$ErrorActionPreference='Stop';"
             "$w=New-Object -ComObject WScript.Shell;"
-            "$s=$w.CreateShortcut($env:JARVIS_SHORTCUT);"
+            "$s=$w.CreateShortcut($env:JARVIS_SHORTCUT_TEMP);"
             "$s.TargetPath=$env:JARVIS_TARGET;"
             "$s.Arguments=$env:JARVIS_ARGUMENTS;"
             "$s.WorkingDirectory=$env:JARVIS_WORKDIR;"
             "$s.WindowStyle=7;"
-            "$s.Description='Launch JARVIS';"
+            "$s.Description=('Launch this JARVIS installation: '+$env:JARVIS_WORKDIR);"
             "if(Test-Path $env:JARVIS_ICON){$s.IconLocation=$env:JARVIS_ICON};"
-            "$s.Save()"
+            "$s.Save();"
+            "$v=$w.CreateShortcut($env:JARVIS_SHORTCUT_TEMP);"
+            "if(($v.TargetPath -ine $env:JARVIS_TARGET) -or "
+            "($v.Arguments -cne $env:JARVIS_ARGUMENTS) -or "
+            "($v.WorkingDirectory -ine $env:JARVIS_WORKDIR)){"
+            "Remove-Item -LiteralPath $env:JARVIS_SHORTCUT_TEMP -Force -ErrorAction SilentlyContinue;"
+            "throw 'Windows did not save the requested JARVIS installation target'};"
+            "Move-Item -LiteralPath $env:JARVIS_SHORTCUT_TEMP "
+            "-Destination $env:JARVIS_SHORTCUT -Force;"
+            "$v=$w.CreateShortcut($env:JARVIS_SHORTCUT);"
+            "if(($v.TargetPath -ine $env:JARVIS_TARGET) -or "
+            "($v.Arguments -cne $env:JARVIS_ARGUMENTS) -or "
+            "($v.WorkingDirectory -ine $env:JARVIS_WORKDIR)){"
+            "throw 'The installed JARVIS shortcut points to a different installation'}"
         )
-        subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            check=True,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                check=True,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            # PowerShell normally removes this via Move-Item. Clean it after an
+            # interrupted or rejected creation without touching user folders.
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
     elif system == "Darwin":
         command = " ".join(shlex.quote(part) for part in argv)
         destination.write_text(

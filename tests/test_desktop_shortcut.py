@@ -87,6 +87,9 @@ def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypat
     assert captured["kwargs"]["env"]["JARVIS_TARGET"] == str(launcher)
     assert str(main) in captured["kwargs"]["env"]["JARVIS_ARGUMENTS"]
     assert "$s.WindowStyle=7" in captured["argv"][-1]
+    assert "JARVIS_SHORTCUT_TEMP" in captured["kwargs"]["env"]
+    assert "Move-Item" in captured["argv"][-1]
+    assert "points to a different installation" in captured["argv"][-1]
     assert captured["kwargs"]["env"]["JARVIS_WORKDIR"] == str(desktop_shortcut._ROOT)
     assert captured["kwargs"]["check"] is True
 
