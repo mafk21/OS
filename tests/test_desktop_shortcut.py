@@ -46,14 +46,12 @@ def test_windows_resolves_redirected_onedrive_desktop(monkeypatch, tmp_path):
     assert desktop_shortcut.shortcut_path() == redirected / "JARVIS.lnk"
 
 
-def test_windows_launch_target_uses_current_pythonw_and_main(monkeypatch, tmp_path):
+def test_windows_launch_target_uses_current_python_and_main(monkeypatch, tmp_path):
     python = tmp_path / "Python312" / "python.exe"
-    pythonw = python.with_name("pythonw.exe")
     main = tmp_path / "jarvis" / "main.py"
     python.parent.mkdir(parents=True)
     main.parent.mkdir(parents=True)
     python.write_text("", encoding="utf-8")
-    pythonw.write_text("", encoding="utf-8")
     main.write_text("", encoding="utf-8")
     monkeypatch.setattr(desktop_shortcut.platform, "system", lambda: "Windows")
     monkeypatch.setattr(desktop_shortcut.sys, "executable", str(python))
@@ -62,8 +60,8 @@ def test_windows_launch_target_uses_current_pythonw_and_main(monkeypatch, tmp_pa
 
     target, argv = desktop_shortcut._launch_target()
 
-    assert target == pythonw.resolve()
-    assert argv == [str(pythonw.resolve()), str(main)]
+    assert target == python.resolve()
+    assert argv == [str(python.resolve()), str(main)]
 
 
 def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypatch, tmp_path):
@@ -88,6 +86,7 @@ def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypat
     assert str(launcher) not in captured["argv"][-1]
     assert captured["kwargs"]["env"]["JARVIS_TARGET"] == str(launcher)
     assert str(main) in captured["kwargs"]["env"]["JARVIS_ARGUMENTS"]
+    assert "$s.WindowStyle=7" in captured["argv"][-1]
     assert captured["kwargs"]["env"]["JARVIS_WORKDIR"] == str(desktop_shortcut._ROOT)
     assert captured["kwargs"]["check"] is True
 

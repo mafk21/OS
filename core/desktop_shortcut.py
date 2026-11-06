@@ -85,12 +85,9 @@ def _launch_target() -> tuple[Path, list[str]]:
         raise FileNotFoundError(f"JARVIS entry point not found: {_MAIN}")
     if not executable.is_file():
         raise FileNotFoundError(f"Python interpreter not found: {executable}")
-    if platform.system() == "Windows":
-        # A .lnk can launch pythonw directly, avoiding both a console flash and
-        # the wrong Python selected by the global `python` command.
-        pythonw = executable.with_name("pythonw.exe")
-        if pythonw.is_file():
-            executable = pythonw
+    # Keep python.exe on Windows. Unlike pythonw.exe it preserves diagnostics
+    # when startup fails, and it behaves exactly like the verified
+    # `py -3.12 main.py` launch path. The shortcut starts it minimized below.
     return executable, [str(executable), str(_MAIN)]
 
 
@@ -123,6 +120,7 @@ def create() -> Path:
             "$s.TargetPath=$env:JARVIS_TARGET;"
             "$s.Arguments=$env:JARVIS_ARGUMENTS;"
             "$s.WorkingDirectory=$env:JARVIS_WORKDIR;"
+            "$s.WindowStyle=7;"
             "$s.Description='Launch JARVIS';"
             "if(Test-Path $env:JARVIS_ICON){$s.IconLocation=$env:JARVIS_ICON};"
             "$s.Save()"
