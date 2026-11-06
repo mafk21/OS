@@ -60,7 +60,12 @@ def write_native_launchers(target_dir: Path = BASE_DIR) -> list[str]:
         ") else if exist \".venv\\Scripts\\python.exe\" (\r\n"
         "    \".venv\\Scripts\\python.exe\" main.py\r\n"
         ") else (\r\n"
-        "    py -3.12 main.py\r\n"
+        "    py -3.12 -c \"import sys\" >nul 2>&1\r\n"
+        "    if not errorlevel 1 (\r\n"
+        "        py -3.12 main.py\r\n"
+        "    ) else (\r\n"
+        "        py -3.11 main.py\r\n"
+        "    )\r\n"
         ")\r\n",
         encoding="utf-8",
     )

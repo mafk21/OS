@@ -107,6 +107,7 @@ from core                     import gemini as _gemini
 from core.plugin_loader        import discover_plugins
 from core                      import undo as undo_stack
 from core                      import confirm as confirm_gate
+from core                      import update_manager
 from core                      import audio_devices
 from core.action_loader        import discover_actions, sanitize_tool_parameters
 from core.echo                 import EchoGuard, is_voiced_speech, speech_band_level
@@ -4194,6 +4195,12 @@ def main():
     ui = JarvisUI("face.png")
     if cli_persona:
         ui.select_persona(cli_persona)
+
+    # Update checks are independent of provider setup. Bind the owner-only HUD
+    # gate and check in the background as soon as the interface exists, so a
+    # slow/offline Git host never delays first paint or onboarding.
+    confirm_gate.bind(show=ui.show_confirm, hide=ui.hide_confirm, log=ui.write_log)
+    update_manager.start_startup_check(player=ui, log=ui.write_log)
 
     def runner():
         ui.wait_for_api_key()
