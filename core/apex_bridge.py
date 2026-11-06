@@ -197,6 +197,7 @@ class ApexHudBridge:
         self._background_mode = False
         self._close_timer: threading.Timer | None = None
         self._started = threading.Event()
+        self._start_error: BaseException | None = None
         self._server: Any = None
         self._thread: threading.Thread | None = None
 
@@ -2312,22 +2313,35 @@ class ApexHudBridge:
                 task = asyncio.create_task(server.serve())
                 while not server.started and not task.done():
                     await asyncio.sleep(0.02)
-                self._started.set()
+                if server.started:
+                    self._started.set()
+                else:
+                    try:
+                        task.result()
+                    except BaseException as exc:
+                        self._start_error = exc
+                    self._started.set()
+                    return
                 await task
 
             try:
                 loop.run_until_complete(_serve())
-            except Exception as e:
-                print(f"[APEX-HUD] Bridge stopped: {e}")
+            except BaseException as exc:
+                self._start_error = exc
+                print(f"[APEX-HUD] Bridge stopped: {exc}")
                 self._started.set()
 
         self._thread = threading.Thread(
             target=_runner, daemon=True, name="jarvis-apex-hud"
         )
         self._thread.start()
+        if not self._started.wait(timeout=timeout):
+            raise TimeoutError(f"Local HUD server did not start within {timeout:.1f}s")
+        if self._start_error is not None or self._server is None or not self._server.started:
+            detail = type(self._start_error).__name__ if self._start_error else "server stopped"
+            raise RuntimeError(f"Local HUD server failed to start ({detail})")
         self._auto_scheduler.start()
         self._long_tasks.start()
-        self._started.wait(timeout=timeout)
         return self.url
 
     def stop(self) -> None:
