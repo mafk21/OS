@@ -75,8 +75,20 @@ def get_openai_cfg() -> dict:
         return {"api_key": "", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"}
 
 
+def get_anthropic_cfg() -> dict:
+    try:
+        import memory.config_manager as cm
+        return cm.get_anthropic_cfg()
+    except Exception:
+        return {"api_key": "", "model": "claude-sonnet-4-5"}
+
+
 def _openai_available() -> bool:
     return bool(get_openai_cfg().get("api_key"))
+
+
+def _anthropic_available() -> bool:
+    return bool(get_anthropic_cfg().get("api_key"))
 
 
 def _local_available() -> bool:
@@ -95,6 +107,63 @@ def _openai_call(contents, tier: str, config, timeout_ms: int, key: str = ""):
     if resp is None or not getattr(resp, "text", ""):
         raise RuntimeError("openai provider returned empty reply")
     return resp
+
+
+def _anthropic_call(contents, tier: str, config, timeout_ms: int):
+    """Call Anthropic's native Messages API for text reasoning."""
+    import httpx
+
+    cfg = get_anthropic_cfg()
+    api_key = str(cfg.get("api_key") or "").strip()
+    if not api_key:
+        raise RuntimeError("anthropic API key is not configured")
+
+    system_text = ""
+    if config:
+        if isinstance(config, dict):
+            system_text = str(config.get("system_instruction") or "")
+        else:
+            system_text = str(getattr(config, "system_instruction", "") or "")
+    items = contents if isinstance(contents, (list, tuple)) else [contents]
+    user_parts: list[str] = []
+    for item in items:
+        if isinstance(item, str):
+            user_parts.append(item)
+        else:
+            text_value = getattr(item, "text", None)
+            if text_value:
+                user_parts.append(str(text_value))
+    payload: dict[str, Any] = {
+        "model": str(cfg.get("model") or "claude-sonnet-4-5"),
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "\n".join(user_parts).strip() or "hi"}],
+    }
+    if system_text:
+        payload["system"] = system_text
+    response = httpx.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json=payload,
+        timeout=max(1.0, timeout_ms / 1000),
+    )
+    response.raise_for_status()
+    data = response.json()
+    text_value = "".join(
+        str(block.get("text") or "")
+        for block in data.get("content", [])
+        if isinstance(block, dict) and block.get("type") == "text"
+    ).strip()
+    if not text_value:
+        raise RuntimeError("anthropic provider returned empty reply")
+
+    class _R:
+        def __init__(self, text: str):
+            self.text = text
+    return _R(text_value)
 
 
 def _local_call(contents, tier: str, config, timeout_ms: int):
@@ -148,7 +217,13 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
         try:
             return _openai_call(contents, tier, config, timeout_ms, key)
         except Exception as e:
-            print(f"[Provider] openai pinned failed: {e}")
+            print(f"[Provider] openai pinned failed: {type(e).__name__}")
+            return None
+    if provider == "anthropic":
+        try:
+            return _anthropic_call(contents, tier, config, timeout_ms)
+        except Exception as e:
+            print(f"[Provider] anthropic pinned failed: {type(e).__name__}")
             return None
     if provider in ("local", "ollama", "lmstudio"):
         try:
@@ -172,6 +247,13 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
             return r
     except Exception as e:
         print(f"[Provider] gemini auto rung error: {e}")
+
+    # Claude reasoning rung if configured
+    if _anthropic_available():
+        try:
+            return _anthropic_call(contents, tier, config, timeout_ms)
+        except Exception as e:
+            print(f"[Provider] anthropic auto rung skipped: {type(e).__name__}")
 
     # OpenAI rung if configured
     if _openai_available():

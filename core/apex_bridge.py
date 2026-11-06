@@ -298,7 +298,9 @@ class ApexHudBridge:
 
         gkey = cfg.get_gemini_key() or ""
         okey = cfg.get_openai_key() or ""
+        akey = cfg.get_anthropic_key() or ""
         ocfg = cfg.get_openai_cfg()
+        acfg = cfg.get_anthropic_cfg()
         shortcut_pref = cfg.get_desktop_shortcut_preference()
         shortcut_state = desktop_shortcut.status()
         onboarding_complete = bool(
@@ -330,11 +332,17 @@ class ApexHudBridge:
             "active_companion": companions.get_active_companion(),
             "theme_custom": companions.get_theme_customization(),
             "provider": cfg.get_provider(),
-            "active_engine": cfg.resolve_cloud_engine(),
+            "active_engine": (
+                "anthropic" if cfg.get_provider() == "anthropic" and len(akey) > 15
+                else cfg.resolve_cloud_engine()
+            ),
             "has_gemini_key": bool(gkey and len(gkey) > 15),
             "has_openai_key": bool(okey and len(okey) > 15),
+            "has_anthropic_key": bool(akey and len(akey) > 15),
             "gemini_key_masked": _mask_key(gkey),
             "openai_key_masked": _mask_key(okey),
+            "anthropic_key_masked": _mask_key(akey),
+            "anthropic_model": acfg.get("model", "claude-sonnet-4-5"),
             "openai_model": ocfg.get("model", "gpt-4o"),
             "openai_realtime_model": ocfg.get("realtime_model", "gpt-4o-realtime-preview"),
             "openai_base_url": ocfg.get("base_url", "https://api.openai.com/v1"),
@@ -863,14 +871,18 @@ class ApexHudBridge:
             single_key = str(data.get("key") or "").strip()
             g_key = str(data.get("gemini_key") or "").strip()
             o_key = str(data.get("openai_key") or "").strip()
+            a_key = str(data.get("anthropic_key") or "").strip()
             prov = str(data.get("provider") or "").strip().lower()
+            a_model = str(data.get("anthropic_model") or "").strip()
             o_model = str(data.get("openai_model") or "").strip()
             o_rt_model = str(data.get("openai_realtime_model") or "").strip()
             o_base = str(data.get("openai_base_url") or "").strip()
 
             # Smart single-field routing (`sk-...` -> OpenAI, `AIza...` -> Gemini)
-            if single_key and not g_key and not o_key:
-                if single_key.startswith("sk-"):
+            if single_key and not g_key and not o_key and not a_key:
+                if single_key.startswith("sk-ant-"):
+                    a_key = single_key
+                elif single_key.startswith("sk-"):
                     o_key = single_key
                 else:
                     g_key = single_key
@@ -883,19 +895,26 @@ class ApexHudBridge:
                 has_existing_any = bool(
                     (existing.get("gemini_api_key") and len(str(existing.get("gemini_api_key"))) > 15)
                     or (existing.get("openai_api_key") and len(str(existing.get("openai_api_key"))) > 15)
+                    or (existing.get("anthropic_api_key") and len(str(existing.get("anthropic_api_key"))) > 15)
                 )
-                if len(g_key) < 15 and len(o_key) < 15 and not has_existing_any:
-                    return {"ok": False, "error": "Please enter a valid OpenAI (sk-...) or Gemini (AIza...) API key"}
+                if len(g_key) < 15 and len(o_key) < 15 and len(a_key) < 15 and not has_existing_any:
+                    return {"ok": False, "error": "Please enter a valid Claude, OpenAI, or Gemini API key"}
 
             if g_key and len(g_key) >= 15:
                 existing["gemini_api_key"] = g_key
             if o_key and len(o_key) >= 15:
                 existing["openai_api_key"] = o_key
+            if a_key and len(a_key) >= 15:
+                existing["anthropic_api_key"] = a_key
             if data.get("clear_gemini_key"):
                 existing["gemini_api_key"] = ""
             if data.get("clear_openai_key"):
                 existing["openai_api_key"] = ""
+            if data.get("clear_anthropic_key"):
+                existing["anthropic_api_key"] = ""
 
+            if a_model:
+                existing["anthropic_model"] = a_model
             if o_model:
                 existing["openai_model"] = o_model
             if o_rt_model:
@@ -909,9 +928,12 @@ class ApexHudBridge:
                 # Auto-pick sensible provider when saving keys during setup
                 has_g = bool(existing.get("gemini_api_key"))
                 has_o = bool(existing.get("openai_api_key"))
-                if has_o and not has_g:
+                has_a = bool(existing.get("anthropic_api_key"))
+                if has_a and not has_g and not has_o:
+                    existing["provider"] = "anthropic"
+                elif has_o and not has_g and not has_a:
                     existing["provider"] = "openai"
-                elif has_g and not has_o:
+                elif has_g and not has_o and not has_a:
                     existing["provider"] = "auto"
 
             os_name = platform.system()
@@ -936,7 +958,11 @@ class ApexHudBridge:
                 cb = getattr(ui, "on_integrations_change", None)
                 if callable(cb):
                     threading.Thread(target=cb, daemon=True).start()
-            active_eng = cfg.resolve_cloud_engine()
+            active_eng = (
+                "anthropic"
+                if cfg.get_provider() == "anthropic" and cfg.get_anthropic_key()
+                else cfg.resolve_cloud_engine()
+            )
             self.push_log(f"SYS: AI engine configured — active backend: {active_eng.upper()}.")
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "active_engine": active_eng, "provider": cfg.get_provider()}

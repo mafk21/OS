@@ -43,7 +43,7 @@ Before installing JARVIS, make sure you have:
 - **An internet connection** for the initial Python dependencies and Playwright browser download.
 - **At least 2 GB of free disk space.** Keep 5 GB free for a more comfortable installation; local Ollama models require additional space.
 - **A microphone and speakers/headphones** for voice features. Text input can be used without them.
-- **At least one supported AI provider** configured during onboarding, such as a Gemini or OpenAI API key, unless you configure a supported local model.
+- **At least one supported AI provider** configured during onboarding: Anthropic Claude for text reasoning, Gemini or OpenAI for realtime voice and multimodal sessions, or a supported local model.
 
 You do **not** need Microsoft Visual C++ Build Tools when using the supported Python 3.12 installation.
 

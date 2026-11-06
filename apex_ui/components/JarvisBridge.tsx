@@ -172,8 +172,11 @@ export type AiProviderState = {
   activeEngine: string;
   hasGeminiKey: boolean;
   hasOpenaiKey: boolean;
+  hasAnthropicKey: boolean;
   geminiKeyMasked: string;
   openaiKeyMasked: string;
+  anthropicKeyMasked: string;
+  anthropicModel: string;
   openaiModel: string;
   openaiRealtimeModel: string;
   openaiBaseUrl: string;
@@ -333,10 +336,12 @@ export type JarvisContextValue = {
   saveApiKey: (
     keyOrPayload:
       | string
-      | {
+        | {
           openai_key?: string;
           gemini_key?: string;
+          anthropic_key?: string;
           provider?: string;
+          anthropic_model?: string;
           openai_model?: string;
           openai_realtime_model?: string;
           openai_base_url?: string;
@@ -493,8 +498,11 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     activeEngine: "gemini",
     hasGeminiKey: false,
     hasOpenaiKey: false,
+    hasAnthropicKey: false,
     geminiKeyMasked: "",
     openaiKeyMasked: "",
+    anthropicKeyMasked: "",
+    anthropicModel: "claude-sonnet-4-5",
     openaiModel: "gpt-4o",
     openaiRealtimeModel: "gpt-4o-realtime-preview",
     openaiBaseUrl: "https://api.openai.com/v1",
@@ -642,6 +650,8 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
           typeof d.has_gemini_key === "boolean" ? d.has_gemini_key : prev.hasGeminiKey,
         hasOpenaiKey:
           typeof d.has_openai_key === "boolean" ? d.has_openai_key : prev.hasOpenaiKey,
+        hasAnthropicKey:
+          typeof d.has_anthropic_key === "boolean" ? d.has_anthropic_key : prev.hasAnthropicKey,
         geminiKeyMasked:
           typeof d.gemini_key_masked === "string"
             ? d.gemini_key_masked
@@ -650,6 +660,12 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
           typeof d.openai_key_masked === "string"
             ? d.openai_key_masked
             : prev.openaiKeyMasked,
+        anthropicKeyMasked:
+          typeof d.anthropic_key_masked === "string"
+            ? d.anthropic_key_masked
+            : prev.anthropicKeyMasked,
+        anthropicModel:
+          typeof d.anthropic_model === "string" ? d.anthropic_model : prev.anthropicModel,
         openaiModel:
           typeof d.openai_model === "string" ? d.openai_model : prev.openaiModel,
         openaiRealtimeModel:
@@ -1082,7 +1098,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
         | {
             openai_key?: string;
             gemini_key?: string;
+            anthropic_key?: string;
             provider?: string;
+            anthropic_model?: string;
             openai_model?: string;
             openai_realtime_model?: string;
             openai_base_url?: string;
