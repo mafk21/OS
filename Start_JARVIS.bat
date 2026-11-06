@@ -5,5 +5,10 @@ if exist ".venv\Scripts\pythonw.exe" (
 ) else if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" main.py
 ) else (
-    py -3.12 main.py
+    py -3.12 -c "import sys" >nul 2>&1
+    if not errorlevel 1 (
+        py -3.12 main.py
+    ) else (
+        py -3.11 main.py
+    )
 )

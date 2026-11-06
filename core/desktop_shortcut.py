@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import platform
 import shlex
-import shutil
 import stat
 import subprocess
 import sys
@@ -25,6 +24,14 @@ _LINUX_ICON = _ROOT / "docs" / "assets" / "jarvis-logo.png"
 def _desktop_exec_arg(value: str) -> str:
     """Quote one freedesktop Exec argument (this is not shell syntax)."""
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _windows_shortcut_argument(value: Path) -> str:
+    """Quote a trusted local path for WScript.Shell Shortcut.Arguments."""
+    text = str(value)
+    if '"' in text:
+        raise ValueError("Invalid quote in JARVIS launch path")
+    return f'"{text}"'
 
 
 def _windows_desktop_directory() -> Path | None:
@@ -106,7 +113,7 @@ def create() -> Path:
         env.update(
             JARVIS_SHORTCUT=str(destination),
             JARVIS_TARGET=str(target),
-            JARVIS_ARGUMENTS=subprocess.list2cmdline(argv[1:]),
+            JARVIS_ARGUMENTS=" ".join(_windows_shortcut_argument(Path(arg)) for arg in argv[1:]),
             JARVIS_WORKDIR=str(_ROOT),
             JARVIS_ICON=str(_ICON),
         )
@@ -158,12 +165,11 @@ def create() -> Path:
 def remove() -> bool:
     path = shortcut_path()
     try:
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
+        # A shortcut is a file. Never recursively delete a same-named folder
+        # because it can contain unrelated user data.
+        path.unlink()
         return True
-    except FileNotFoundError:
+    except (FileNotFoundError, IsADirectoryError):
         return False
 
 
