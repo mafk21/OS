@@ -333,6 +333,7 @@ class ApexHudBridge:
             "active_companion": companions.get_active_companion(),
             "theme_custom": companions.get_theme_customization(),
             "provider": cfg.get_provider(),
+            "last_route": __import__('core.provider',fromlist=['last_route']).last_route(),
             "active_engine": (
                 "anthropic" if cfg.get_provider() == "anthropic" and len(akey) > 15
                 else cfg.resolve_cloud_engine()
@@ -1511,6 +1512,14 @@ class ApexHudBridge:
             from core.browser_companion import current_context
             context = current_context(clear=bool(data.get("clear", False)))
             return {"ok": bool(context), "context": context}
+
+        if action == "local_voice_diagnostics":
+            from core.local_voice_setup import diagnostics
+            return {"ok":True,"voice_setup":diagnostics()}
+
+        if action == "local_voice_install":
+            from core.local_voice_setup import install
+            result=install(); return {"ok":result["ok"],"voice_setup":result.get("diagnostics",{}),"message":"Offline voice stack installed and checked." if result["ok"] else result["error"]}
 
         if action == "owner_auth_status":
             from core.owner_auth import available, policy

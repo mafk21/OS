@@ -62,6 +62,7 @@ export default function SystemDoctorModal({
   const [ownerAuth, setOwnerAuth] = useState<{ available: boolean; enabled: boolean; risks: string[] } | null>(null);
   const [experiments, setExperiments] = useState<{ enabled: boolean; experiments: Record<string, { state: string }> } | null>(null);
   const [workflowReview, setWorkflowReview] = useState<{ approved?: boolean; findings?: string[]; step_count?: number } | null>(null);
+  const [voiceSetup, setVoiceSetup] = useState<{ offline_ready: boolean; selected: Record<string,string>; audio: {input:boolean;output:boolean}; hardware:{cuda:boolean;recommended_stt:string} } | null>(null);
 
   const loadLifecycle = useCallback(async () => {
     try {
@@ -163,7 +164,7 @@ export default function SystemDoctorModal({
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "proactive_policy_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProactivePolicy(data.policy); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "provider_routing_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProviderRouting(data.routing); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "browser_companion_status" }) }).then((response) => response.json()).then((data) => { if (data.ok) setBrowserCompanion({ ...data.status, extension_path: data.extension_path }); }).catch(() => {});
-    for (const action of ["smart_home_status","owner_auth_status","strategy_experiments_status","workflow_review_status"]) void fetch("/api/hud/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})}).then(r=>r.json()).then(data=>{ if(!data.ok)return; if(action==="smart_home_status"){setSmartHome(data.smart_home);setHaUrl(data.smart_home.url||"");setHaEntities((data.smart_home.allowed_entities||[]).join(", "));} if(action==="owner_auth_status")setOwnerAuth({...data.policy,available:data.available}); if(action==="strategy_experiments_status")setExperiments(data.experiments); if(action==="workflow_review_status")setWorkflowReview(data.review); }).catch(()=>{});
+    for (const action of ["smart_home_status","owner_auth_status","strategy_experiments_status","workflow_review_status","local_voice_diagnostics"]) void fetch("/api/hud/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})}).then(r=>r.json()).then(data=>{ if(!data.ok)return; if(action==="smart_home_status"){setSmartHome(data.smart_home);setHaUrl(data.smart_home.url||"");setHaEntities((data.smart_home.allowed_entities||[]).join(", "));} if(action==="owner_auth_status")setOwnerAuth({...data.policy,available:data.available}); if(action==="strategy_experiments_status")setExperiments(data.experiments); if(action==="workflow_review_status")setWorkflowReview(data.review); if(action==="local_voice_diagnostics")setVoiceSetup(data.voice_setup); }).catch(()=>{});
   }, [request, loadLifecycle]);
   useEffect(() => {
     const poll = window.setInterval(async () => {
@@ -210,6 +211,8 @@ export default function SystemDoctorModal({
             ].map(([label, value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,.025)" }}><div style={meta}>{label}</div><strong style={{ color: primary, fontFamily: "var(--font-mono)", fontSize: 16 }}>{value}</strong></div>)}
           </section>
         )}
+
+        {voiceSetup&&<section aria-label="Local voice setup" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}><div style={{...meta,marginBottom:7}}>LOCAL OFFLINE VOICE · {voiceSetup.offline_ready?"READY":"SETUP REQUIRED"}</div><div style={{fontSize:11,color:"rgba(240,237,232,.7)"}}>Wake: {voiceSetup.selected.wake} · STT: {voiceSetup.selected.stt} · TTS: {voiceSetup.selected.tts} · Mic: {voiceSetup.audio.input?"OK":"MISSING"} · Speaker: {voiceSetup.audio.output?"OK":"MISSING"} · {voiceSetup.hardware.cuda?"GPU":"CPU"} profile</div><button type="button" onClick={async()=>{setBusy(true);const d=await capabilityAction({action:"local_voice_install"});setBusy(false);if(d?.voice_setup)setVoiceSetup(d.voice_setup);}} disabled={busy} style={{...actionButton,color:primary,borderColor:`${primary}77`,marginTop:8}}>{busy?"Installing verified packages…":"Install / repair offline voice"}</button></section>}
 
         {smartHome && <section aria-label="Smart home" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}>
           <div style={{...meta,marginBottom:7}}>HOME ASSISTANT / MATTER · {smartHome.configured?"CONNECTED":"NOT CONFIGURED"}</div>
