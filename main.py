@@ -3473,6 +3473,10 @@ class JarvisLive:
 
             if not self._proactive.should_trigger(self._last_user_speech):
                 continue
+            from core import proactive_permissions
+            proactive_policy = proactive_permissions.load()
+            if not proactive_permissions.allowed(proactive_policy):
+                continue
 
             self._proactive.mark_triggered()
 
@@ -3480,15 +3484,19 @@ class JarvisLive:
                 memory       = await asyncio.to_thread(load_memory)
                 monitors     = await asyncio.to_thread(list_monitors)
                 recent_turns = self._session_log[-8:] if self._session_log else []
+                memory, monitors, recent_turns = proactive_permissions.filter_context(
+                    memory, monitors or None, recent_turns or None, proactive_policy,
+                )
                 prompt = self._proactive.build_prompt(
                     memory       = memory,
-                    monitors     = monitors or None,
-                    recent_turns = recent_turns or None,
+                    monitors     = monitors,
+                    recent_turns = recent_turns,
                 )
                 await self.session.send_client_content(
                     turns={"role": "user", "parts": [{"text": prompt}]},
                     turn_complete=True,
                 )
+                proactive_permissions.record()
                 print("[JARVIS] Proactive check-in.")
             except Exception as e:
                 print(f"[Proactive] ⚠️ {e}")
