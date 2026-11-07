@@ -203,72 +203,38 @@ def _local_call(contents, tier: str, config, timeout_ms: int):
 
 # ── Public API — mirrors core/gemini.call/text/as_json ──────────────────
 
-def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = ""):
-    """
-    Multi-provider `call()`. Tries in order:
-      1. Explicit provider pin (provider == "openai" | "local" -> only that rung)
-      2. Auto: Gemini ladder (includes Live one-shot) -> OpenAI rung if key exists -> local LLM if enabled
-    Returns a response-like with `.text` or None if every rung failed.
-    """
-    provider = get_provider()
-
-    # Pinned provider — honour it directly
-    if provider == "openai":
+def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = "", request_policy=None):
+    """Route a model request with explicit capability/privacy policy and safe fallback."""
+    from core.provider_routing import ProviderRequest, note_result, route
+    request = request_policy if isinstance(request_policy, ProviderRequest) else ProviderRequest()
+    preference = get_provider()
+    available = {"gemini"}
+    if _anthropic_available(): available.add("anthropic")
+    if _openai_available(): available.add("openai")
+    if _local_available(): available.add("local")
+    # A pinned provider remains strict and is attempted even when configuration
+    # is incomplete, preserving a useful provider-specific failure.
+    pinned = "local" if preference in {"local", "ollama", "lmstudio"} else preference
+    if pinned != "auto": available.add(pinned)
+    candidates = route(preference, request, available)
+    for provider in candidates:
         try:
-            return _openai_call(contents, tier, config, timeout_ms, key)
-        except Exception as e:
-            print(f"[Provider] openai pinned failed: {type(e).__name__}")
-            return None
-    if provider == "anthropic":
-        try:
-            return _anthropic_call(contents, tier, config, timeout_ms)
-        except Exception as e:
-            print(f"[Provider] anthropic pinned failed: {type(e).__name__}")
-            return None
-    if provider in ("local", "ollama", "lmstudio"):
-        try:
-            return _local_call(contents, tier, config, timeout_ms)
-        except Exception as e:
-            print(f"[Provider] local pinned failed: {e}")
-            return None
-    if provider == "gemini":
-        try:
-            from core.gemini import call as gemini_call
-            return gemini_call(contents, tier=tier, config=config, timeout_ms=timeout_ms, key=key)
-        except Exception as e:
-            print(f"[Provider] gemini pinned failed: {e}")
-            return None
-
-    # AUTO: Gemini first (covers quota cooldown + ladder internally)
-    try:
-        from core.gemini import call as gemini_call
-        r = gemini_call(contents, tier=tier, config=config, timeout_ms=timeout_ms, key=key)
-        if r is not None and getattr(r, "text", ""):
-            return r
-    except Exception as e:
-        print(f"[Provider] gemini auto rung error: {e}")
-
-    # Claude reasoning rung if configured
-    if _anthropic_available():
-        try:
-            return _anthropic_call(contents, tier, config, timeout_ms)
-        except Exception as e:
-            print(f"[Provider] anthropic auto rung skipped: {type(e).__name__}")
-
-    # OpenAI rung if configured
-    if _openai_available():
-        try:
-            return _openai_call(contents, tier, config, timeout_ms, key)
-        except Exception as e:
-            print(f"[Provider] openai auto rung skipped: {e}")
-
-    # Local fallback
-    if _local_available():
-        try:
-            return _local_call(contents, tier, config, timeout_ms)
-        except Exception as e:
-            print(f"[Provider] local auto rung skipped: {e}")
-
+            if provider == "gemini":
+                from core.gemini import call as gemini_call
+                response = gemini_call(contents, tier=tier, config=config, timeout_ms=timeout_ms, key=key)
+            elif provider == "anthropic":
+                response = _anthropic_call(contents, tier, config, timeout_ms)
+            elif provider == "openai":
+                response = _openai_call(contents, tier, config, timeout_ms, key)
+            else:
+                response = _local_call(contents, tier, config, timeout_ms)
+            if response is not None and getattr(response, "text", ""):
+                note_result(provider, True)
+                return response
+            raise RuntimeError("provider returned an empty reply")
+        except Exception as exc:
+            note_result(provider, False)
+            print(f"[Provider] {provider} rung failed: {type(exc).__name__}")
     return None
 
 
