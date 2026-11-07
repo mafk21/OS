@@ -298,15 +298,22 @@ def _audio_check() -> DoctorResult:
 
 def _voice_controls_check() -> DoctorResult:
     try:
+        from core.hotkey import PushToTalk
+        from core import wake_word
         from memory import config_manager as cfg
         wake = cfg.get_wake_word_enabled()
+        detector = PushToTalk(lambda _held: None)
+        scope = detector.start()
+        detector.stop()
     except Exception as exc:
-        return DoctorResult("voice_controls", "warning", "Voice control settings cannot be read.",
+        return DoctorResult("voice_controls", "warning", "Voice control readiness cannot be verified.",
                             evidence=type(exc).__name__)
-    # Disabled wake word is a valid user preference; push-to-talk remains an
-    # application input path and must not be reported as broken solely for that.
-    return DoctorResult("voice_controls", "ok", "Voice controls are configured.",
-                        evidence=f"wake_word_enabled={bool(wake)}")
+    if wake and not wake_word.is_ready():
+        return DoctorResult("voice_controls", "warning", "Wake word is enabled but its local model is not ready.",
+                            evidence=f"push_to_talk_scope={scope}",
+                            remediation="Install the wake-word model or disable wake word; push-to-talk remains available.")
+    return DoctorResult("voice_controls", "ok", "Wake word and push-to-talk readiness were verified.",
+                        evidence=f"wake_word_enabled={bool(wake)}; push_to_talk_scope={scope}")
 
 
 def _backup_check() -> DoctorResult:
