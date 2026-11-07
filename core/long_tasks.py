@@ -415,6 +415,10 @@ class LongTaskManager:
                 "started_at": None, "completed_at": None,
                 "output": None, "error": None, "execution_id": None,
             })
+        from core.workflow_reviewer import review_steps
+        independent_review = review_steps(normalized)
+        if not independent_review.approved:
+            raise ValueError("Independent workflow review rejected the plan: " + "; ".join(independent_review.findings))
         rec = self._new(
             title=title, condition="workflow",
             target={"steps": normalized, "current_step": 0},

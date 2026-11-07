@@ -56,6 +56,15 @@ export default function SystemDoctorModal({
   const [operations, setOperations] = useState<{ tasks: Record<string, number>; actions: Record<string, number>; memory_conflicts: number; providers: Record<string, { failures: number }>; proactive: { enabled: boolean; daily_limit?: number } } | null>(null);
   const [proactivePolicy, setProactivePolicy] = useState<{ enabled: boolean; use_memory: boolean; use_monitors: boolean; use_recent_conversation: boolean; quiet_start: number; quiet_end: number; daily_limit: number; allowed_topics: string[]; blocked_topics: string[]; minimum_urgency: string } | null>(null);
   const [providerRouting, setProviderRouting] = useState<{ provider: string; cost_priority: string; latency_priority: string } | null>(null);
+  const [browserCompanion, setBrowserCompanion] = useState<{ paired: boolean; connected: boolean; last_received_at?: number; extension_path?: string; token?: string } | null>(null);
+  const [smartHome, setSmartHome] = useState<{ configured: boolean; url: string; allowed_entities: string[] } | null>(null);
+  const [haUrl, setHaUrl] = useState(""); const [haToken, setHaToken] = useState(""); const [haEntities, setHaEntities] = useState("");
+  const [haDiscovered,setHaDiscovered]=useState<{entity_id:string;name:string;state:string;allowed:boolean}[]>([]);
+  const [ownerAuth, setOwnerAuth] = useState<{ available: boolean; enabled: boolean; risks: string[] } | null>(null);
+  const [experiments, setExperiments] = useState<{ enabled: boolean; experiments: Record<string, { state: string }> } | null>(null);
+  const [workflowReview, setWorkflowReview] = useState<{ approved?: boolean; findings?: string[]; step_count?: number } | null>(null);
+  const [voiceSetup, setVoiceSetup] = useState<{ offline_ready: boolean; selected: Record<string,string>; audio: {input:boolean;output:boolean}; hardware:{cuda:boolean;recommended_stt:string} } | null>(null);
+  const [phoneDevices,setPhoneDevices]=useState<{id:string;label:string}[]>([]);
 
   const loadLifecycle = useCallback(async () => {
     try {
@@ -114,6 +123,25 @@ export default function SystemDoctorModal({
     }
   }, []);
 
+  const browserAction = useCallback(async (action: "browser_companion_pair" | "browser_companion_revoke") => {
+    try {
+      const response = await fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const data = await response.json();
+      if (action === "browser_companion_pair" && data.ok) setBrowserCompanion({ ...data.status, token: data.token, extension_path: data.extension_path });
+      if (action === "browser_companion_revoke" && data.ok) setBrowserCompanion({ paired: false, connected: false });
+      setMessage(data.message || (data.ok ? "Browser companion updated." : data.error));
+    } catch { setMessage("Browser companion request failed safely."); }
+  }, []);
+
+  const capabilityAction = useCallback(async (payload: Record<string, unknown>) => {
+    try { const response=await fetch("/api/hud/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); const data=await response.json(); setMessage(data.message||data.error||(data.ok?"Settings updated.":"Request failed.")); return data; }
+    catch { setMessage("Capability request failed safely."); return null; }
+  }, []);
+  const saveSmartHome = useCallback(async () => {
+    const data=await capabilityAction({action:"smart_home_configure",url:haUrl,token:haToken,entities:haEntities.split(',').map(v=>v.trim()).filter(Boolean)});
+    if(data?.ok){setSmartHome(data.smart_home);setHaToken("");}
+  },[capabilityAction,haUrl,haToken,haEntities]);
+
   const saveProviderRouting = useCallback(async (next: NonNullable<typeof providerRouting>) => {
     setProviderRouting(next);
     try {
@@ -137,6 +165,8 @@ export default function SystemDoctorModal({
     void fetch("/api/hud/operations").then((response) => response.json()).then((data) => { if (data.ok) setOperations(data); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "proactive_policy_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProactivePolicy(data.policy); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "provider_routing_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProviderRouting(data.routing); }).catch(() => {});
+    void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "browser_companion_status" }) }).then((response) => response.json()).then((data) => { if (data.ok) setBrowserCompanion({ ...data.status, extension_path: data.extension_path }); }).catch(() => {});
+    for (const action of ["smart_home_status","owner_auth_status","strategy_experiments_status","workflow_review_status","local_voice_diagnostics","phone_devices_status"]) void fetch("/api/hud/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action})}).then(r=>r.json()).then(data=>{ if(!data.ok)return; if(action==="smart_home_status"){setSmartHome(data.smart_home);setHaUrl(data.smart_home.url||"");setHaEntities((data.smart_home.allowed_entities||[]).join(", "));} if(action==="owner_auth_status")setOwnerAuth({...data.policy,available:data.available}); if(action==="strategy_experiments_status")setExperiments(data.experiments); if(action==="workflow_review_status")setWorkflowReview(data.review); if(action==="local_voice_diagnostics")setVoiceSetup(data.voice_setup); if(action==="phone_devices_status")setPhoneDevices(data.devices||[]); }).catch(()=>{});
   }, [request, loadLifecycle]);
   useEffect(() => {
     const poll = window.setInterval(async () => {
@@ -181,6 +211,45 @@ export default function SystemDoctorModal({
               ["MEMORY CONFLICTS", operations.memory_conflicts],
               ["PROACTIVE", operations.proactive.enabled ? `ON · ${operations.proactive.daily_limit || 0}/DAY` : "OFF"],
             ].map(([label, value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,.025)" }}><div style={meta}>{label}</div><strong style={{ color: primary, fontFamily: "var(--font-mono)", fontSize: 16 }}>{value}</strong></div>)}
+          </section>
+        )}
+
+        <section aria-label="Paired phone access" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}><div style={{...meta,marginBottom:7}}>PRIVATE PHONE ACCESS · {phoneDevices.length} PAIRED</div>{phoneDevices.length===0?<div style={{fontSize:11,color:"rgba(240,237,232,.7)"}}>No Telegram phones paired. Use the existing Remote QR or request a Telegram pairing code.</div>:phoneDevices.map(device=><div key={device.id} style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span>{device.label}</span><button type="button" onClick={async()=>{const d=await capabilityAction({action:"phone_device_revoke",device_id:device.id});if(d?.ok)setPhoneDevices(v=>v.filter(x=>x.id!==device.id));}} style={actionButton}>Revoke</button></div>)}{phoneDevices.length>0&&<button type="button" onClick={async()=>{const d=await capabilityAction({action:"phone_devices_revoke_all"});if(d?.ok)setPhoneDevices([]);}} style={{...actionButton,marginTop:7}}>Revoke all phones</button>}</section>
+
+        {voiceSetup&&<section aria-label="Local voice setup" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}><div style={{...meta,marginBottom:7}}>LOCAL OFFLINE VOICE · {voiceSetup.offline_ready?"READY":"SETUP REQUIRED"}</div><div style={{fontSize:11,color:"rgba(240,237,232,.7)"}}>Wake: {voiceSetup.selected.wake} · STT: {voiceSetup.selected.stt} · TTS: {voiceSetup.selected.tts} · Mic: {voiceSetup.audio.input?"OK":"MISSING"} · Speaker: {voiceSetup.audio.output?"OK":"MISSING"} · {voiceSetup.hardware.cuda?"GPU":"CPU"} profile</div><button type="button" onClick={async()=>{setBusy(true);const d=await capabilityAction({action:"local_voice_install"});setBusy(false);if(d?.voice_setup)setVoiceSetup(d.voice_setup);}} disabled={busy} style={{...actionButton,color:primary,borderColor:`${primary}77`,marginTop:8}}>{busy?"Installing verified packages…":"Install / repair offline voice"}</button></section>}
+
+        {smartHome && <section aria-label="Smart home" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}>
+          <div style={{...meta,marginBottom:7}}>HOME ASSISTANT / MATTER · {smartHome.configured?"CONNECTED":"NOT CONFIGURED"}</div>
+          <input aria-label="Home Assistant URL" placeholder="http://homeassistant.local:8123" value={haUrl} onChange={e=>setHaUrl(e.target.value)} style={{width:"100%",marginBottom:5}} />
+          <input aria-label="Home Assistant token" type="password" placeholder={smartHome.configured?"Leave blank to keep token":"Long-lived access token"} value={haToken} onChange={e=>setHaToken(e.target.value)} style={{width:"100%",marginBottom:5}} />
+          <input aria-label="Allowed entities" placeholder="light.office, lock.front_door" value={haEntities} onChange={e=>setHaEntities(e.target.value)} style={{width:"100%"}} />
+          {haDiscovered.length>0&&<div style={{maxHeight:130,overflow:"auto",marginTop:6}}>{haDiscovered.map(row=><label key={row.entity_id} style={{display:"flex",gap:5,fontSize:11}}><input type="checkbox" checked={haEntities.split(',').map(v=>v.trim()).includes(row.entity_id)} onChange={e=>{const s=new Set(haEntities.split(',').map(v=>v.trim()).filter(Boolean));e.target.checked?s.add(row.entity_id):s.delete(row.entity_id);setHaEntities([...s].join(', '));}}/>{row.name} · {row.state}</label>)}</div>}
+          <button type="button" onClick={()=>void saveSmartHome()} style={{...actionButton,color:primary,borderColor:`${primary}77`,marginTop:8}}>Save encrypted connection</button>
+          {smartHome.configured&&<button type="button" onClick={async()=>{const d=await capabilityAction({action:"smart_home_discover"});if(d?.ok)setHaDiscovered(d.entities);}} style={{...actionButton,marginLeft:7}}>Discover devices</button>}
+          {smartHome.configured&&<button type="button" onClick={()=>void capabilityAction({action:"smart_home_undo"})} style={{...actionButton,marginLeft:7}}>Undo last action</button>}
+          {smartHome.configured&&<button type="button" onClick={async()=>{const d=await capabilityAction({action:"smart_home_disconnect"});if(d?.ok)setSmartHome({configured:false,url:"",allowed_entities:[]});}} style={{...actionButton,marginLeft:7}}>Disconnect</button>}
+        </section>}
+
+        {ownerAuth&&<section aria-label="Owner authentication" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}>
+          <div style={{...meta,marginBottom:7}}>OS-NATIVE OWNER AUTH · {ownerAuth.available?"AVAILABLE":"UNAVAILABLE"}</div>
+          <label style={{display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" disabled={!ownerAuth.available} checked={ownerAuth.enabled} onChange={async e=>{const d=await capabilityAction({action:"owner_auth_save",enabled:e.target.checked,risks:["critical"],permissions:["smart_home","external_communication"]});if(d?.ok)setOwnerAuth({...d.policy,available:ownerAuth.available});}}/>Require native authorization for critical, smart-home, and external actions</label>
+        </section>}
+
+        {experiments&&<section aria-label="Strategy experiments" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}>
+          <div style={{...meta,marginBottom:7}}>GOVERNED STRATEGY EXPERIMENTS · {Object.keys(experiments.experiments||{}).length} RECORDED</div>
+          <label style={{display:"flex",gap:6,alignItems:"center"}}><input type="checkbox" checked={experiments.enabled} onChange={async e=>{const d=await capabilityAction({action:"strategy_experiments_enable",enabled:e.target.checked});if(d?.ok)setExperiments(d.experiments);}}/>Opt in to verified experiments with automatic rollback</label>
+          {Object.entries(experiments.experiments||{}).map(([name,row])=><div key={name} style={meta}>{name}: {row.state}</div>)}
+        </section>}
+
+        {workflowReview&&Object.keys(workflowReview).length>0&&<section aria-label="Latest workflow review" style={{border:"1px solid rgba(255,255,255,.09)",borderRadius:10,padding:10,marginBottom:12}}><div style={meta}>LATEST INDEPENDENT REVIEW · {workflowReview.approved?"APPROVED":"BLOCKED"} · {workflowReview.step_count||0} STEPS</div>{(workflowReview.findings||[]).map(v=><div key={v} style={{fontSize:11,color:"rgba(240,237,232,.7)"}}>{v}</div>)}</section>}
+
+        {browserCompanion && (
+          <section aria-label="Browser companion" style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+            <div style={{ ...meta, marginBottom: 7 }}>BROWSER COMPANION · {browserCompanion.connected ? "CONNECTED" : browserCompanion.paired ? "PAIRED" : "NOT PAIRED"}</div>
+            <div style={{ color: "rgba(240,237,232,.7)", fontSize: 11 }}>Load the extension from <code>{browserCompanion.extension_path || "browser_extension"}</code>. It shares only the active tab after you press Send.</div>
+            {browserCompanion.token && <div style={{ ...meta, overflowWrap: "anywhere", marginTop: 7 }}>Pairing token: <code>{browserCompanion.token}</code></div>}
+            <button type="button" onClick={() => void browserAction("browser_companion_pair")} style={{ ...actionButton, color: primary, borderColor: `${primary}77`, marginTop: 8 }}>{browserCompanion.paired ? "Show pairing token" : "Pair extension"}</button>
+            {browserCompanion.paired && <button type="button" onClick={() => void browserAction("browser_companion_revoke")} style={{ ...actionButton, marginTop: 8, marginLeft: 7 }}>Revoke access</button>}
           </section>
         )}
 

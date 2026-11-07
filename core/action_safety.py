@@ -132,6 +132,10 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
     if dedup_enabled:
         from core import action_dedup
         replay_token, replay_state = action_dedup.inspect(action, params)
+    try:
+        from core.strategy_experiments import assignment
+        experiment_arm=assignment(action,execution_id)
+    except Exception: experiment_arm=None
     common = {
         "execution_id": execution_id, "action": action, "risk": policy.risk,
         "permission": policy.permission, "parameter_keys": params.keys(),
@@ -148,6 +152,10 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
             ("confirmation_required" if needs_confirmation else "ready")})
 
     def run() -> Any:
+        from core import owner_auth
+        if owner_auth.required(policy.risk, policy.permission) and not owner_auth.authenticate(f"Authorize {action}"):
+            _audit({**common, "stage": "execute", "outcome": "owner_auth_denied"})
+            return "The action was cancelled because OS-native owner authorization was not completed."
         if replay_token and not action_dedup.reserve(replay_token, force=is_replay):
             _audit({**common, "stage": "execute", "outcome": "duplicate_blocked"})
             return "A matching consequential action is already pending or recently completed. It was not repeated."
@@ -172,6 +180,11 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
             _audit({**common, "stage": "undo", "outcome": undo_outcome,
                     "evidence_state": evidence.state})
         verified = satisfies(evidence, policy.verification)
+        if experiment_arm:
+            try:
+                from core.strategy_experiments import record
+                record(action,experiment_arm,verified)
+            except Exception: pass
         if replay_token:
             action_dedup.finish(replay_token, "completed" if verified else "uncertain")
         _audit({**common, "stage": "report", "outcome": "returned" if verified else "unverified", "evidence_state": evidence.state})

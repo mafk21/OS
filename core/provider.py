@@ -202,6 +202,15 @@ def _local_call(contents, tier: str, config, timeout_ms: int):
 
 
 # ── Public API — mirrors core/gemini.call/text/as_json ──────────────────
+_LAST_ROUTE={}
+_ROUTE_LISTENERS=[]
+def last_route()->dict: return dict(_LAST_ROUTE)
+def add_route_listener(callback):
+    if callback not in _ROUTE_LISTENERS: _ROUTE_LISTENERS.append(callback)
+def _publish_route():
+    for callback in tuple(_ROUTE_LISTENERS):
+        try: callback(dict(_LAST_ROUTE))
+        except Exception: pass
 
 def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = "", request_policy=None):
     """Route a model request with explicit capability/privacy policy and safe fallback."""
@@ -228,7 +237,8 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
     pinned = "local" if preference in {"local", "ollama", "lmstudio"} else preference
     if pinned != "auto": available.add(pinned)
     candidates = route(preference, request, available)
-    for provider in candidates:
+    route_started = time.monotonic()
+    for route_index, provider in enumerate(candidates):
         try:
             if provider == "gemini":
                 from core.gemini import call as gemini_call
@@ -241,6 +251,16 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
                 response = _local_call(contents, tier, config, timeout_ms)
             if response is not None and getattr(response, "text", ""):
                 note_result(provider, True)
+                # Response metadata is deliberately non-secret and lets every UI
+                # explain which brain answered and whether fallback occurred.
+                try:
+                    response.provider = provider
+                    response.route_latency_ms = round((time.monotonic() - route_started) * 1000)
+                    response.fallback_used = route_index > 0
+                    response.data_class = request.data_class
+                    _LAST_ROUTE.clear(); _LAST_ROUTE.update({'provider':provider,'model':str(tier),'latency_ms':response.route_latency_ms,'fallback_used':response.fallback_used,'data_class':request.data_class,'timestamp':time.time()}); _publish_route()
+                except Exception:
+                    pass
                 return response
             raise RuntimeError("provider returned an empty reply")
         except Exception:

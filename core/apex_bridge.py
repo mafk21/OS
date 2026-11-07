@@ -194,6 +194,10 @@ class ApexHudBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set[Any] = set()
         self._had_ws_client = False
+        try:
+            from core.provider import add_route_listener
+            add_route_listener(lambda route: self._broadcast_threadsafe({'type':'route_attribution','last_route':route}))
+        except Exception: pass
         self._background_mode = False
         self._close_timer: threading.Timer | None = None
         self._started = threading.Event()
@@ -333,6 +337,7 @@ class ApexHudBridge:
             "active_companion": companions.get_active_companion(),
             "theme_custom": companions.get_theme_customization(),
             "provider": cfg.get_provider(),
+            "last_route": __import__('core.provider',fromlist=['last_route']).last_route(),
             "active_engine": (
                 "anthropic" if cfg.get_provider() == "anthropic" and len(akey) > 15
                 else cfg.resolve_cloud_engine()
@@ -1494,6 +1499,95 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "browser_companion_pair":
+            from core.browser_companion import pairing_token, status
+            return {"ok": True, "token": pairing_token(), "status": status(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+
+        if action == "browser_companion_status":
+            from core.browser_companion import status
+            return {"ok": True, "status": status(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+
+        if action == "browser_companion_revoke":
+            from core.browser_companion import revoke
+            revoke()
+            return {"ok": True, "message": "Browser companion access revoked."}
+
+        if action == "browser_companion_context":
+            from core.browser_companion import current_context
+            context = current_context(clear=bool(data.get("clear", False)))
+            return {"ok": bool(context), "context": context}
+
+        if action == "phone_devices_status":
+            from core.telegram_bot import paired_devices
+            return {"ok":True,"devices":paired_devices()}
+
+        if action == "phone_device_revoke":
+            from core.telegram_bot import revoke_device
+            try: ok=revoke_device(int(data.get('device_id')))
+            except (TypeError,ValueError): ok=False
+            return {"ok":ok,"message":"Phone access revoked." if ok else "Paired phone was not found."}
+
+        if action == "phone_devices_revoke_all":
+            from core.telegram_bot import revoke_all_devices
+            count=revoke_all_devices(); return {"ok":True,"message":f"Revoked {count} paired phone device(s)."}
+
+        if action == "local_voice_diagnostics":
+            from core.local_voice_setup import diagnostics
+            return {"ok":True,"voice_setup":diagnostics()}
+
+        if action == "local_voice_install":
+            from core.local_voice_setup import install
+            result=install(); return {"ok":result["ok"],"voice_setup":result.get("diagnostics",{}),"message":"Offline voice stack installed and checked." if result["ok"] else result["error"]}
+
+        if action == "owner_auth_status":
+            from core.owner_auth import available, policy
+            return {"ok":True,"available":available(),"policy":policy()}
+
+        if action == "owner_auth_save":
+            from core.owner_auth import available, save_policy
+            enabled=bool(data.get("enabled",False))
+            if enabled and not available(): return {"ok":False,"error":"OS-native owner authorization is unavailable on this device."}
+            saved=save_policy(enabled,data.get("risks") if isinstance(data.get("risks"),list) else [],data.get("permissions") if isinstance(data.get("permissions"),list) else [])
+            return {"ok":True,"policy":saved,"message":"Owner authorization policy saved."}
+
+        if action == "workflow_review_status":
+            from core.workflow_reviewer import latest_review
+            return {"ok":True,"review":latest_review()}
+
+        if action == "strategy_experiments_status":
+            from core.strategy_experiments import snapshot
+            return {"ok":True,"experiments":snapshot()}
+
+        if action == "strategy_experiments_enable":
+            from core.strategy_experiments import set_enabled, snapshot
+            set_enabled(bool(data.get("enabled",False))); return {"ok":True,"experiments":snapshot()}
+
+        if action == "smart_home_status":
+            from core.smart_home import status
+            return {"ok": True, "smart_home": status()}
+
+        if action == "smart_home_configure":
+            from core.smart_home import configure
+            try: result=configure(str(data.get("url") or ""),str(data.get("token") or ""),data.get("entities") if isinstance(data.get("entities"),list) else [])
+            except Exception as exc: return {"ok":False,"error":str(exc)}
+            return {"ok":True,"smart_home":result,"message":"Home Assistant credentials encrypted and permissions saved."}
+
+        if action == "smart_home_discover":
+            from core.smart_home import discover
+            try: entities=discover()
+            except Exception as exc: return {"ok":False,"error":f"Home Assistant discovery failed: {type(exc).__name__}."}
+            return {"ok":True,"entities":entities}
+
+        if action == "smart_home_undo":
+            from core.smart_home import undo_last
+            try: result=undo_last()
+            except Exception as exc: return {"ok":False,"error":str(exc)}
+            return {"ok":bool(result.get('verified')),"result":result,"message":"Previous smart-home state restored and verified." if result.get('verified') else "Undo was sent but could not be verified."}
+
+        if action == "smart_home_disconnect":
+            from core.smart_home import disconnect
+            disconnect(); return {"ok":True,"message":"Home Assistant disconnected and credentials removed."}
+
         if action == "provider_routing_get":
             from core.provider_preferences import get
             return {"ok": True, "routing": get()}
@@ -2132,6 +2226,21 @@ class ApexHudBridge:
         async def _brain_export():
             exp = await asyncio.to_thread(timeline.export_brain_json)
             return JSONResponse(exp)
+
+        @app.options("/api/hud/browser-companion/context")
+        async def _browser_companion_options():
+            return JSONResponse({}, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type,X-JARVIS-Token", "Access-Control-Allow-Methods": "POST,OPTIONS"})
+
+        @app.post("/api/hud/browser-companion/context")
+        async def _browser_companion_context(req: Request):
+            from core.browser_companion import authorized, store_context
+            if not authorized(req.headers.get("x-jarvis-token", "")):
+                return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
+            try:
+                context = store_context(await req.json())
+            except Exception:
+                return JSONResponse({"ok": False, "error": "invalid context"}, status_code=400, headers={"Access-Control-Allow-Origin": "*"})
+            return JSONResponse({"ok": True, "received_at": context["received_at"]}, headers={"Access-Control-Allow-Origin": "*"})
 
         @app.get("/api/hud/activity")
         async def _activity_get():

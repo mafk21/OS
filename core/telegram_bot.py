@@ -45,6 +45,15 @@ def generate_pairing_code() -> str:
     _save_pairing(d)
     return code
 
+def paired_devices()->list[dict]:
+    return [{'id':str(uid),'label':f'Telegram …{str(uid)[-4:]}'} for uid in _load_pairing().get('paired',[])][:100]
+def revoke_device(user_id:int)->bool:
+    data=_load_pairing(); before=list(data.get('paired',[])); data['paired']=[uid for uid in before if int(uid)!=int(user_id)]
+    if len(data['paired'])==len(before): return False
+    _save_pairing(data); return True
+def revoke_all_devices()->int:
+    data=_load_pairing(); count=len(data.get('paired',[])); data['paired']=[]; data['pairing_code']=''; _save_pairing(data); return count
+
 def is_paired(user_id: int) -> bool:
     d=_load_pairing()
     return int(user_id) in set(d.get("paired",[]))

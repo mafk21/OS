@@ -180,6 +180,7 @@ export type AiProviderState = {
   openaiModel: string;
   openaiRealtimeModel: string;
   openaiBaseUrl: string;
+  lastRoute: { provider: string; model: string; latency_ms: number; fallback_used: boolean; data_class: string; timestamp: number } | null;
 };
 
 function hexToRgbTuple(hex: string): string | null {
@@ -506,6 +507,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
     openaiModel: "gpt-4o",
     openaiRealtimeModel: "gpt-4o-realtime-preview",
     openaiBaseUrl: "https://api.openai.com/v1",
+    lastRoute: null,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -644,6 +646,7 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
       }
       setAiProviders((prev) => ({
         provider: typeof d.provider === "string" ? d.provider : prev.provider,
+        lastRoute: d.last_route && typeof d.last_route === "object" ? d.last_route as AiProviderState["lastRoute"] : prev.lastRoute,
         activeEngine:
           typeof d.active_engine === "string" ? d.active_engine : prev.activeEngine,
         hasGeminiKey:
@@ -801,6 +804,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
               break;
             case "bootstrap":
               applyBootstrap(msg);
+              break;
+            case "route_attribution":
+              if (msg.last_route && typeof msg.last_route === "object") setAiProviders(prev => ({...prev,lastRoute:msg.last_route as AiProviderState["lastRoute"]}));
               break;
             case "state":
               if (typeof msg.raw_state === "string") setRawState(msg.raw_state);

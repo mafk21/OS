@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "JARVIS Browser Companion",
+  "version": "1.0.0",
+  "description": "Permission-scoped active-tab context for your local JARVIS installation.",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "action": {"default_popup": "popup.html", "default_title": "JARVIS Companion"},
+  "background": {"service_worker": "background.js"}
+}
