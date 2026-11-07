@@ -110,6 +110,11 @@ class LongTaskManager:
                 step.setdefault("strategies", [])
                 step.setdefault("strategy_index", 0)
                 step.setdefault("deadline_at", None)
+                from core.task_evidence import requirement_for
+                step.setdefault("evidence_requirement", requirement_for(str(step.get("tool") or "")))
+                step.setdefault("postcondition", None)
+                step.setdefault("evidence", None)
+                step.setdefault("verification_state", "pending")
         migrated.setdefault("paused_at", None)
         migrated.setdefault("blocked_reason", None)
         return migrated
@@ -392,6 +397,11 @@ class LongTaskManager:
                 strategies.append({"tool": alt_tool, "params": alt_params})
             if len(strategies) > 1 and not bool(raw.get("fallback_safe", False)):
                 raise ValueError(f"Workflow step {index} alternatives require fallback_safe=true.")
+            from core.task_evidence import requirement_for
+            evidence_requirement = requirement_for(tool, str(raw.get("evidence_requirement") or ""))
+            postcondition = raw.get("postcondition")
+            if postcondition is not None and not isinstance(postcondition, dict):
+                raise ValueError(f"Workflow step {index} postcondition must be an object.")
             normalized.append({
                 "index": index, "tool": tool, "params": params,
                 "status": "queued", "attempts": 0,
@@ -399,6 +409,9 @@ class LongTaskManager:
                 "retry_safe": retry_safe, "next_attempt_at": None,
                 "timeout_seconds": timeout_seconds, "deadline_at": None,
                 "strategies": strategies, "strategy_index": 0,
+                "evidence_requirement": evidence_requirement,
+                "postcondition": postcondition, "evidence": None,
+                "verification_state": "pending",
                 "started_at": None, "completed_at": None,
                 "output": None, "error": None, "execution_id": None,
             })
@@ -438,7 +451,7 @@ class LongTaskManager:
             activity_steps = ([{
                 "step": int(step.get("index") or index),
                 "action": str(step.get("tool") or "tool"),
-                "result": str(step.get("output") or step.get("error") or step.get("status") or "queued")[:500],
+                "result": str((step.get("evidence") or {}).get("summary") or step.get("error") or step.get("status") or "queued")[:500],
                 "ts": step.get("completed_at") or step.get("started_at") or rec.get("updated_at"),
             } for index, step in enumerate(workflow_steps, 1)] if workflow_steps else [{
                 "step": 1, "action": str(rec.get("condition") or "monitor"),
@@ -679,6 +692,7 @@ class LongTaskManager:
                 self._changed()
 
                 timed_out = False
+                raw_result: Any = None
                 try:
                     raw_result, timed_out = self._execute_with_timeout(
                         tool, params, execution_id, timeout_seconds
@@ -699,6 +713,32 @@ class LongTaskManager:
                     if not step:
                         return
                     now = time.time()
+                    from core.task_evidence import Evidence, evaluate_postcondition, from_result, satisfies
+                    if timed_out:
+                        outcome_evidence = Evidence(
+                            "uncertain", "execution_timeout",
+                            "The step exceeded its deadline; its side effect may have occurred.",
+                            now, False, digest="",
+                        )
+                    elif failed:
+                        outcome_evidence = Evidence(
+                            "contradicted", "tool_result",
+                            "The authoritative execution result reported failure.", now, True,
+                        )
+                    else:
+                        outcome_evidence = from_result(
+                            raw_result, tool=tool,
+                            started_at=float(step.get("started_at") or now),
+                            requirement=str(step.get("evidence_requirement") or "observed"),
+                        )
+                        post_evidence = evaluate_postcondition(step.get("postcondition"), raw_result)
+                        if post_evidence is not None:
+                            outcome_evidence = post_evidence
+                    step["evidence"] = outcome_evidence.to_dict()
+                    step["verification_state"] = outcome_evidence.state
+                    evidence_satisfied = satisfies(
+                        outcome_evidence, str(step.get("evidence_requirement") or "observed")
+                    )
                     retry_scheduled = False
                     step["completed_at"] = now
                     if timed_out:
@@ -721,6 +761,18 @@ class LongTaskManager:
                             f"Step {step.get('index')} ({tool}) is waiting for the HUD confirmation. "
                             "After approving or rejecting it, resume with mark_done or retry."
                         )
+                    elif not failed and not evidence_satisfied:
+                        step["status"] = "uncertain"
+                        step["error"] = outcome_evidence.summary[:4000]
+                        rec["status"] = "uncertain"
+                        rec["completion_evidence"] = (
+                            f"Step {step.get('index')} ({tool}) did not satisfy its "
+                            f"{step.get('evidence_requirement')} evidence requirement: {outcome_evidence.summary}"
+                        )
+                        rec["events"] = (list(rec.get("events") or []) + [{
+                            "ts": now, "type": "evidence_unsatisfied", "step": step.get("index"),
+                            "state": outcome_evidence.state,
+                        }])[-50:]
                     elif failed:
                         attempts = int(step.get("attempts") or 0)
                         max_attempts = int(step.get("max_attempts") or 1)
@@ -785,14 +837,15 @@ class LongTaskManager:
                         }])[-50:]
                     self._save(rows)
                 self._changed()
-                if confirmation_pending or timed_out or paused_now or (failed and not retry_scheduled):
+                if confirmation_pending or timed_out or (not failed and not evidence_satisfied) or paused_now or (failed and not retry_scheduled):
                     return
 
             rec = self.get(task_id)
             if rec and rec.get("status") not in _TERMINAL:
                 steps = (rec.get("target") or {}).get("steps") or []
-                summary = "Workflow completed: " + "; ".join(
-                    f"{s.get('index')}. {s.get('tool')}" for s in steps
+                summary = "Workflow completed with evidence: " + "; ".join(
+                    f"{s.get('index')}. {s.get('tool')} [{s.get('verification_state') or 'observed'}]"
+                    for s in steps
                 )
                 self._complete(task_id, summary)
         finally:
@@ -895,10 +948,18 @@ class LongTaskManager:
                 step["status"] = "queued"
                 step["error"] = None
                 step["execution_id"] = None
+                step["evidence"] = None
+                step["verification_state"] = "pending"
             else:
                 step["status"] = "completed"
-                step["output"] = "Marked complete by the user after restart review."
+                step["output"] = "Marked complete by the user after explicit outcome review."
                 step["completed_at"] = time.time()
+                from core.task_evidence import Evidence
+                evidence = Evidence("verified", "user_confirmation",
+                                    "The user explicitly confirmed the uncertain step outcome.",
+                                    time.time(), True)
+                step["evidence"] = evidence.to_dict()
+                step["verification_state"] = "verified"
             rec["status"] = "waiting"
             rec["completion_evidence"] = None
             rec["updated_at"] = time.time()
@@ -924,6 +985,8 @@ class LongTaskManager:
             step["next_attempt_at"] = None
             step["completed_at"] = None
             step["strategy_index"] = 0
+            step["evidence"] = None
+            step["verification_state"] = "pending"
             rec["status"] = "waiting"
             rec["completion_evidence"] = None
             rec["updated_at"] = time.time()
@@ -998,6 +1061,11 @@ class LongTaskManager:
                     rec["completed_at"] = now
                     rec["updated_at"] = now
                     rec["completion_evidence"] = str(evidence)[:600]
+                    rec["completion_evidence_record"] = {
+                        "state": "verified", "source": "workflow" if rec.get("condition") == "workflow" else "condition_monitor",
+                        "summary": str(evidence)[:500], "observed_at": now,
+                        "authoritative": True, "reference": "", "digest": "",
+                    }
                     rec["events"] = (list(rec.get("events") or []) + [{"ts": now, "type": "completed", "evidence": str(evidence)[:300]}])[-20:]
                     completed = dict(rec)
                     break

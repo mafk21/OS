@@ -196,6 +196,8 @@ TOOL = {
                         "timeout_seconds": {"type": "NUMBER", "description": "Per-attempt timeout from 1 to 3600 seconds"},
                         "alternatives": {"type": "ARRAY", "items": {"type": "OBJECT"}, "description": "Up to 3 predeclared fallback tool strategies"},
                         "fallback_safe": {"type": "BOOLEAN", "description": "Required to permit automatic alternative strategies"},
+                        "evidence_requirement": {"type": "STRING", "description": "observed or verified; external side effects default to verified"},
+                        "postcondition": {"type": "OBJECT", "description": "Deterministic file_exists, result_contains, or structured_field verification"},
                     },
                     "required": ["tool", "params"],
                 },
