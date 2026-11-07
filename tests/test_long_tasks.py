@@ -175,7 +175,7 @@ def test_confirmation_pending_pauses_workflow_instead_of_claiming_success(tmp_pa
     rec = mgr.create_workflow([
         {"tool": "dangerous", "params": {}}, {"tool": "later", "params": {}},
     ])
-    review = _wait_for(mgr, rec["id"], {"needs_review"})
+    review = _wait_for(mgr, rec["id"], {"uncertain"})
     mgr.stop()
     assert calls == ["dangerous"]
     assert review["target"]["steps"][0]["status"] == "uncertain"
@@ -198,7 +198,7 @@ def test_restart_does_not_repeat_uncertain_side_effect_without_user_resolution(t
     restored.set_executor(lambda tool, params: calls.append(tool) or "sent")
     restored.start()
     review = restored.get(rec["id"])
-    assert review["status"] == "needs_review"
+    assert review["status"] == "uncertain"
     assert review["target"]["steps"][0]["status"] == "uncertain"
     assert calls == []
     assert restored.resolve_uncertain(rec["id"], "mark_done")
@@ -212,7 +212,7 @@ def test_workflow_waits_for_app_executor_instead_of_running_without_context(tmp_
     mgr, _ = manager(tmp_path, monkeypatch)
     rec = mgr.create_workflow([{"tool": "needs_ui", "params": {}}])
     time.sleep(0.03)
-    assert mgr.get(rec["id"])["status"] == "waiting"
+    assert mgr.get(rec["id"])["status"] == "blocked"
     calls = []
     mgr.set_executor(lambda tool, params: calls.append(tool) or "done")
     done = _wait_for(mgr, rec["id"], {"completed"})

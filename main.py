@@ -1091,10 +1091,13 @@ class JarvisLive:
         try:
             from core.long_tasks import get_long_task_manager
             self._long_task_manager = get_long_task_manager()
-            def _execute_durable_step(tool, params):
+            def _execute_durable_step(tool, params, execution_context=None):
+                execution_context = execution_context or {}
                 context = {
                     "player": self.ui, "speak": self.speak,
                     "response": None, "session_memory": None,
+                    "execution_id": execution_context.get("execution_id"),
+                    "cancellation_event": execution_context.get("cancellation_event"),
                 }
                 if self._action_registry.has(tool):
                     return self._action_registry.run(tool, params, context)

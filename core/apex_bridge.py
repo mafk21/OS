@@ -1659,6 +1659,27 @@ class ApexHudBridge:
             ok = get_subagent_manager().complete(wid, res_txt)
             return {"ok": ok, "workers": self.get_activity_snapshot()}
 
+        if action == "long_task_control":
+            task_id = str(data.get("task_id") or "").strip()
+            operation = str(data.get("operation") or "status").strip().lower()
+            if operation == "pause":
+                ok = self._long_tasks.pause(task_id)
+            elif operation == "resume":
+                ok = self._long_tasks.resume(task_id)
+            elif operation == "cancel":
+                ok = self._long_tasks.cancel(task_id)
+            elif operation == "retry":
+                ok = self._long_tasks.retry_failed(task_id)
+            elif operation == "resolve":
+                ok = self._long_tasks.resolve_uncertain(task_id, str(data.get("resolution") or ""))
+            elif operation == "revise":
+                ok = self._long_tasks.revise_step(task_id, int(data.get("step_index") or 0), data.get("patch") or {})
+            else:
+                rec = self._long_tasks.get(task_id)
+                return {"ok": bool(rec), "task": rec, "workers": self.get_activity_snapshot()}
+            self.push_activity()
+            return {"ok": ok, "task": self._long_tasks.get(task_id), "workers": self.get_activity_snapshot()}
+
         if action == "cancel_worker":
             wid = str(data.get("worker_id") or "").strip()
             cancelled = False
