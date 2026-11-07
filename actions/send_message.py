@@ -327,6 +327,7 @@ TOOL = {
         "side_effect": True,
         "reversible": False,
         "verification": "verified",
+        "idempotency": "window",
     },
     "behavior": "NON_BLOCKING",
     "scheduling": "WHEN_IDLE",

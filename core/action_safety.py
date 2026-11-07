@@ -33,6 +33,7 @@ class ActionPolicy:
     side_effect: bool = False
     reversible: bool = False
     verification: str = "observed"
+    idempotency: str = "auto"  # auto | none | window
 
     @classmethod
     def from_metadata(cls, value: Any) -> "ActionPolicy":
@@ -42,10 +43,12 @@ class ActionPolicy:
         verification = str(data.get("verification") or "observed").lower()
         if risk not in RISKS: risk = "low"
         if confirmation not in {"none", "required"}: confirmation = "none"
+        idempotency = str(data.get("idempotency") or "auto").lower()
         if verification not in {"observed", "verified"}: verification = "observed"
+        if idempotency not in {"auto", "none", "window"}: idempotency = "auto"
         return cls(risk, str(data.get("permission") or "local")[:80], confirmation,
                    bool(data.get("side_effect", False)), bool(data.get("reversible", False)),
-                   verification)
+                   verification, idempotency)
 
 
 _DEFAULT_POLICIES = {
@@ -118,8 +121,17 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
     sensitive_keys = {str(key).lower() for key in params if any(token in str(key).lower() for token in ("password", "token", "secret", "api_key", "credential"))}
     if sensitive_keys and policy.confirmation == "none":
         policy = ActionPolicy("high", policy.permission, "required", policy.side_effect,
-                              policy.reversible, policy.verification)
+                              policy.reversible, policy.verification, policy.idempotency)
     execution_id = f"act-{uuid.uuid4().hex[:12]}"
+    dedup_enabled = policy.idempotency == "window" or (
+        policy.idempotency == "auto" and policy.side_effect and
+        (policy.risk in {"high", "critical"} or policy.permission.startswith("external"))
+    )
+    replay_token = ""
+    replay_state = "new"
+    if dedup_enabled:
+        from core import action_dedup
+        replay_token, replay_state = action_dedup.inspect(action, params)
     common = {
         "execution_id": execution_id, "action": action, "risk": policy.risk,
         "permission": policy.permission, "parameter_keys": params.keys(),
@@ -130,13 +142,21 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
         _audit({**common, "stage": "understand", "outcome": "rejected"})
         return boundary_error
     _audit({**common, "stage": "understand", "outcome": "accepted"})
-    _audit({**common, "stage": "plan", "outcome": "confirmation_required" if policy.confirmation == "required" else "ready"})
+    is_replay = replay_state != "new"
+    needs_confirmation = policy.confirmation == "required" or is_replay
+    _audit({**common, "stage": "plan", "outcome": "duplicate_detected" if is_replay else
+            ("confirmation_required" if needs_confirmation else "ready")})
 
     def run() -> Any:
+        if replay_token and not action_dedup.reserve(replay_token, force=is_replay):
+            _audit({**common, "stage": "execute", "outcome": "duplicate_blocked"})
+            return "A matching consequential action is already pending or recently completed. It was not repeated."
         _audit({**common, "stage": "execute", "outcome": "started"})
         try:
             result = handler()
         except BaseException:
+            if replay_token:
+                action_dedup.finish(replay_token, "uncertain")
             _audit({**common, "stage": "report", "outcome": "exception"})
             raise
         evidence = from_result(result, tool=action, started_at=time.time() - 0.001,
@@ -152,6 +172,8 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
             _audit({**common, "stage": "undo", "outcome": undo_outcome,
                     "evidence_state": evidence.state})
         verified = satisfies(evidence, policy.verification)
+        if replay_token:
+            action_dedup.finish(replay_token, "completed" if verified else "uncertain")
         _audit({**common, "stage": "report", "outcome": "returned" if verified else "unverified", "evidence_state": evidence.state})
         if not verified:
             if evidence.state == "contradicted":
@@ -162,8 +184,14 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
             )
         return result
 
-    if policy.confirmation == "required":
+    if needs_confirmation:
         key = f"action-{action}-{_scope(action, params)}"
-        return confirm.request(key, f"Confirm {action.replace('_', ' ')}?",
-                               _confirmation_detail(action, params, policy), run)
+        title = f"Repeat {action.replace('_', ' ')}?" if is_replay else f"Confirm {action.replace('_', ' ')}?"
+        detail = _confirmation_detail(action, params, policy)
+        if is_replay:
+            detail = (
+                f"A matching action was recently {replay_state}. Repeating it could duplicate a real-world effect. "
+                + detail
+            )
+        return confirm.request(key, title, detail, run)
     return run()
