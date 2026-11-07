@@ -6282,7 +6282,12 @@ class JarvisUI:
                 self._apex_bridge = ApexHudBridge(
                     self,
                     on_all_windows_closed=self._quit_from_hud,
-                    auto_close_on_disconnect=True,
+                    # Chromium can briefly connect and drop its WebSocket while
+                    # its app window is still starting on Windows. Treating that
+                    # transient as “all windows closed” was the actual clean
+                    # process exit seen in PowerShell. Windows lifecycle remains
+                    # owned by Qt/JARVIS instead of a browser socket.
+                    auto_close_on_disconnect=(os.name != "nt"),
                 )
                 hud_url = self._apex_bridge.start()
 
@@ -6334,7 +6339,7 @@ class JarvisUI:
                             load_attempts["fallback"] = True
                             print("[APEX-HUD] Embedded browser unavailable; opening dedicated HUD window.")
                             self._embedded_hud = False
-                            self._apex_bridge._auto_close = True
+                            self._apex_bridge._auto_close = os.name != "nt"
                             web.hide()
                             self._win.hide()
                             launch_app_window(hud_url)
