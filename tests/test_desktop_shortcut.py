@@ -5,7 +5,16 @@ from actions.desktop_shortcut import manage_desktop_shortcut
 from core import desktop_shortcut
 
 
+def _allow_current_installation(monkeypatch):
+    from core import installation_registry, system_doctor
+    class Identity:
+        installation_id = "test-current"
+    monkeypatch.setattr(system_doctor, "installation_identity", lambda: Identity())
+    monkeypatch.setattr(installation_registry, "status", lambda _identifier: {"is_active": True})
+
+
 def test_linux_shortcut_uses_supported_launcher(monkeypatch, tmp_path):
+    _allow_current_installation(monkeypatch)
     desktop = tmp_path / "Desktop"
     launcher = tmp_path / "Start_JARVIS.sh"
     launcher.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -23,6 +32,7 @@ def test_linux_shortcut_uses_supported_launcher(monkeypatch, tmp_path):
 
 
 def test_macos_shortcut_is_executable(monkeypatch, tmp_path):
+    _allow_current_installation(monkeypatch)
     desktop = tmp_path / "Desktop"
     launcher = tmp_path / "Start JARVIS.command"
     launcher.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -65,6 +75,7 @@ def test_windows_launch_target_uses_current_python_and_main(monkeypatch, tmp_pat
 
 
 def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypatch, tmp_path):
+    _allow_current_installation(monkeypatch)
     desktop = tmp_path / "Desktop"
     launcher = tmp_path / "Start_JARVIS.bat"
     launcher.write_text("", encoding="utf-8")
@@ -94,6 +105,38 @@ def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypat
     assert captured["kwargs"]["check"] is True
 
 
+def test_linux_verify_rejects_shortcut_for_another_installation(monkeypatch, tmp_path):
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    launcher = tmp_path / "python"
+    launcher.write_text("", encoding="utf-8")
+    (desktop / "JARVIS.desktop").write_text(
+        "[Desktop Entry]\nExec=\"/old/python\" \"/old/main.py\"\nPath=/old\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(desktop_shortcut.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(desktop_shortcut, "desktop_directory", lambda: desktop)
+    monkeypatch.setattr(desktop_shortcut, "_launch_target", lambda: (launcher, [str(launcher), str(tmp_path / "main.py")]))
+
+    result = desktop_shortcut.verify()
+
+    assert result["valid"] is False
+    assert result["reason"] == "target_mismatch"
+
+
+def test_inactive_installation_cannot_replace_shared_shortcut(monkeypatch, tmp_path):
+    from core import installation_registry, system_doctor
+    class Identity:
+        installation_id = "inactive"
+    monkeypatch.setattr(system_doctor, "installation_identity", lambda: Identity())
+    monkeypatch.setattr(installation_registry, "status", lambda _identifier: {"is_active": False})
+    monkeypatch.setattr(desktop_shortcut, "desktop_directory", lambda: tmp_path)
+
+    import pytest
+    with pytest.raises(RuntimeError, match="not active"):
+        desktop_shortcut.create()
+
+
 def test_windows_fallback_launcher_uses_supported_python(tmp_path):
     install_jarvis.write_native_launchers(tmp_path)
     launcher = (tmp_path / "Start_JARVIS.bat").read_text(encoding="utf-8")
@@ -102,6 +145,7 @@ def test_windows_fallback_launcher_uses_supported_python(tmp_path):
 
 
 def test_tool_create_status_and_remove(monkeypatch, tmp_path):
+    _allow_current_installation(monkeypatch)
     desktop = tmp_path / "Desktop"
     launcher = tmp_path / "Start_JARVIS.sh"
     launcher.write_text("#!/bin/sh\n", encoding="utf-8")

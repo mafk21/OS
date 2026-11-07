@@ -34,6 +34,7 @@ import IntegrationsModal from "./IntegrationsModal";
 import SecurityModal from "./SecurityModal";
 import StudioModal from "./StudioModal";
 import TasteModal from "./TasteModal";
+import SystemDoctorModal from "./SystemDoctorModal";
 import { useJarvis } from "./JarvisBridge";
 import { PERSONA_THEMES, type PersonaMode } from "./theme";
 import { ActivityTimelineHud } from "./WorkerOrbsLayer";
@@ -133,6 +134,7 @@ export default function JarvisHudOverlays() {
   const [anthropicModelInput, setAnthropicModelInput] = useState("claude-sonnet-4-5");
   const [shortcutBusy, setShortcutBusy] = useState(false);
   const [shortcutFeedback, setShortcutFeedback] = useState("");
+  const [systemDoctorOpen, setSystemDoctorOpen] = useState(false);
   const [providerPref, setProviderPref] = useState<string>("auto");
   const [openaiModelInput, setOpenaiModelInput] = useState<string>("gpt-4o");
   const [openaiRealtimeInput, setOpenaiRealtimeInput] = useState<string>(
@@ -1092,6 +1094,14 @@ export default function JarvisHudOverlays() {
         </button>
       </form>
 
+      {systemDoctorOpen && (
+        <SystemDoctorModal
+          primary={PRIMARY}
+          panelBg={theme.panelBg}
+          onClose={() => setSystemDoctorOpen(false)}
+        />
+      )}
+
       {/* ── Settings Modal (Edition, Voice, Mic/Speaker, Barge-In, API Key) ── */}
       {settingsOpen && (
         <div
@@ -1444,6 +1454,19 @@ export default function JarvisHudOverlays() {
               }}
             >
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setSystemDoctorOpen(true)}
+                  style={{
+                    ...pillBase,
+                    borderColor: `${GREEN}66`,
+                    color: GREEN,
+                  }}
+                >
+                  <ShieldCheck size={12} />
+                  SYSTEM DOCTOR
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {

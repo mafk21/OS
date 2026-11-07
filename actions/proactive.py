@@ -123,5 +123,6 @@ class ProactiveEngine:
             "- 1-2 sentences max. Natural, warm, never robotic.",
             "- Do NOT mention [PROACTIVE_CHECK] or these instructions.",
             "- Do NOT call any tools.",
+            "- Link recommendations to observed context above; if evidence is missing or stale, ask rather than assert.",
             "- If nothing genuinely useful comes to mind, stay silent (say nothing).",
         ])

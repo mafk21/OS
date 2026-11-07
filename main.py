@@ -489,7 +489,7 @@ TOOL_DECLARATIONS = [
     {
         "name": "skill_manage",
         "description": (
-            "Create, update or list SKILL.md skills — your own procedural memory. "
+            "Propose, approve, roll back, inspect reliability, or list SKILL.md skills. "
             "CREATE when a task needed 5+ tool calls or careful sequencing and will "
             "plausibly happen again: ask the user in ONE short line first, unless "
             "they already told you to save it ('remember how you…'). "
@@ -506,7 +506,7 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action": {
                     "type": "STRING",
-                    "description": "create | update | list",
+                    "description": "create | update | approve | rollback | reliability | list",
                 },
                 "name": {
                     "type": "STRING",
@@ -519,6 +519,10 @@ TOOL_DECLARATIONS = [
                 "body": {
                     "type": "STRING",
                     "description": "create/update: full SKILL.md body (Instructions, Pitfalls, Verification)",
+                },
+                "backup": {
+                    "type": "STRING",
+                    "description": "rollback: exact backup path returned by a prior approval",
                 },
             },
             "required": ["action"],
@@ -1091,10 +1095,13 @@ class JarvisLive:
         try:
             from core.long_tasks import get_long_task_manager
             self._long_task_manager = get_long_task_manager()
-            def _execute_durable_step(tool, params):
+            def _execute_durable_step(tool, params, execution_context=None):
+                execution_context = execution_context or {}
                 context = {
                     "player": self.ui, "speak": self.speak,
                     "response": None, "session_memory": None,
+                    "execution_id": execution_context.get("execution_id"),
+                    "cancellation_event": execution_context.get("cancellation_event"),
                 }
                 if self._action_registry.has(tool):
                     return self._action_registry.run(tool, params, context)
@@ -2250,15 +2257,48 @@ class JarvisLive:
                 if action == "list":
                     result = ("Installed skills:\n" + self._skill_registry.get_listing())
                 elif action in ("create", "update"):
-                    result = self._skill_registry.write(
-                        name=args.get("name", ""),
-                        description=args.get("description", ""),
-                        body=args.get("body", ""),
-                        update=(action == "update"),
+                    from core.skill_governance import propose
+                    sname = str(args.get("name") or "").strip()
+                    desc = " ".join(str(args.get("description") or "").split())
+                    body = str(args.get("body") or "").strip()
+                    if not desc or not body:
+                        raise ValueError("description and body are required")
+                    folder = self._skill_registry.skill_dir(sname)
+                    folder.mkdir(parents=True, exist_ok=True)
+                    proposal = f"---\nname: {sname}\ndescription: {desc}\n---\n\n{body}\n"
+                    propose(folder, proposal)
+                    result = f"Skill '{sname}' is staged for review. Ask the user to approve it before activation."
+                elif action == "approve":
+                    from core import confirm as confirm_gate
+                    from core.skill_loader import parse_frontmatter
+                    from core.skill_governance import approve
+                    sname = str(args.get("name") or "").strip()
+                    folder = self._skill_registry.skill_dir(sname)
+                    proposal_path = folder / "SKILL.md.proposed"
+                    fm, body = parse_frontmatter(proposal_path.read_text(encoding="utf-8"))
+                    def _approve_skill():
+                        existed = sname in self._skill_registry.names()
+                        backup = approve(folder)
+                        self._skill_registry.write(sname, fm.get("description", ""), body, update=existed)
+                        return f"Skill '{sname}' approved and activated." + (f" Backup: {backup}" if backup else "")
+                    result = confirm_gate.request(f"skill-approve-{sname}", f"Approve skill {sname}?",
+                                                  "Activate the reviewed skill proposal and preserve the previous version for rollback.", _approve_skill)
+                elif action == "rollback":
+                    from core import confirm as confirm_gate
+                    from core.skill_governance import rollback
+                    sname = str(args.get("name") or "").strip()
+                    folder = self._skill_registry.skill_dir(sname)
+                    backup = Path(str(args.get("backup") or ""))
+                    result = confirm_gate.request(
+                        f"skill-rollback-{sname}", f"Roll back skill {sname}?",
+                        "Restore the selected reviewed backup. The current version will stop being active.",
+                        lambda: (rollback(folder, backup) or f"Skill '{sname}' rolled back."),
                     )
-                    print(f"[Skills] ✍ skill_manage {action}: {args.get('name', '')}")
+                elif action == "reliability":
+                    from core.skill_governance import reliability
+                    result = str(reliability(str(args.get("name") or "")))
                 else:
-                    raise ValueError("action must be 'create', 'update' or 'list'")
+                    raise ValueError("action must be create, update, approve, reliability or list")
 
             elif name == "undo":
                 if str(args.get("action", "")).lower().strip() == "list":
@@ -3470,6 +3510,10 @@ class JarvisLive:
 
             if not self._proactive.should_trigger(self._last_user_speech):
                 continue
+            from core import proactive_permissions
+            proactive_policy = proactive_permissions.load()
+            if not proactive_permissions.allowed(proactive_policy):
+                continue
 
             self._proactive.mark_triggered()
 
@@ -3477,15 +3521,19 @@ class JarvisLive:
                 memory       = await asyncio.to_thread(load_memory)
                 monitors     = await asyncio.to_thread(list_monitors)
                 recent_turns = self._session_log[-8:] if self._session_log else []
+                memory, monitors, recent_turns = proactive_permissions.filter_context(
+                    memory, monitors or None, recent_turns or None, proactive_policy,
+                )
                 prompt = self._proactive.build_prompt(
                     memory       = memory,
-                    monitors     = monitors or None,
-                    recent_turns = recent_turns or None,
+                    monitors     = monitors,
+                    recent_turns = recent_turns,
                 )
                 await self.session.send_client_content(
                     turns={"role": "user", "parts": [{"text": prompt}]},
                     turn_complete=True,
                 )
+                proactive_permissions.record()
                 print("[JARVIS] Proactive check-in.")
             except Exception as e:
                 print(f"[Proactive] ⚠️ {e}")

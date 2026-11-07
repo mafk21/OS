@@ -4048,114 +4048,37 @@ class MainWindow(QMainWindow):
         return home / "Desktop"
 
     def _create_desktop_shortcut(self):
-        """
-        Create a desktop shortcut on Windows / macOS / Linux.
-        Never opens a terminal, console, or PowerShell window on any platform.
-        """
-        import stat as _stat
-        script  = Path(__file__).resolve().parent / "main.py"
-        python  = Path(sys.executable)
-        desktop = self._get_desktop_dir()
-
-        # Arc-reactor icon (.ico — also exported as .png for Linux/macOS)
-        ico_path = Path(__file__).resolve().parent / "config" / "jarvis.ico"
-        if not ico_path.exists():
-            self._build_jarvis_icon(ico_path)
-
+        """Create the same verified, installation-bound shortcut as APEX."""
         try:
-            _os = platform.system()
+            from core import desktop_shortcut
+            path = desktop_shortcut.create()
+            verified = desktop_shortcut.verify()
+            if not verified.get("valid"):
+                raise RuntimeError("shortcut verification failed")
+            self._log.append_log(f"SYS: Desktop shortcut created and verified at {path}.")
+        except Exception as exc:
+            self._log.append_log(
+                f"ERR: Shortcut failed safely ({type(exc).__name__})."
+            )
 
-            # ── Windows ───────────────────────────────────────────────────────
-            if _os == "Windows":
-                pythonw  = python.parent / "pythonw.exe"
-                target   = str(pythonw if pythonw.exists() else python)
-                lnk      = str(desktop / "J.A.R.V.I.S.lnk")
-                icon_loc = str(ico_path) if ico_path.exists() else f"{target},0"
-                self._create_lnk_windows(lnk, target, str(script),
-                                         str(script.parent), icon_loc)
+    def _run_system_doctor(self):
+        """Run the same read-only health report available in APEX."""
+        try:
+            from actions.diagnostics import diagnostics_check
+            report = diagnostics_check({"action": "system"})
+            self._show_content("SYSTEM DOCTOR", report)
+            self._log.append_log("SYS: System Doctor checks completed.")
+        except Exception as exc:
+            self._log.append_log(f"ERR: System Doctor failed safely ({type(exc).__name__}).")
 
-            # ── macOS — proper .app bundle (no Terminal window) ───────────────
-            elif _os == "Darwin":
-                app     = desktop / "J.A.R.V.I.S.app"
-                mac_dir = app / "Contents" / "MacOS"
-                res_dir = app / "Contents" / "Resources"
-                mac_dir.mkdir(parents=True, exist_ok=True)
-                res_dir.mkdir(exist_ok=True)
-
-                # Launcher executable (bash — runs as background process,
-                # macOS does NOT open Terminal for executables inside .app bundles)
-                launcher = mac_dir / "JARVIS"
-                launcher.write_text(
-                    "#!/usr/bin/env bash\n"
-                    f'cd "{script.parent}"\n'
-                    f'exec "{python}" "{script}"\n'
-                )
-                launcher.chmod(launcher.stat().st_mode
-                               | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
-
-                # Minimal Info.plist (required for .app recognition)
-                (app / "Contents" / "Info.plist").write_text(
-                    '<?xml version="1.0" encoding="UTF-8"?>\n'
-                    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
-                    '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-                    '<plist version="1.0"><dict>\n'
-                    '  <key>CFBundleExecutable</key><string>JARVIS</string>\n'
-                    '  <key>CFBundleIdentifier</key>'
-                    '<string>com.jarvis.assistant</string>\n'
-                    '  <key>CFBundleName</key><string>J.A.R.V.I.S</string>\n'
-                    '  <key>CFBundlePackageType</key><string>APPL</string>\n'
-                    '  <key>CFBundleVersion</key><string>1.0</string>\n'
-                    '</dict></plist>\n'
-                )
-
-                # Optional: copy icon as .icns (skip silently if Pillow is missing)
-                try:
-                    import PIL.Image
-                    icns = res_dir / "AppIcon.icns"
-                    PIL.Image.open(ico_path).save(icns, format="ICNS")
-                    # Inject icon reference into plist
-                    plist = app / "Contents" / "Info.plist"
-                    txt = plist.read_text()
-                    plist.write_text(
-                        txt.replace(
-                            '</dict></plist>',
-                            '  <key>CFBundleIconFile</key>'
-                            '<string>AppIcon</string>\n</dict></plist>\n',
-                        )
-                    )
-                except Exception:
-                    pass  # icon is optional
-
-            # ── Linux — .desktop file (Terminal=false, no console) ────────────
-            else:
-                # Export .ico → .png for better desktop integration
-                png_path = ico_path.with_suffix(".png")
-                if not png_path.exists() and ico_path.exists():
-                    try:
-                        import PIL.Image
-                        PIL.Image.open(ico_path).resize(
-                            (256, 256), PIL.Image.LANCZOS
-                        ).save(png_path, format="PNG")
-                    except Exception:
-                        png_path = ico_path  # fallback to .ico
-
-                icon_line = f"Icon={png_path}\n" if png_path.exists() else ""
-                desk = desktop / "J.A.R.V.I.S.desktop"
-                desk.write_text(
-                    "[Desktop Entry]\n"
-                    "Name=J.A.R.V.I.S\n"
-                    f"Exec={python} {script}\n"
-                    f"Path={script.parent}\n"
-                    "Type=Application\n"
-                    "Terminal=false\n"
-                    "Categories=Utility;\n"
-                    + icon_line
-                )
-                desk.chmod(desk.stat().st_mode | 0o755)
-
-            self._log.append_log("SYS: Desktop shortcut created.")
-        except Exception as e:
-            self._log.append_log(f"ERR: Shortcut failed — {e}")
+    def _export_system_doctor_report(self):
+        try:
+            from core.system_doctor import write_support_report
+            path = write_support_report()
+            self._show_content("SYSTEM DOCTOR REPORT", f"Redacted support report saved to:\n{path}")
+            self._log.append_log(f"SYS: Redacted System Doctor report saved to {path}")
+        except Exception as exc:
+            self._log.append_log(f"ERR: Report export failed safely ({type(exc).__name__}).")
 
     def _toggle_fullscreen(self):
         if self.isFullScreen():
@@ -4555,6 +4478,23 @@ class MainWindow(QMainWindow):
         sc_btn.setStyleSheet(_BTN_STYLE_DIM)
         sc_btn.clicked.connect(self._create_desktop_shortcut)
         lay.addWidget(sc_btn)
+
+        doctor_btn = QPushButton("✚  SYSTEM DOCTOR")
+        doctor_btn.setFixedHeight(26)
+        doctor_btn.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+        doctor_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        doctor_btn.setStyleSheet(_BTN_STYLE_DIM)
+        doctor_btn.setToolTip("Run read-only installation and subsystem health checks")
+        doctor_btn.clicked.connect(self._run_system_doctor)
+        lay.addWidget(doctor_btn)
+
+        report_btn = QPushButton("⇩  EXPORT REDACTED HEALTH REPORT")
+        report_btn.setFixedHeight(26)
+        report_btn.setFont(QFont("Courier New", 7))
+        report_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        report_btn.setStyleSheet(_BTN_STYLE_DIM)
+        report_btn.clicked.connect(self._export_system_doctor_report)
+        lay.addWidget(report_btn)
 
         self._autostart_btn = QPushButton("◉  AUTO-START: OFF")
         self._autostart_btn.setFixedHeight(26)

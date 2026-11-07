@@ -65,6 +65,7 @@ class ActionRecord:
     error: str = ""
     behavior: Optional[str] = None     # None = the API's default (blocking)
     scheduling: Optional[str] = None   # None = the API's default (WHEN_IDLE)
+    safety: dict = field(default_factory=dict)
 
 
 class ActionRegistry:
@@ -101,7 +102,12 @@ class ActionRegistry:
         if rec is None or not rec.valid:
             return f"Action '{name}' is not available."
         try:
-            return _call_handler(rec.handler, parameters, ctx or {}) or "Done."
+            from core.action_safety import execute, policy_for
+            policy = policy_for(name, rec.safety)
+            return execute(
+                name, parameters or {}, policy,
+                lambda: _call_handler(rec.handler, parameters, ctx or {}) or "Done.",
+            )
         except Exception as e:
             self._logger(f"Action '{name}' crashed during run(): {e}")
             traceback.print_exc()
@@ -190,7 +196,8 @@ def _validate(module, filename: str) -> ActionRecord:
     return ActionRecord(name=name, description=description.strip(), parameters=parameters,
                         handler=handler, file=filename, valid=True, error="",
                         behavior=_opt_upper(tool.get("behavior"), _BEHAVIORS),
-                        scheduling=_opt_upper(tool.get("scheduling"), _SCHEDULING))
+                        scheduling=_opt_upper(tool.get("scheduling"), _SCHEDULING),
+                        safety=dict(tool.get("safety") or {}) if isinstance(tool.get("safety"), dict) else {})
 
 
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,

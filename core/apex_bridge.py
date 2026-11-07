@@ -1043,6 +1043,71 @@ class ApexHudBridge:
                     "taste_profile": taste_manager.status(),
                 }
 
+        if action == "installation_lifecycle":
+            from core.system_doctor import installation_identity
+            from core import installation_registry
+            identity = installation_identity()
+            operation = str(data.get("operation") or "status").strip().lower()
+            if operation == "make_active":
+                message = installation_registry.request_make_active(identity.installation_id)
+                return {"ok": True, "message": message, "lifecycle": installation_registry.status(identity.installation_id)}
+            if operation == "unregister":
+                requested_id = str(data.get("installation_id") or identity.installation_id)
+                known_ids = {str(row.get("installation_id")) for row in installation_registry.status(identity.installation_id)["installations"]}
+                target_id = requested_id if requested_id in known_ids else identity.installation_id
+                message = installation_registry.request_unregister(target_id)
+                return {"ok": True, "message": message, "lifecycle": installation_registry.status(identity.installation_id)}
+            return {"ok": True, "identity": identity.__dict__, "lifecycle": installation_registry.status(identity.installation_id)}
+
+        if action == "system_doctor":
+            operation = str(data.get("operation") or "run").strip().lower()
+            try:
+                if operation == "repair":
+                    from core.system_repair import request_repair
+                    message = request_repair(str(data.get("repair") or ""))
+                    return {"ok": message.startswith("[CONFIRMATION_PENDING]"), "message": message}
+                if operation == "repair_status":
+                    from core.system_repair import repair_status
+                    return {"ok": True, "repair_result": repair_status()}
+                from core.system_doctor import run_doctor, write_support_report
+                report = run_doctor()
+                scheduler_thread = getattr(self._auto_scheduler, "_thread", None)
+                runtime_ok = bool(
+                    self._server is not None and self._server.started
+                    and self._thread is not None and self._thread.is_alive()
+                )
+                scheduler_ok = bool(scheduler_thread and scheduler_thread.is_alive())
+                runtime_results = [
+                    {
+                        "check": "hud_runtime", "status": "ok" if runtime_ok else "warning",
+                        "state": "healthy" if runtime_ok else "degraded",
+                        "code": "JARVIS-HUD-RUNTIME-" + ("OK" if runtime_ok else "WARNING"),
+                        "summary": "The active HUD server is running." if runtime_ok else "No active HUD server was observed.",
+                        "evidence": "observed by APEX bridge", "remediation": "Restart the HUD or use Classic UI." if not runtime_ok else "",
+                    },
+                    {
+                        "check": "scheduler_runtime", "status": "ok" if scheduler_ok else "warning",
+                        "state": "healthy" if scheduler_ok else "degraded",
+                        "code": "JARVIS-SCHEDULER-RUNTIME-" + ("OK" if scheduler_ok else "WARNING"),
+                        "summary": "The automation scheduler is running." if scheduler_ok else "The automation scheduler is not running.",
+                        "evidence": "observed by APEX bridge", "remediation": "Restart JARVIS." if not scheduler_ok else "",
+                    },
+                ]
+                report["results"].extend(runtime_results)
+                for item in runtime_results:
+                    report["counts"][item["status"]] += 1
+                if any(item["status"] == "warning" for item in runtime_results) and report["overall"] == "ok":
+                    report["overall"] = "warning"
+                result = {"ok": True, "doctor": report}
+                if operation == "report":
+                    result["report_path"] = str(write_support_report())
+                return result
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "error": f"System Doctor failed safely ({type(exc).__name__}).",
+                }
+
         if action == "desktop_shortcut":
             operation = str(data.get("operation") or "status").strip().lower()
             try:
@@ -1429,6 +1494,45 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "provider_routing_get":
+            from core.provider_preferences import get
+            return {"ok": True, "routing": get()}
+
+        if action == "provider_routing_save":
+            from core.provider_preferences import save
+            try:
+                routing = save(str(data.get("cost_priority") or "balanced"),
+                               str(data.get("latency_priority") or "balanced"))
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "routing": routing}
+
+        if action == "proactive_policy_get":
+            from dataclasses import asdict
+            from core.proactive_permissions import load
+            return {"ok": True, "policy": asdict(load())}
+
+        if action == "proactive_policy_save":
+            from core.proactive_permissions import ProactivePolicy, save
+            try:
+                policy = ProactivePolicy(
+                    enabled=bool(data.get("enabled", True)),
+                    use_memory=bool(data.get("use_memory", False)),
+                    use_monitors=bool(data.get("use_monitors", False)),
+                    use_recent_conversation=bool(data.get("use_recent_conversation", True)),
+                    quiet_start=max(0, min(23, int(data.get("quiet_start", 23)))),
+                    quiet_end=max(0, min(23, int(data.get("quiet_end", 7)))),
+                    daily_limit=max(0, min(48, int(data.get("daily_limit", 6)))),
+                    allowed_topics=tuple(str(v)[:80] for v in (data.get("allowed_topics") or [])[:30]),
+                    blocked_topics=tuple(str(v)[:80] for v in (data.get("blocked_topics") or [])[:30]),
+                    minimum_urgency=str(data.get("minimum_urgency") or "normal")
+                    if str(data.get("minimum_urgency") or "normal") in {"low", "normal", "high", "critical"} else "normal",
+                )
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "Invalid proactive policy."}
+            save(policy)
+            return {"ok": True, "message": "Proactive permissions updated."}
+
         if action == "brain_get":
             return {"ok": True, "brain": timeline.get_brain_snapshot()}
 
@@ -1469,6 +1573,29 @@ class ApexHudBridge:
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "brain": snap}
 
+        if action == "brain_pin_memory":
+            from memory import memory_governance
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            message = memory_governance.pin(cat, key, bool(data.get("pinned", True)))
+            return {"ok": not message.startswith("Memory not found"), "message": message,
+                    "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_resolve_conflict":
+            from memory import memory_governance
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            val = str(data.get("value") or "").strip()
+            if not val:
+                return {"ok": False, "error": "A resolved value is required."}
+            message = memory_governance.resolve(cat, key, val)
+            return {"ok": message.startswith("Resolved"), "message": message,
+                    "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_export_memories":
+            from memory import memory_governance
+            return {"ok": True, "export": memory_governance.export()}
+
         if action == "brain_forget_memory":
             cat = str(data.get("category") or "notes").strip().lower()
             key = str(data.get("key") or "").strip()
@@ -1478,10 +1605,16 @@ class ApexHudBridge:
             return {"ok": True, "brain": snap}
 
         if action == "brain_clear_memories":
-            mm.clear_all_memories()
-            snap = timeline.get_brain_snapshot()
-            self._broadcast_threadsafe(self.snapshot())
-            return {"ok": True, "brain": snap}
+            def _clear_memories():
+                message = mm.clear_all_memories()
+                self._broadcast_threadsafe(self.snapshot())
+                return message
+            pending = confirm_gate.request(
+                "brain-clear-all", "Clear all personal memories?",
+                "This permanently deletes every stored personal memory. Export first if you may need a copy.",
+                _clear_memories,
+            )
+            return {"ok": True, "pending_confirmation": True, "message": pending}
 
         if action == "brain_upload_file":
             fname = str(data.get("filename") or "note.md").strip()
@@ -1593,6 +1726,27 @@ class ApexHudBridge:
             from core.subagents import get_subagent_manager
             ok = get_subagent_manager().complete(wid, res_txt)
             return {"ok": ok, "workers": self.get_activity_snapshot()}
+
+        if action == "long_task_control":
+            task_id = str(data.get("task_id") or "").strip()
+            operation = str(data.get("operation") or "status").strip().lower()
+            if operation == "pause":
+                ok = self._long_tasks.pause(task_id)
+            elif operation == "resume":
+                ok = self._long_tasks.resume(task_id)
+            elif operation == "cancel":
+                ok = self._long_tasks.cancel(task_id)
+            elif operation == "retry":
+                ok = self._long_tasks.retry_failed(task_id)
+            elif operation == "resolve":
+                ok = self._long_tasks.resolve_uncertain(task_id, str(data.get("resolution") or ""))
+            elif operation == "revise":
+                ok = self._long_tasks.revise_step(task_id, int(data.get("step_index") or 0), data.get("patch") or {})
+            else:
+                rec = self._long_tasks.get(task_id)
+                return {"ok": bool(rec), "task": rec, "workers": self.get_activity_snapshot()}
+            self.push_activity()
+            return {"ok": ok, "task": self._long_tasks.get(task_id), "workers": self.get_activity_snapshot()}
 
         if action == "cancel_worker":
             wid = str(data.get("worker_id") or "").strip()
@@ -1982,6 +2136,11 @@ class ApexHudBridge:
         @app.get("/api/hud/activity")
         async def _activity_get():
             return JSONResponse({"ok": True, "workers": self.get_activity_snapshot()})
+
+        @app.get("/api/hud/operations")
+        async def _operations_get():
+            from core.operations_center import snapshot as operations_snapshot
+            return JSONResponse(await asyncio.to_thread(operations_snapshot))
 
         @app.get("/api/hud/studio")
         async def _studio_get():

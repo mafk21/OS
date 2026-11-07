@@ -114,9 +114,11 @@ def _schedule_restart(player=None) -> None:
     """Start a small waiter, then close this process so the waiter relaunches it."""
     helper = (ROOT / "core" / "restart_helper.py").resolve()
     command = _launch_command()
+    from core.system_doctor import installation_identity
+    installation_id = installation_identity().installation_id
     subprocess.Popen(
         [str(Path(sys.executable).resolve()), str(helper), "--parent", str(os.getpid()),
-         "--cwd", str(ROOT), "--", *command],
+         "--cwd", str(ROOT), "--installation-id", installation_id, "--", *command],
         cwd=str(ROOT),
         close_fds=True,
     )

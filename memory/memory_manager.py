@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from datetime import date, datetime
 from threading import RLock
 from pathlib import Path
@@ -158,12 +159,16 @@ def user_profile(memory: dict | None = None) -> dict:
     identity = memory.get("identity", {}) or {}
     profile: dict[str, str] = {}
     for field in _IDENTITY_FIELDS:
+        if isinstance(identity.get(field), dict) and identity[field].get("status") == "conflicted":
+            continue
         val = _entry_value(identity.get(field))
         if val:
             profile[field] = val
     about: dict[str, str] = {}
     for cat in ("relationships", "preferences", "projects"):
         for key, entry in (memory.get(cat, {}) or {}).items():
+            if isinstance(entry, dict) and entry.get("status") == "conflicted":
+                continue
             val = _entry_value(entry)
             if val:
                 about[f"{cat}/{key}"] = val
@@ -186,8 +191,15 @@ def load_memory() -> dict:
         try:
             data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
         except Exception as e:
-            print(f"[Memory] ⚠️ Load error: {e}")
-            return _empty_memory()
+            backup = MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".bak")
+            try:
+                data = json.loads(backup.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("backup is not an object")
+                print("[Memory] Restored the last valid memory snapshot after a load error.")
+            except Exception:
+                print(f"[Memory] ⚠️ Load error: {type(e).__name__}")
+                return _empty_memory()
     if not isinstance(data, dict):
         return _empty_memory()
     base = _empty_memory()
@@ -197,13 +209,31 @@ def load_memory() -> dict:
     # Never delete personal facts merely because time passed. Stale context is
     # ranked lower at recall/prompt time; forgetting remains an explicit user
     # action. Only unambiguous duplicates are compacted here.
+    removed_explicit: list[str] = []
+    now = datetime.now().astimezone()
+    for category, items in data.items():
+        if not isinstance(items, dict):
+            continue
+        for item_key, entry in list(items.items()):
+            expiry = entry.get("expires_at") if isinstance(entry, dict) else None
+            if not expiry:
+                continue
+            try:
+                deadline = datetime.fromisoformat(str(expiry).replace("Z", "+00:00"))
+                if deadline.tzinfo is None:
+                    deadline = deadline.replace(tzinfo=now.tzinfo)
+            except ValueError:
+                continue
+            if deadline <= now:
+                del items[item_key]
+                removed_explicit.append(f"{category}/{item_key}")
     removed_dups = dedup_memory(data)
-    if removed_dups:
+    if removed_dups or removed_explicit:
         try:
             save_memory(data)
         except Exception:
             pass
-        _notify_hygiene([], removed_dups)
+        _notify_hygiene(removed_explicit, removed_dups)
     return data
 
 def _all_entries(memory: dict) -> list[tuple]:
@@ -278,6 +308,12 @@ def _atomic_write(memory: dict) -> None:
         temp.chmod(0o600)
     except OSError:
         pass
+    if MEMORY_PATH.exists():
+        try:
+            # One last-known-good rollback point for metadata migrations and edits.
+            shutil.copy2(MEMORY_PATH, MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".bak"))
+        except OSError:
+            pass
     temp.replace(MEMORY_PATH)
 
 
@@ -314,14 +350,19 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             now = datetime.now().astimezone()
             today = now.strftime("%Y-%m-%d")
             new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value).strip())
-            entry    = {"value": new_val, "updated": today, "updated_at": now.isoformat(timespec="seconds")}
+            entry    = {
+                "value": new_val, "updated": today, "updated_at": now.isoformat(timespec="seconds"),
+                "provenance": [{"source": "conversation", "observed_at": now.isoformat(timespec="seconds")}],
+                "status": "active",
+            }
             if isinstance(value, dict):
-                for meta in ("source", "confidence", "explicit"):
+                for meta in ("source", "confidence", "explicit", "expires_at", "sensitivity", "pinned"):
                     if meta in value:
                         entry[meta] = value[meta]
+                entry["provenance"][0]["source"] = str(entry.get("source") or "conversation")[:80]
             existing = target.get(key, {})
             if isinstance(existing, dict):
-                for meta in ("source", "confidence", "explicit"):
+                for meta in ("source", "confidence", "explicit", "expires_at", "sensitivity", "pinned"):
                     if meta not in entry and meta in existing:
                         entry[meta] = existing[meta]
             # Conflict resolution: same key, new value differs from stored.
@@ -329,12 +370,25 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             # silently overwritten; the latest value stays in "value".
             if (isinstance(existing, dict)
                     and existing.get("value") not in (None, new_val)):
+                incoming_explicit = bool(entry.get("explicit"))
+                existing_explicit = bool(existing.get("explicit"))
+                if existing_explicit and not incoming_explicit:
+                    contradictions = list(existing.get("contradictions") or [])[-4:]
+                    contradictions.append({"value": new_val, "source": entry.get("source", "conversation"),
+                                           "observed_at": entry["updated_at"]})
+                    existing["contradictions"] = contradictions
+                    target[key] = existing
+                    changed = True
+                    continue
                 history = existing.get("_prev") or []
                 history.append({"value": existing.get("value"),
                                 "updated": existing.get("updated", today)})
                 if len(history) > 5:
                     history = history[-5:]
                 entry["_prev"] = history
+                if not (incoming_explicit and not existing_explicit):
+                    entry["status"] = "conflicted"
+                    entry["confidence"] = min(float(entry.get("confidence", 0.75)), 0.5)
             if (not isinstance(existing, dict) or existing.get("value") != new_val
                     or existing.get("updated_at") != entry["updated_at"]):
                 if isinstance(existing, dict) and existing.get("_prev") and "_prev" not in entry:
@@ -418,6 +472,8 @@ def format_memory_for_prompt(memory: dict | None) -> str:
     # 1. Identity - always, in full
     identity = memory.get("identity", {}) or {}
     for field in _IDENTITY_FIELDS:
+        if isinstance(identity.get(field), dict) and identity[field].get("status") == "conflicted":
+            continue
         val = _entry_value(identity.get(field))
         if not val:
             continue
@@ -431,7 +487,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
         else:
             core_lines.append(f"{field.title()}: {val}")
     for key, entry in identity.items():
-        if key in _IDENTITY_FIELDS:
+        if key in _IDENTITY_FIELDS or (isinstance(entry, dict) and entry.get("status") == "conflicted"):
             continue
         val = _entry_value(entry)
         if val:
@@ -611,6 +667,12 @@ def all_entries_for_ui() -> list[dict]:
                 "key":      key,
                 "value":    val,
                 "updated":  (entry.get("updated", "") if isinstance(entry, dict) else ""),
+                "source": (entry.get("source", "legacy") if isinstance(entry, dict) else "legacy"),
+                "confidence": (entry.get("confidence") if isinstance(entry, dict) else None),
+                "status": (entry.get("status", "active") if isinstance(entry, dict) else "legacy"),
+                "sensitivity": (entry.get("sensitivity", "personal") if isinstance(entry, dict) else "personal"),
+                "pinned": bool(entry.get("pinned", False)) if isinstance(entry, dict) else False,
+                "expires_at": (entry.get("expires_at") if isinstance(entry, dict) else None),
             })
     rows.sort(key=lambda r: (r["updated"] or "0000-00-00"), reverse=True)
     return rows

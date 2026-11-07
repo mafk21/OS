@@ -106,15 +106,35 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
                 f"{len((rec.get('target') or {}).get('steps') or [])} checkpointed steps."
             )
 
-        if action == "resume":
+        if action == "pause":
+            task_id = str(params.get("task_id") or "").strip()
+            return f"Pause requested for {task_id}." if manager.pause(task_id) else f"Could not pause '{task_id}'."
+
+        if action in ("continue", "resume"):
             task_id = str(params.get("task_id") or "").strip()
             resolution = str(params.get("resolution") or "").strip()
-            if not resolution:
-                return "long_task resume: choose resolution='retry' or 'mark_done' after reviewing the uncertain step."
+            if resolution:
+                return (
+                    f"Resumed {task_id} with reviewed resolution {resolution}."
+                    if manager.resolve_uncertain(task_id, resolution)
+                    else f"Could not resolve '{task_id}'; it is not uncertain or the resolution is invalid."
+                )
             return (
-                f"Resumed {task_id} with resolution {resolution}."
-                if manager.resolve_uncertain(task_id, resolution)
-                else f"Could not resume '{task_id}'; it is not waiting for crash review or the resolution is invalid."
+                f"Resumed paused workflow {task_id}."
+                if manager.resume(task_id)
+                else f"Could not resume '{task_id}'; it is not paused or remains blocked."
+            )
+
+        if action == "revise":
+            task_id = str(params.get("task_id") or "").strip()
+            step_index = int(params.get("step_index") or 0)
+            patch = params.get("patch") or {}
+            if isinstance(patch, str):
+                patch = json.loads(patch)
+            return (
+                f"Revised queued step {step_index} for {task_id}."
+                if manager.revise_step(task_id, step_index, patch)
+                else "Could not revise that step; pause the workflow and choose a queued future step."
             )
 
         if action in ("retry_failed", "retry"):
@@ -142,7 +162,7 @@ def long_task(parameters: dict, response=None, player=None, session_memory=None)
             task_id = str(params.get("task_id") or "").strip()
             return f"Removed long-term task {task_id}." if manager.remove(task_id) else f"Could not remove '{task_id}'; only finished tasks can be removed."
 
-        return "long_task actions: workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | retry_failed | cancel | remove"
+        return "long_task actions: workflow | watch_until_end | at_time | file_exists | file_changed | list | status | pause | resume | revise | retry_failed | cancel | remove"
     except (ValueError, OSError, RuntimeError) as exc:
         return f"long_task: {exc}"
 
@@ -161,7 +181,7 @@ TOOL = {
     "parameters": {
         "type": "OBJECT",
         "properties": {
-            "action": {"type": "STRING", "description": "workflow | watch_until_end | at_time | file_exists | file_changed | list | status | resume | retry_failed | cancel | remove"},
+            "action": {"type": "STRING", "description": "workflow | watch_until_end | at_time | file_exists | file_changed | list | status | pause | resume | revise | retry_failed | cancel | remove"},
             "task_id": {"type": "STRING", "description": "Task ID for status/resume/cancel/remove"},
             "steps": {
                 "type": "ARRAY",
@@ -173,12 +193,19 @@ TOOL = {
                         "max_attempts": {"type": "NUMBER", "description": "1-5 attempts; values above 1 require retry_safe=true"},
                         "retry_delay_seconds": {"type": "NUMBER", "description": "Base delay for bounded exponential retry backoff"},
                         "retry_safe": {"type": "BOOLEAN", "description": "Explicit assertion that repeating this step cannot duplicate a side effect"},
+                        "timeout_seconds": {"type": "NUMBER", "description": "Per-attempt timeout from 1 to 3600 seconds"},
+                        "alternatives": {"type": "ARRAY", "items": {"type": "OBJECT"}, "description": "Up to 3 predeclared fallback tool strategies"},
+                        "fallback_safe": {"type": "BOOLEAN", "description": "Required to permit automatic alternative strategies"},
+                        "evidence_requirement": {"type": "STRING", "description": "observed or verified; external side effects default to verified"},
+                        "postcondition": {"type": "OBJECT", "description": "Deterministic file_exists, result_contains, or structured_field verification"},
                     },
                     "required": ["tool", "params"],
                 },
                 "description": "workflow: ordered durable tool steps",
             },
-            "resolution": {"type": "STRING", "description": "resume after crash review: retry or mark_done"},
+            "resolution": {"type": "STRING", "description": "resume after uncertain outcome: retry or mark_done"},
+            "step_index": {"type": "NUMBER", "description": "revise: queued workflow step number"},
+            "patch": {"type": "STRING", "description": "revise: JSON object with tool, params, and/or timeout_seconds"},
             "idempotency_key": {"type": "STRING", "description": "Stable caller key that prevents duplicate task creation when a request is retried"},
             "scope": {"type": "STRING", "description": "For media: item or queue. Defaults to queue when a playlist is active."},
             "run_at": {"type": "STRING", "description": "ISO local date/time for at_time"},

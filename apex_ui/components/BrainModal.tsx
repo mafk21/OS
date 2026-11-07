@@ -23,6 +23,12 @@ type MemoryItem = {
   key: string;
   value: string;
   updated: string;
+  source?: string;
+  confidence?: number | null;
+  status?: string;
+  sensitivity?: string;
+  pinned?: boolean;
+  expires_at?: string | null;
 };
 
 type TimelineTurn = {
@@ -213,6 +219,10 @@ export default function BrainModal() {
       value: editVal.trim(),
     });
     setEditId(null);
+  };
+
+  const onPin = async (m: MemoryItem) => {
+    await postBrain({ action: "brain_pin_memory", category: m.category, key: m.key, pinned: !m.pinned });
   };
 
   const onForget = async (m: MemoryItem) => {
@@ -676,12 +686,18 @@ export default function BrainModal() {
                             }}
                           >
                             {m.value}
+                            <div style={{ marginTop: 5, color: "rgba(240,237,232,.42)", fontSize: 9, fontFamily: "var(--font-mono)" }}>
+                              {m.status || "active"} · {m.source || "legacy"}{typeof m.confidence === "number" ? ` · ${Math.round(m.confidence * 100)}% confidence` : ""}{m.pinned ? " · pinned" : ""}
+                            </div>
                           </div>
                         )}
                       </div>
 
                       {!isEditing && (
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" onClick={() => void onPin(m)} style={{ ...pillBtn(), color: m.pinned ? PRIMARY : undefined }} title={m.pinned ? "Unpin memory" : "Pin memory"}>
+                            <Pin size={11} />
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
