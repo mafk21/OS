@@ -2,6 +2,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
+import json, time
+from pathlib import Path
+REPORT_PATH=Path(__file__).resolve().parent.parent/'config'/'workflow_review.json'
+def latest_review()->dict:
+    try: return json.loads(REPORT_PATH.read_text(encoding='utf-8'))
+    except (OSError,ValueError): return {}
 
 DANGEROUS = {"send_message", "shell", "computer_settings", "file_controller", "accessibility_control"}
 
@@ -30,4 +36,9 @@ def review_steps(steps: list[dict[str, Any]]) -> Review:
             if not step.get("evidence_requirement"): findings.append(f"step {index+1} lacks explicit evidence policy")
         if step.get("retry_safe") is False and int(step.get("max_attempts") or 1)>1:
             findings.append(f"step {index+1} retries a non-idempotent action")
-    return Review(not findings, tuple(findings), confirmation, verification)
+    review=Review(not findings, tuple(findings), confirmation, verification)
+    try:
+        REPORT_PATH.parent.mkdir(parents=True,exist_ok=True)
+        REPORT_PATH.write_text(json.dumps({'timestamp':time.time(),'approved':review.approved,'findings':list(review.findings),'required_confirmation':review.required_confirmation,'required_verification':review.required_verification,'step_count':len(steps)}),encoding='utf-8')
+    except OSError: pass
+    return review

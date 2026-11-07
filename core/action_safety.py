@@ -148,6 +148,10 @@ def execute(action: str, parameters: dict[str, Any], policy: ActionPolicy,
             ("confirmation_required" if needs_confirmation else "ready")})
 
     def run() -> Any:
+        from core import owner_auth
+        if owner_auth.required(policy.risk, policy.permission) and not owner_auth.authenticate(f"Authorize {action}"):
+            _audit({**common, "stage": "execute", "outcome": "owner_auth_denied"})
+            return "The action was cancelled because OS-native owner authorization was not completed."
         if replay_token and not action_dedup.reserve(replay_token, force=is_replay):
             _audit({**common, "stage": "execute", "outcome": "duplicate_blocked"})
             return "A matching consequential action is already pending or recently completed. It was not repeated."

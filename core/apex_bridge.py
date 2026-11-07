@@ -1512,6 +1512,49 @@ class ApexHudBridge:
             context = current_context(clear=bool(data.get("clear", False)))
             return {"ok": bool(context), "context": context}
 
+        if action == "owner_auth_status":
+            from core.owner_auth import available, policy
+            return {"ok":True,"available":available(),"policy":policy()}
+
+        if action == "owner_auth_save":
+            from core.owner_auth import available, save_policy
+            enabled=bool(data.get("enabled",False))
+            if enabled and not available(): return {"ok":False,"error":"OS-native owner authorization is unavailable on this device."}
+            saved=save_policy(enabled,data.get("risks") if isinstance(data.get("risks"),list) else [],data.get("permissions") if isinstance(data.get("permissions"),list) else [])
+            return {"ok":True,"policy":saved,"message":"Owner authorization policy saved."}
+
+        if action == "workflow_review_status":
+            from core.workflow_reviewer import latest_review
+            return {"ok":True,"review":latest_review()}
+
+        if action == "strategy_experiments_status":
+            from core.strategy_experiments import snapshot
+            return {"ok":True,"experiments":snapshot()}
+
+        if action == "strategy_experiments_enable":
+            from core.strategy_experiments import set_enabled, snapshot
+            set_enabled(bool(data.get("enabled",False))); return {"ok":True,"experiments":snapshot()}
+
+        if action == "smart_home_status":
+            from core.smart_home import status
+            return {"ok": True, "smart_home": status()}
+
+        if action == "smart_home_configure":
+            from core.smart_home import configure
+            try: result=configure(str(data.get("url") or ""),str(data.get("token") or ""),data.get("entities") if isinstance(data.get("entities"),list) else [])
+            except Exception as exc: return {"ok":False,"error":str(exc)}
+            return {"ok":True,"smart_home":result,"message":"Home Assistant credentials encrypted and permissions saved."}
+
+        if action == "smart_home_discover":
+            from core.smart_home import discover
+            try: entities=discover()
+            except Exception as exc: return {"ok":False,"error":f"Home Assistant discovery failed: {type(exc).__name__}."}
+            return {"ok":True,"entities":entities}
+
+        if action == "smart_home_disconnect":
+            from core.smart_home import disconnect
+            disconnect(); return {"ok":True,"message":"Home Assistant disconnected and credentials removed."}
+
         if action == "provider_routing_get":
             from core.provider_preferences import get
             return {"ok": True, "routing": get()}
