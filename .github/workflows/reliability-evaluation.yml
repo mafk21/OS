@@ -11,12 +11,17 @@ jobs:
   adversarial-and-recovery:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      JARVIS_HUD_NO_LAUNCH: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
+      - name: Native Linux runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libportaudio2 libgl1 libegl1 libxkbcommon-x11-0
       - run: python -m pip install -r requirements.txt pytest pytest-asyncio
       - name: Run measured reliability matrix
         run: >-
