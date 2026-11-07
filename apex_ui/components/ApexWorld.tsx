@@ -538,7 +538,6 @@ export default function ApexWorld() {
     trace,
     tapOrb,
     fireLocalTrace,
-    aiProviders,
   } = useJarvis();
   const [selected, setSelected] = useState<NodeSel | null>(null);
   const [reduced, setReduced] = useState(false);
@@ -795,8 +794,6 @@ export default function ApexWorld() {
           CAM {Math.round(cam.zoom * 100)}% · PRESS 0 TO RESET
         </button>
       )}
-
-      {aiProviders.lastRoute && <div aria-label="Latest response routing" title="Provider · model tier · privacy class · route latency · fallback" style={{position:"fixed",right:18,bottom:54,zIndex:35,padding:"5px 9px",border:`1px solid ${theme.primary}33`,borderRadius:8,background:"rgba(5,11,22,.78)",color:theme.primary,fontFamily:"var(--font-mono)",fontSize:9,letterSpacing:".06em",pointerEvents:"none"}}>{aiProviders.lastRoute.provider.toUpperCase()} · {aiProviders.lastRoute.model} · {aiProviders.lastRoute.data_class.toUpperCase()} · {aiProviders.lastRoute.latency_ms}MS{aiProviders.lastRoute.fallback_used?" · FALLBACK":""}</div>}
 
       <nav className="visually-hidden" aria-label="JARVIS agents">
         <ul>
