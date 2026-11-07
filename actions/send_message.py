@@ -320,6 +320,14 @@ TOOL = {
         ]
     },
     "handler": send_message,
+    "safety": {
+        "risk": "high",
+        "permission": "external_communication",
+        "confirmation": "required",
+        "side_effect": True,
+        "reversible": False,
+        "verification": "verified",
+    },
     "behavior": "NON_BLOCKING",
     "scheduling": "WHEN_IDLE",
 }

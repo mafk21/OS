@@ -46,6 +46,7 @@ class PluginRecord:
     settings: Optional[dict] = None   # optional PLUGIN_SETTINGS schema (config fields)
     behavior: Optional[str] = None    # None = the API's default (blocking)
     scheduling: Optional[str] = None  # None = the API's default (WHEN_IDLE)
+    safety: dict = field(default_factory=dict)
 
 
 class PluginRegistry:
@@ -91,7 +92,12 @@ class PluginRegistry:
         if not get_plugin_enabled(name):
             return f"The '{name}' plugin is currently disabled."
         try:
-            return _call_run(rec.run, parameters, player, session_memory) or "Done."
+            from core.action_safety import execute, policy_for
+            policy = policy_for(name, rec.safety)
+            return execute(
+                name, parameters or {}, policy,
+                lambda: _call_run(rec.run, parameters, player, session_memory) or "Done.",
+            )
         except Exception as e:
             self._logger(f"Plugin '{name}' crashed during run(): {e}")
             self._notify(f"Plugin '{name}' failed — see the console for details.")
@@ -189,7 +195,8 @@ def _validate(module, filename: str) -> PluginRecord:
     return PluginRecord(name=name, description=description.strip(), parameters=parameters,
                          run=run_fn, file=filename, valid=True, error="", settings=settings,
                          behavior=_opt_upper(plugin_meta.get("behavior"), _BEHAVIORS),
-                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING))
+                         scheduling=_opt_upper(plugin_meta.get("scheduling"), _SCHEDULING),
+                         safety=dict(plugin_meta.get("safety") or {}) if isinstance(plugin_meta.get("safety"), dict) else {})
 
 
 def _load_error(path: Path, plugins_dir: Path, exc: Exception) -> str:
