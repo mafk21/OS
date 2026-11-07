@@ -4,6 +4,8 @@ Covers the loader contract (discovery, spec validation, progressive
 disclosure, path safety) and the wiring in main.py / prompt.txt.
 Real files in tmp_path — no Qt, no network, no model.
 """
+import hashlib
+import json
 import pathlib
 
 from core.skill_loader import (
@@ -84,6 +86,30 @@ def test_registry_read_body_and_resource(tmp_path):
     assert "Do the thing." in body
     assert not body.startswith("---")         # frontmatter not re-sent
     assert reg.read("alpha", "references/extra.md") == "deeper detail"
+
+
+def test_manifest_verifies_resources_and_permissions(tmp_path):
+    folder = _mk_skill(tmp_path / "safe", GOOD.format(name="safe", desc="Safe manifest"))
+    (folder / "scripts").mkdir()
+    script = folder / "scripts" / "run.py"
+    script.write_text("print('safe')", encoding="utf-8")
+    digest = hashlib.sha256(script.read_bytes()).hexdigest()
+    (folder / "skill.json").write_text(json.dumps({"version": 1, "permissions": ["read_resources", "shell"], "resources": {"scripts/run.py": digest}}), encoding="utf-8")
+    reg = discover_skills(tmp_path, logger=lambda _msg: None)
+    assert reg.read("safe", "scripts\\run.py") == "print('safe')"
+
+
+def test_manifest_rejects_tampering_and_undeclared_access(tmp_path):
+    folder = _mk_skill(tmp_path / "safe", GOOD.format(name="safe", desc="Safe manifest"))
+    (folder / "note.txt").write_text("private", encoding="utf-8")
+    (folder / "skill.json").write_text(json.dumps({"version": 1, "permissions": ["read_resources"], "resources": {"note.txt": "0" * 64}}), encoding="utf-8")
+    assert discover_skills(tmp_path, logger=lambda _msg: None).names() == set()
+
+
+def test_manifest_rejects_unknown_capability(tmp_path):
+    folder = _mk_skill(tmp_path / "unsafe", GOOD.format(name="unsafe", desc="Unsafe manifest"))
+    (folder / "skill.json").write_text(json.dumps({"version": 1, "permissions": ["disable-safety"], "resources": {}}), encoding="utf-8")
+    assert discover_skills(tmp_path, logger=lambda _msg: None).names() == set()
 
 
 def test_read_unknown_skill_raises(tmp_path):

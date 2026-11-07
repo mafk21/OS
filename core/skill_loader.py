@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import re
 import os
+import hashlib
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -60,6 +62,7 @@ class SkillRecord:
     valid: bool = False
     error: str = ""
     resources: list = field(default_factory=list)   # bundled files, relative
+    manifest: dict = field(default_factory=dict)     # optional verified capability manifest
 
 
 # ── frontmatter ─────────────────────────────────────────────────────────────
@@ -196,6 +199,11 @@ class SkillRegistry:
         if not target.is_file():
             raise ValueError(f"Skill '{key}' has no file '{relpath}'"
                              f" (bundled: {', '.join(rec.resources) or 'none'})")
+        if rec.manifest:
+            if rel not in rec.manifest.get("resources", {}):
+                raise ValueError(f"'{relpath}' is not declared in skill '{key}' manifest")
+            if rel.startswith("scripts/") and "shell" not in rec.manifest.get("permissions", []):
+                raise ValueError(f"skill '{key}' has no shell permission")
         return _read_capped(target, what=f"'{relpath}'")
 
     # -- authoring (the learning loop) ───────────────────────────────────────
@@ -266,7 +274,7 @@ def _resource_listing(folder: Path, limit=40):
             if entry.is_dir(follow_symlinks=False):
                 if entry.name.lower() not in ignored:
                     yield from walk(Path(entry.path))
-            elif entry.is_file(follow_symlinks=False) and entry.name not in ("SKILL.md", "skill.md"):
+            elif entry.is_file(follow_symlinks=False) and entry.name not in ("SKILL.md", "skill.md", "skill.json"):
                 yield str(Path(entry.path).relative_to(folder))
     result = []
     for relative in walk(folder):
@@ -274,6 +282,31 @@ def _resource_listing(folder: Path, limit=40):
         if len(result) >= limit:
             break
     return result
+
+
+def _load_manifest(folder: Path) -> dict:
+    path = folder / "skill.json"
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or raw.get("version") != 1:
+        raise ValueError("skill.json requires manifest version 1")
+    permissions = raw.get("permissions", [])
+    allowed = {"read_resources", "network", "shell", "filesystem", "external_action"}
+    if not isinstance(permissions, list) or any(p not in allowed for p in permissions):
+        raise ValueError("skill.json contains an unknown permission")
+    resources = raw.get("resources", {})
+    if not isinstance(resources, dict):
+        raise ValueError("skill.json resources must map relative paths to sha256 digests")
+    for rel, digest in resources.items():
+        relpath = str(rel).replace("\\", "/")
+        target = (folder / relpath).resolve()
+        if relpath.startswith("/") or not target.is_relative_to(folder.resolve()) or not target.is_file():
+            raise ValueError(f"manifest resource is unsafe or missing: {rel}")
+        actual = hashlib.sha256(target.read_bytes()).hexdigest()
+        if not isinstance(digest, str) or actual != digest.lower():
+            raise ValueError(f"manifest digest mismatch: {rel}")
+    return {"version": 1, "permissions": sorted(set(permissions)), "resources": dict(resources)}
 
 
 def _read_capped(path: Path, what: str) -> str:
@@ -338,6 +371,7 @@ def discover_skills(skills_dir: Path,
             if not body.strip():
                 raise ValueError("SKILL.md body is empty — nothing to follow")
             rec.name, rec.description = name, desc
+            rec.manifest = _load_manifest(folder)
             rec.valid = True
             rec.resources = _resource_listing(folder)
             if name in valid:
