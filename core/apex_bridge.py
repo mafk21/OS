@@ -21,6 +21,7 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 from collections import deque
@@ -2513,6 +2514,10 @@ class ApexHudBridge:
 
         index_file = STATIC_HUD_DIR / "index.html"
 
+        @app.get("/healthz")
+        async def _healthz():
+            return JSONResponse({"ok": True, "service": "jarvis-apex-hud"}, headers={"Cache-Control": "no-store"})
+
         @app.get("/")
         async def _root():
             if index_file.exists():
@@ -2553,6 +2558,27 @@ class ApexHudBridge:
         self._close_timer = threading.Timer(3.0, _check)
         self._close_timer.daemon = True
         self._close_timer.start()
+
+    def _wait_until_http_ready(self, timeout: float) -> bool:
+        """Verify the HTTP path itself, not only uvicorn's listening flag.
+
+        Chromium can otherwise win a narrow Windows startup race and retain its
+        own connection-error page even though uvicorn becomes ready immediately
+        afterwards.  Disable environment proxies because this is loopback-only.
+        """
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        deadline = time.monotonic() + max(0.2, timeout)
+        health_url = f"{self.url.rstrip('/')}/healthz"
+        while time.monotonic() < deadline:
+            try:
+                with opener.open(health_url, timeout=0.5) as response:
+                    if response.status == 200:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        if payload.get("ok") is True:
+                            return True
+            except (OSError, ValueError, urllib.error.URLError):
+                time.sleep(0.04)
+        return False
 
     def start(self, timeout: float = 5.0) -> str:
         """Start the local HTTP/WS server in a background daemon thread."""
@@ -2608,6 +2634,9 @@ class ApexHudBridge:
         if self._start_error is not None or self._server is None or not self._server.started:
             detail = type(self._start_error).__name__ if self._start_error else "server stopped"
             raise RuntimeError(f"Local HUD server failed to start ({detail})")
+        if not self._wait_until_http_ready(timeout):
+            self._server.should_exit = True
+            raise RuntimeError("Local HUD server listened but did not answer its health check")
         self._auto_scheduler.start()
         self._long_tasks.start()
         return self.url
@@ -2678,12 +2707,13 @@ def launch_app_window(url: str) -> bool:
     """Open `url` in a standalone frameless desktop app window (Edge/Chrome --app),
     falling back to the default system browser if no Chromium shell is present."""
     exe = _find_chromium_app_binary()
+    launch_url = f"{url}{'&' if '?' in url else '?'}launch={int(time.time() * 1000)}"
     if exe:
         profile_dir = cfg.CONFIG_DIR / "apex_hud_profile"
         profile_dir.mkdir(parents=True, exist_ok=True)
         args = [
             exe,
-            f"--app={url}",
+            f"--app={launch_url}",
             "--new-window",
             "--window-size=1440,920",
             f"--user-data-dir={profile_dir}",
@@ -2702,6 +2732,6 @@ def launch_app_window(url: str) -> bool:
             print(f"[APEX-HUD] App-window launch failed ({e}), falling back to browser.")
 
     try:
-        return bool(webbrowser.open(url, new=1))
+        return bool(webbrowser.open(launch_url, new=1))
     except Exception:
         return False
