@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import time
+import threading
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -22,6 +23,8 @@ from core import confirm, desktop_shortcut, system_doctor
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKUP_ROOT = ROOT / "config" / "repair_backups"
+_RESULT_LOCK = threading.Lock()
+_LAST_RESULT: RepairResult | None = None
 
 
 @dataclass(frozen=True)
@@ -228,7 +231,16 @@ def execute_repair(repair: str) -> RepairResult:
     key = str(repair).strip().lower()
     if key not in _REPAIRS:
         raise ValueError("Unsupported System Doctor repair")
-    return _REPAIRS[key][2]()
+    result = _REPAIRS[key][2]()
+    global _LAST_RESULT
+    with _RESULT_LOCK:
+        _LAST_RESULT = result
+    return result
+
+
+def repair_status() -> dict[str, object] | None:
+    with _RESULT_LOCK:
+        return _LAST_RESULT.to_dict() if _LAST_RESULT is not None else None
 
 
 def request_repair(repair: str) -> str:

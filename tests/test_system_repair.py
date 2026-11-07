@@ -46,6 +46,21 @@ def test_apex_repair_endpoint_only_stages_confirmation(monkeypatch):
     assert result["message"] == "[CONFIRMATION_PENDING] shortcut"
 
 
+def test_repair_status_reports_verified_outcome(monkeypatch, tmp_path):
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    shortcut = desktop / "JARVIS.lnk"
+    monkeypatch.setattr(system_repair, "BACKUP_ROOT", tmp_path / "backups")
+    monkeypatch.setattr(system_repair.desktop_shortcut, "shortcut_path", lambda: shortcut)
+    monkeypatch.setattr(system_repair.desktop_shortcut, "create", lambda: shortcut.write_text("valid", encoding="utf-8"))
+    monkeypatch.setattr(system_repair.desktop_shortcut, "verify", lambda: {"valid": True})
+
+    system_repair.execute_repair("shortcut")
+    status = system_repair.repair_status()
+
+    assert status and status["ok"] is True and status["verified"] is True
+
+
 def test_shortcut_repair_backs_up_and_verifies(monkeypatch, tmp_path):
     desktop = tmp_path / "Desktop"
     desktop.mkdir()
