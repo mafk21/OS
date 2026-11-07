@@ -2719,6 +2719,11 @@ def launch_app_window(url: str) -> bool:
             f"--user-data-dir={profile_dir}",
             "--no-first-run",
             "--no-default-browser-check",
+            # The HUD is loopback-only. Enterprise/system proxy policies can make
+            # Chromium send 127.0.0.1 through a proxy and show its generic
+            # “page couldn't load” screen even while the Python health check is
+            # green. This dedicated profile never needs a proxy.
+            "--no-proxy-server",
         ]
         popen_cls = getattr(subprocess, "_OrigPopen", subprocess.Popen)
         try:
