@@ -2069,6 +2069,11 @@ class ApexHudBridge:
         async def _activity_get():
             return JSONResponse({"ok": True, "workers": self.get_activity_snapshot()})
 
+        @app.get("/api/hud/operations")
+        async def _operations_get():
+            from core.operations_center import snapshot as operations_snapshot
+            return JSONResponse(await asyncio.to_thread(operations_snapshot))
+
         @app.get("/api/hud/studio")
         async def _studio_get():
             st = await asyncio.to_thread(

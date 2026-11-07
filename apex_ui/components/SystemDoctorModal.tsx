@@ -53,6 +53,7 @@ export default function SystemDoctorModal({
   const [message, setMessage] = useState("");
   const [repairResult, setRepairResult] = useState<{ repair: string; ok: boolean; verified: boolean; message: string; rolled_back: boolean } | null>(null);
   const [lifecycle, setLifecycle] = useState<{ active_id: string; current_id: string; is_active: boolean; other_count: number; installations: { installation_id: string; root: string; revision: string; install_type: string }[] } | null>(null);
+  const [operations, setOperations] = useState<{ tasks: Record<string, number>; actions: Record<string, number>; memory_conflicts: number; providers: Record<string, { failures: number }>; proactive: { enabled: boolean; daily_limit?: number } } | null>(null);
 
   const loadLifecycle = useCallback(async () => {
     try {
@@ -111,7 +112,10 @@ export default function SystemDoctorModal({
     }
   }, []);
 
-  useEffect(() => { void request(); void loadLifecycle(); }, [request, loadLifecycle]);
+  useEffect(() => {
+    void request(); void loadLifecycle();
+    void fetch("/api/hud/operations").then((response) => response.json()).then((data) => { if (data.ok) setOperations(data); }).catch(() => {});
+  }, [request, loadLifecycle]);
   useEffect(() => {
     const poll = window.setInterval(async () => {
       try {
@@ -146,6 +150,17 @@ export default function SystemDoctorModal({
           </div>
           <button type="button" aria-label="Close System Doctor" onClick={onClose} style={iconButton}><X size={18} /></button>
         </header>
+
+        {operations && (
+          <section aria-label="Operations overview" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, marginBottom: 12 }}>
+            {[
+              ["ACTIVE TASKS", Object.entries(operations.tasks).filter(([state]) => !["completed", "failed", "cancelled", "expired"].includes(state)).reduce((sum, [, count]) => sum + count, 0)],
+              ["UNCERTAIN ACTIONS", operations.actions.unverified || 0],
+              ["MEMORY CONFLICTS", operations.memory_conflicts],
+              ["PROACTIVE", operations.proactive.enabled ? `ON · ${operations.proactive.daily_limit || 0}/DAY` : "OFF"],
+            ].map(([label, value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,.025)" }}><div style={meta}>{label}</div><strong style={{ color: primary, fontFamily: "var(--font-mono)", fontSize: 16 }}>{value}</strong></div>)}
+          </section>
+        )}
 
         {report && (
           <div style={{ padding: 12, borderRadius: 12, border: `1px solid ${statusColor(report.overall)}55`, marginBottom: 12 }}>
