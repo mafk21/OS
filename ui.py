@@ -6375,8 +6375,8 @@ class JarvisUI:
                 if os.name == "nt" and not no_launch:
                     def _verify_windows_hud() -> None:
                         bridge = self._apex_bridge
-                        if bridge is not None and bridge._had_ws_client:
-                            print("[APEX-HUD] Windows browser handshake verified.")
+                        if bridge is not None and bridge._had_ws_client and len(bridge._clients) > 0:
+                            print("[APEX-HUD] Windows browser connection verified and active.")
                             _stop_legacy_timers()
                             return
                         # A browser process starting is not proof that its page
@@ -6385,13 +6385,14 @@ class JarvisUI:
                         # Python error. Never strand a public user on a dead page.
                         print("[APEX-HUD] Windows browser did not connect; switching to Classic HUD.")
                         self._classic_mode = True
+                        self._minimize_chromium_hud_windows()
                         if bridge is not None:
                             bridge._auto_close = False
                         self._win.showNormal()
                         self._win.raise_()
                         self._win.activateWindow()
 
-                    QTimer.singleShot(10_000, _verify_windows_hud)
+                    QTimer.singleShot(6_000, _verify_windows_hud)
                 elif embedded:
                     # Embedded loadFinished owns connection/fallback reporting;
                     # retain the existing low-overhead behavior off Windows.
