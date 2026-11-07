@@ -2652,7 +2652,7 @@ class ApexHudBridge:
 
 # ── Native App-Mode Window Discovery (Windows / macOS / Linux) ────────────────
 
-def _find_chromium_app_binary() -> str | None:
+def _chromium_app_binaries() -> list[str]:
     system = platform.system()
     candidates: list[str] = []
 
@@ -2660,6 +2660,12 @@ def _find_chromium_app_binary() -> str | None:
         pf = os.environ.get("ProgramFiles", r"C:\Program Files")
         pf86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
         local = os.environ.get("LOCALAPPDATA", "")
+        # setup.py installs Playwright Chromium. Prefer that known, isolated
+        # runtime over policy-managed Edge, which can refuse loopback app-mode
+        # navigation while still briefly opening a WebSocket.
+        playwright_root = Path(local) / "ms-playwright"
+        for pattern in ("chromium-*/chrome-win64/chrome.exe", "chromium-*/chrome-win/chrome.exe"):
+            candidates.extend(str(path) for path in sorted(playwright_root.glob(pattern), reverse=True))
         candidates.extend(
             [
                 os.path.join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
@@ -2697,19 +2703,27 @@ def _find_chromium_app_binary() -> str | None:
             if found:
                 candidates.append(found)
 
+    result=[]
     for path in candidates:
-        if path and os.path.isfile(path):
-            return path
-    return None
+        if path and os.path.isfile(path) and path not in result:
+            result.append(path)
+    return result
 
 
-def launch_app_window(url: str) -> bool:
+def _find_chromium_app_binary() -> str | None:
+    """Compatibility helper returning the preferred browser shell."""
+    candidates=_chromium_app_binaries()
+    return candidates[0] if candidates else None
+
+
+def launch_app_window(url: str, *, candidate_index: int = 0) -> bool:
     """Open `url` in a standalone frameless desktop app window (Edge/Chrome --app),
     falling back to the default system browser if no Chromium shell is present."""
-    exe = _find_chromium_app_binary()
+    candidates = _chromium_app_binaries()
+    exe = candidates[candidate_index] if 0 <= candidate_index < len(candidates) else None
     launch_url = f"{url}{'&' if '?' in url else '?'}launch={int(time.time() * 1000)}"
     if exe:
-        profile_dir = cfg.CONFIG_DIR / "apex_hud_profile"
+        profile_dir = cfg.CONFIG_DIR / f"apex_hud_profile_v3_{candidate_index}"
         profile_dir.mkdir(parents=True, exist_ok=True)
         args = [
             exe,
@@ -2724,9 +2738,12 @@ def launch_app_window(url: str) -> bool:
             # “page couldn't load” screen even while the Python health check is
             # green. This dedicated profile never needs a proxy.
             "--no-proxy-server",
+            "--disable-features=HttpsUpgrades,HttpsFirstModeV2",
+            "--allow-insecure-localhost",
         ]
         popen_cls = getattr(subprocess, "_OrigPopen", subprocess.Popen)
         try:
+            print(f"[APEX-HUD] Browser shell: {Path(exe).name} (candidate {candidate_index + 1}/{len(candidates)})")
             popen_cls(
                 args,
                 stdout=subprocess.DEVNULL,

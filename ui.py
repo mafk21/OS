@@ -6277,7 +6277,7 @@ class JarvisUI:
                 self._win._on_after_setup_cb = _after_api_key
         else:
             try:
-                from core.apex_bridge import ApexHudBridge, launch_app_window
+                from core.apex_bridge import ApexHudBridge, launch_app_window, _chromium_app_binaries
 
                 self._apex_bridge = ApexHudBridge(
                     self,
@@ -6373,24 +6373,30 @@ class JarvisUI:
                         _tmr.stop()
 
                 if os.name == "nt" and not no_launch:
+                    windows_launch = {"candidate": 0, "max": min(3, len(_chromium_app_binaries()))}
+
                     def _verify_windows_hud() -> None:
                         bridge = self._apex_bridge
                         if bridge is not None and bridge._had_ws_client and len(bridge._clients) > 0:
                             print("[APEX-HUD] Windows browser connection verified and active.")
                             _stop_legacy_timers()
                             return
-                        # A browser process starting is not proof that its page
-                        # loaded. GPU policy, endpoint security, or a broken
-                        # browser profile can prevent the WebSocket without a
-                        # Python error. Never strand a public user on a dead page.
-                        print("[APEX-HUD] Windows browser did not connect; switching to Classic HUD.")
-                        self._classic_mode = True
+                        # Never substitute Mark One/Classic for APEX. Retry with
+                        # another isolated browser runtime; setup.py installs a
+                        # known Playwright Chromium specifically before managed
+                        # Edge/Chrome candidates.
                         self._minimize_chromium_hud_windows()
-                        if bridge is not None:
-                            bridge._auto_close = False
-                        self._win.showNormal()
-                        self._win.raise_()
-                        self._win.activateWindow()
+                        windows_launch["candidate"] += 1
+                        candidate = windows_launch["candidate"]
+                        if candidate < windows_launch["max"]:
+                            print(f"[APEX-HUD] Browser shell did not stay connected; trying candidate {candidate + 1}.")
+                            launch_app_window(hud_url, candidate_index=candidate)
+                            QTimer.singleShot(6_000, _verify_windows_hud)
+                            return
+                        # Final recovery uses the user's normal browser rather
+                        # than showing an unrelated legacy product.
+                        print("[APEX-HUD] App-mode browsers unavailable; opening APEX in the default browser.")
+                        launch_app_window(hud_url, candidate_index=10_000)
 
                     QTimer.singleShot(6_000, _verify_windows_hud)
                 elif embedded:
