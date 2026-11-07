@@ -232,9 +232,11 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
                 note_result(provider, True)
                 return response
             raise RuntimeError("provider returned an empty reply")
-        except Exception as exc:
+        except Exception:
             note_result(provider, False)
-            print(f"[Provider] {provider} rung failed: {type(exc).__name__}")
+            # Provider configuration and exception text can be credential-tainted.
+            # Keep the runtime notice deliberately constant and non-sensitive.
+            print("[Provider] configured rung failed safely")
     return None
 
 
