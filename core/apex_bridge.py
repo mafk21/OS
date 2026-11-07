@@ -194,6 +194,10 @@ class ApexHudBridge:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._clients: set[Any] = set()
         self._had_ws_client = False
+        try:
+            from core.provider import add_route_listener
+            add_route_listener(lambda route: self._broadcast_threadsafe({'type':'route_attribution','last_route':route}))
+        except Exception: pass
         self._background_mode = False
         self._close_timer: threading.Timer | None = None
         self._started = threading.Event()
@@ -1513,6 +1517,20 @@ class ApexHudBridge:
             context = current_context(clear=bool(data.get("clear", False)))
             return {"ok": bool(context), "context": context}
 
+        if action == "phone_devices_status":
+            from core.telegram_bot import paired_devices
+            return {"ok":True,"devices":paired_devices()}
+
+        if action == "phone_device_revoke":
+            from core.telegram_bot import revoke_device
+            try: ok=revoke_device(int(data.get('device_id')))
+            except (TypeError,ValueError): ok=False
+            return {"ok":ok,"message":"Phone access revoked." if ok else "Paired phone was not found."}
+
+        if action == "phone_devices_revoke_all":
+            from core.telegram_bot import revoke_all_devices
+            count=revoke_all_devices(); return {"ok":True,"message":f"Revoked {count} paired phone device(s)."}
+
         if action == "local_voice_diagnostics":
             from core.local_voice_setup import diagnostics
             return {"ok":True,"voice_setup":diagnostics()}
@@ -1559,6 +1577,12 @@ class ApexHudBridge:
             try: entities=discover()
             except Exception as exc: return {"ok":False,"error":f"Home Assistant discovery failed: {type(exc).__name__}."}
             return {"ok":True,"entities":entities}
+
+        if action == "smart_home_undo":
+            from core.smart_home import undo_last
+            try: result=undo_last()
+            except Exception as exc: return {"ok":False,"error":str(exc)}
+            return {"ok":bool(result.get('verified')),"result":result,"message":"Previous smart-home state restored and verified." if result.get('verified') else "Undo was sent but could not be verified."}
 
         if action == "smart_home_disconnect":
             from core.smart_home import disconnect

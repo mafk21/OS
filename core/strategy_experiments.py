@@ -16,6 +16,11 @@ def set_enabled(enabled:bool):
     data=_load(); data['enabled']=bool(enabled); _save(data)
 def propose(name:str, baseline:str, candidate:str):
     data=_load(); key=str(name)[:80]; data.setdefault('experiments',{})[key]={'baseline':baseline[:80],'candidate':candidate[:80],'baseline_ok':0,'baseline_total':0,'candidate_ok':0,'candidate_total':0,'state':'running'}; _save(data)
+def assignment(name:str, subject:str)->str|None:
+    data=_load(); row=data.get('experiments',{}).get(name)
+    if not data.get('enabled') or not row or row.get('state')!='running': return None
+    import hashlib
+    return 'candidate' if int(hashlib.sha256(subject.encode()).hexdigest()[-2:],16)%2 else 'baseline'
 def record(name:str, arm:str, verified:bool):
     data=_load()
     if not data.get('enabled'): return

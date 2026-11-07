@@ -7,6 +7,7 @@ from core.security_vault import encrypt_secret, decrypt_secret
 
 ALLOWED_SERVICES={'light.turn_on','light.turn_off','light.toggle','scene.turn_on','climate.set_temperature','lock.lock','lock.unlock','cover.open_cover','cover.close_cover'}
 PATH=Path(__file__).resolve().parent.parent/'config'/'smart_home.json'
+_LAST_ACTION={}
 
 def _url(value:str)->str:
     parsed=urlparse(value)
@@ -61,4 +62,12 @@ def call(base_url:str, token:str, service:str, entity_id:str, data:dict|None=Non
     if before.get('state') in {'on','off'}: undo=f"{domain}.turn_{before['state']}"
     elif before.get('state') in {'locked','unlocked'}: undo=f"{domain}.{'lock' if before['state']=='locked' else 'unlock'}"
     elif before.get('state') in {'open','closed'}: undo=f"{domain}.{'open_cover' if before['state']=='open' else 'close_cover'}"
-    return {'ok':acknowledged,'status':response.status,'acknowledged':acknowledged,'verified':verified,'before':before.get('state'),'after':after.get('state'),'undo_service':undo}
+    result={'ok':acknowledged,'status':response.status,'acknowledged':acknowledged,'verified':verified,'before':before.get('state'),'after':after.get('state'),'undo_service':undo}
+    if acknowledged and undo: _LAST_ACTION.clear(); _LAST_ACTION.update({'service':undo,'entity_id':entity_id,'created_at':time.time()})
+    return result
+def undo_status()->dict:
+    row=dict(_LAST_ACTION); row['available']=bool(row and time.time()-row.get('created_at',0)<300); return row
+def undo_last()->dict:
+    row=undo_status()
+    if not row.get('available'): raise ValueError('No recent reversible smart-home action')
+    config=_load(); _LAST_ACTION.clear(); return call(config['url'],config['token'],row['service'],row['entity_id'],{})

@@ -805,6 +805,9 @@ export function JarvisProvider({ children }: { children: React.ReactNode }) {
             case "bootstrap":
               applyBootstrap(msg);
               break;
+            case "route_attribution":
+              if (msg.last_route && typeof msg.last_route === "object") setAiProviders(prev => ({...prev,lastRoute:msg.last_route as AiProviderState["lastRoute"]}));
+              break;
             case "state":
               if (typeof msg.raw_state === "string") setRawState(msg.raw_state);
               if (typeof msg.muted === "boolean") setMuted(msg.muted);
