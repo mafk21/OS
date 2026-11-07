@@ -24,6 +24,17 @@ def test_installation_identity_is_stable_and_checkout_specific(monkeypatch, tmp_
     assert first.revision == "abc123"
 
 
+def test_result_has_stable_code_and_machine_readable_state():
+    unavailable = system_doctor.DoctorResult("hud_port", "error", "failed").to_dict()
+    unconfigured = system_doctor.DoctorResult(
+        "provider", "warning", "missing", state="not_configured"
+    ).to_dict()
+
+    assert unavailable["code"] == "JARVIS-HUD-PORT-ERROR"
+    assert unavailable["state"] == "unavailable"
+    assert unconfigured["state"] == "not_configured"
+
+
 def test_doctor_contains_failed_checks_and_never_aborts(monkeypatch):
     monkeypatch.setattr(system_doctor, "installation_identity", lambda: system_doctor.InstallationIdentity(
         installation_id="install", root="/safe", executable="/python", entrypoint="/safe/main.py",
@@ -76,6 +87,19 @@ def test_system_doctor_is_available_through_existing_diagnostics_tool(monkeypatc
     assert "WARNING" in output
 
 
+def test_occupied_preferred_port_reports_verified_fallback(monkeypatch):
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied:
+        occupied.bind(("127.0.0.1", 0))
+        port = occupied.getsockname()[1]
+        monkeypatch.setenv("JARVIS_HUD_PORT", str(port))
+        result = system_doctor._port_check()
+
+    assert result.status == "warning"
+    assert f"preferred={port}" in result.evidence
+    assert "fallback=" in result.evidence
+
+
 def test_support_report_is_bounded_atomic_and_contains_no_credentials(monkeypatch, tmp_path):
     secret = "never-write-this-provider-secret"
     monkeypatch.setattr(system_doctor, "run_doctor", lambda: {
@@ -119,6 +143,30 @@ def test_apex_bridge_exposes_doctor_on_demand(monkeypatch):
 
     assert result["ok"] is True
     assert result["doctor"]["installation"]["installation_id"] == "bridge-install"
+
+
+def test_provider_probe_lists_models_without_generation(monkeypatch):
+    import memory.config_manager as config
+    requested = []
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def read(self, _limit): return b'{"data":[{"id":"gpt-test"}]}'
+    monkeypatch.setattr(config, "get_provider", lambda: "openai")
+    monkeypatch.setattr(config, "get_openai_key", lambda: "private-key-material")
+    monkeypatch.setattr(config, "get_gemini_key", lambda: None)
+    monkeypatch.setattr(config, "get_anthropic_key", lambda: None)
+    monkeypatch.setattr(config, "get_local_llm_cfg", lambda: {})
+    monkeypatch.setattr(config, "get_openai_cfg", lambda: {"base_url": "https://provider.invalid/v1", "model": "gpt-test"})
+    monkeypatch.setattr(system_doctor.urllib.request, "urlopen", lambda req, timeout: requested.append((req, timeout)) or Response())
+
+    result = system_doctor._provider_check()
+
+    assert result.status == "ok"
+    assert requested[0][0].full_url.endswith("/models")
+    assert "chat/completions" not in requested[0][0].full_url
+    assert "private-key-material" not in json.dumps(result.to_dict())
+    assert requested[0][1] == 5
 
 
 def test_api_key_check_never_discloses_key_prefixes(monkeypatch):

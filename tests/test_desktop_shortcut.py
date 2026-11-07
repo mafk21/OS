@@ -94,6 +94,25 @@ def test_windows_uses_native_shortcut_api_without_source_interpolation(monkeypat
     assert captured["kwargs"]["check"] is True
 
 
+def test_linux_verify_rejects_shortcut_for_another_installation(monkeypatch, tmp_path):
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+    launcher = tmp_path / "python"
+    launcher.write_text("", encoding="utf-8")
+    (desktop / "JARVIS.desktop").write_text(
+        "[Desktop Entry]\nExec=\"/old/python\" \"/old/main.py\"\nPath=/old\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(desktop_shortcut.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(desktop_shortcut, "desktop_directory", lambda: desktop)
+    monkeypatch.setattr(desktop_shortcut, "_launch_target", lambda: (launcher, [str(launcher), str(tmp_path / "main.py")]))
+
+    result = desktop_shortcut.verify()
+
+    assert result["valid"] is False
+    assert result["reason"] == "target_mismatch"
+
+
 def test_windows_fallback_launcher_uses_supported_python(tmp_path):
     install_jarvis.write_native_launchers(tmp_path)
     launcher = (tmp_path / "Start_JARVIS.bat").read_text(encoding="utf-8")

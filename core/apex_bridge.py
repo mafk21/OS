@@ -1048,6 +1048,33 @@ class ApexHudBridge:
             try:
                 from core.system_doctor import run_doctor, write_support_report
                 report = run_doctor()
+                scheduler_thread = getattr(self._auto_scheduler, "_thread", None)
+                runtime_ok = bool(
+                    self._server is not None and self._server.started
+                    and self._thread is not None and self._thread.is_alive()
+                )
+                scheduler_ok = bool(scheduler_thread and scheduler_thread.is_alive())
+                runtime_results = [
+                    {
+                        "check": "hud_runtime", "status": "ok" if runtime_ok else "warning",
+                        "state": "healthy" if runtime_ok else "degraded",
+                        "code": "JARVIS-HUD-RUNTIME-" + ("OK" if runtime_ok else "WARNING"),
+                        "summary": "The active HUD server is running." if runtime_ok else "No active HUD server was observed.",
+                        "evidence": "observed by APEX bridge", "remediation": "Restart the HUD or use Classic UI." if not runtime_ok else "",
+                    },
+                    {
+                        "check": "scheduler_runtime", "status": "ok" if scheduler_ok else "warning",
+                        "state": "healthy" if scheduler_ok else "degraded",
+                        "code": "JARVIS-SCHEDULER-RUNTIME-" + ("OK" if scheduler_ok else "WARNING"),
+                        "summary": "The automation scheduler is running." if scheduler_ok else "The automation scheduler is not running.",
+                        "evidence": "observed by APEX bridge", "remediation": "Restart JARVIS." if not scheduler_ok else "",
+                    },
+                ]
+                report["results"].extend(runtime_results)
+                for item in runtime_results:
+                    report["counts"][item["status"]] += 1
+                if any(item["status"] == "warning" for item in runtime_results) and report["overall"] == "ok":
+                    report["overall"] = "warning"
                 result = {"ok": True, "doctor": report}
                 if operation == "report":
                     result["report_path"] = str(write_support_report())

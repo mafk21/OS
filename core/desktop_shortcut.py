@@ -96,6 +96,49 @@ def exists() -> bool:
     return shortcut_path().is_file()
 
 
+def verify() -> dict[str, object]:
+    """Verify that the saved shortcut launches this exact installation."""
+    path = shortcut_path()
+    if not path.is_file():
+        return {"valid": False, "path": str(path), "reason": "missing"}
+    target, argv = _launch_target()
+    system = platform.system()
+    try:
+        if system == "Windows":
+            env = os.environ.copy()
+            env["JARVIS_SHORTCUT"] = str(path)
+            script = (
+                "$ErrorActionPreference='Stop';"
+                "$w=New-Object -ComObject WScript.Shell;"
+                "$s=$w.CreateShortcut($env:JARVIS_SHORTCUT);"
+                "[pscustomobject]@{target=$s.TargetPath;arguments=$s.Arguments;"
+                "workdir=$s.WorkingDirectory}|ConvertTo-Json -Compress"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                check=True, capture_output=True, text=True, timeout=10, env=env,
+            )
+            import json
+            saved = json.loads(result.stdout)
+            expected_args = " ".join(_windows_shortcut_argument(Path(arg)) for arg in argv[1:])
+            valid = (
+                os.path.normcase(saved.get("target", "")) == os.path.normcase(str(target))
+                and saved.get("arguments", "") == expected_args
+                and os.path.normcase(saved.get("workdir", "")) == os.path.normcase(str(_ROOT))
+            )
+            return {"valid": valid, "path": str(path), "reason": "ok" if valid else "target_mismatch"}
+        text = path.read_text(encoding="utf-8")
+        if system == "Darwin":
+            expected = "exec " + " ".join(shlex.quote(part) for part in argv)
+            valid = expected in text and ("cd " + shlex.quote(str(_ROOT))) in text
+        else:
+            expected = "Exec=" + " ".join(_desktop_exec_arg(part) for part in argv)
+            valid = expected in text and f"Path={_ROOT}" in text
+        return {"valid": valid, "path": str(path), "reason": "ok" if valid else "target_mismatch"}
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return {"valid": False, "path": str(path), "reason": type(exc).__name__}
+
+
 def create() -> Path:
     """Create or replace the current user's desktop shortcut."""
     desktop = desktop_directory()
