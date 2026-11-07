@@ -1046,6 +1046,10 @@ class ApexHudBridge:
         if action == "system_doctor":
             operation = str(data.get("operation") or "run").strip().lower()
             try:
+                if operation == "repair":
+                    from core.system_repair import request_repair
+                    message = request_repair(str(data.get("repair") or ""))
+                    return {"ok": message.startswith("[CONFIRMATION_PENDING]"), "message": message}
                 from core.system_doctor import run_doctor, write_support_report
                 report = run_doctor()
                 scheduler_thread = getattr(self._auto_scheduler, "_thread", None)

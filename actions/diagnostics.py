@@ -140,6 +140,9 @@ _HINTS = {
 
 def diagnostics_check(parameters: dict, player=None, **_) -> str:
     action = str((parameters or {}).get("action", "full") or "full").strip().lower()
+    if action == "repair":
+        from core.system_repair import request_repair
+        return request_repair(str((parameters or {}).get("repair") or ""))
     if action in {"system", "identity", "report"}:
         from core.system_doctor import run_doctor, write_support_report
         report = run_doctor()
@@ -199,15 +202,20 @@ TOOL = {
         "connectivity, disk storage, installed skills, camera, and local LLM "
         "(Ollama) with actionable fix hints. System Doctor also reports the exact "
         "running installation and core product health without exposing credentials. "
-        "Actions: full | system | identity | report | audio | network | storage | skills."
+        "Actions: full | system | identity | report | repair | audio | network | storage | skills. "
+        "Repair requires an allowlisted repair name and always opens a human confirmation."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "full | system | identity | report | audio | network | storage | skills",
-            }
+                "description": "full | system | identity | report | repair | audio | network | storage | skills",
+            },
+            "repair": {
+                "type": "STRING",
+                "description": "For action=repair: shortcut | permissions | dependencies | hud | soul_backup",
+            },
         },
     },
     "required": [],
