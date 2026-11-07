@@ -1495,12 +1495,22 @@ class ApexHudBridge:
             return {"ok": True}
 
         if action == "browser_companion_pair":
-            from core.browser_companion import pairing_token
-            return {"ok": True, "token": pairing_token(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+            from core.browser_companion import pairing_token, status
+            return {"ok": True, "token": pairing_token(), "status": status(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+
+        if action == "browser_companion_status":
+            from core.browser_companion import status
+            return {"ok": True, "status": status(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+
+        if action == "browser_companion_revoke":
+            from core.browser_companion import revoke
+            revoke()
+            return {"ok": True, "message": "Browser companion access revoked."}
 
         if action == "browser_companion_context":
-            context = getattr(self, "_browser_companion_context", None)
-            return {"ok": bool(context), "context": context or {}}
+            from core.browser_companion import current_context
+            context = current_context(clear=bool(data.get("clear", False)))
+            return {"ok": bool(context), "context": context}
 
         if action == "provider_routing_get":
             from core.provider_preferences import get
@@ -2147,15 +2157,14 @@ class ApexHudBridge:
 
         @app.post("/api/hud/browser-companion/context")
         async def _browser_companion_context(req: Request):
-            from core.browser_companion import authorized, sanitize_context
+            from core.browser_companion import authorized, store_context
             if not authorized(req.headers.get("x-jarvis-token", "")):
                 return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
             try:
-                context = sanitize_context(await req.json())
+                context = store_context(await req.json())
             except Exception:
                 return JSONResponse({"ok": False, "error": "invalid context"}, status_code=400, headers={"Access-Control-Allow-Origin": "*"})
-            self._browser_companion_context = context
-            return JSONResponse({"ok": True}, headers={"Access-Control-Allow-Origin": "*"})
+            return JSONResponse({"ok": True, "received_at": context["received_at"]}, headers={"Access-Control-Allow-Origin": "*"})
 
         @app.get("/api/hud/activity")
         async def _activity_get():

@@ -56,6 +56,7 @@ export default function SystemDoctorModal({
   const [operations, setOperations] = useState<{ tasks: Record<string, number>; actions: Record<string, number>; memory_conflicts: number; providers: Record<string, { failures: number }>; proactive: { enabled: boolean; daily_limit?: number } } | null>(null);
   const [proactivePolicy, setProactivePolicy] = useState<{ enabled: boolean; use_memory: boolean; use_monitors: boolean; use_recent_conversation: boolean; quiet_start: number; quiet_end: number; daily_limit: number; allowed_topics: string[]; blocked_topics: string[]; minimum_urgency: string } | null>(null);
   const [providerRouting, setProviderRouting] = useState<{ provider: string; cost_priority: string; latency_priority: string } | null>(null);
+  const [browserCompanion, setBrowserCompanion] = useState<{ paired: boolean; connected: boolean; last_received_at?: number; extension_path?: string; token?: string } | null>(null);
 
   const loadLifecycle = useCallback(async () => {
     try {
@@ -114,6 +115,16 @@ export default function SystemDoctorModal({
     }
   }, []);
 
+  const browserAction = useCallback(async (action: "browser_companion_pair" | "browser_companion_revoke") => {
+    try {
+      const response = await fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const data = await response.json();
+      if (action === "browser_companion_pair" && data.ok) setBrowserCompanion({ ...data.status, token: data.token, extension_path: data.extension_path });
+      if (action === "browser_companion_revoke" && data.ok) setBrowserCompanion({ paired: false, connected: false });
+      setMessage(data.message || (data.ok ? "Browser companion updated." : data.error));
+    } catch { setMessage("Browser companion request failed safely."); }
+  }, []);
+
   const saveProviderRouting = useCallback(async (next: NonNullable<typeof providerRouting>) => {
     setProviderRouting(next);
     try {
@@ -137,6 +148,7 @@ export default function SystemDoctorModal({
     void fetch("/api/hud/operations").then((response) => response.json()).then((data) => { if (data.ok) setOperations(data); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "proactive_policy_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProactivePolicy(data.policy); }).catch(() => {});
     void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "provider_routing_get" }) }).then((response) => response.json()).then((data) => { if (data.ok) setProviderRouting(data.routing); }).catch(() => {});
+    void fetch("/api/hud/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "browser_companion_status" }) }).then((response) => response.json()).then((data) => { if (data.ok) setBrowserCompanion({ ...data.status, extension_path: data.extension_path }); }).catch(() => {});
   }, [request, loadLifecycle]);
   useEffect(() => {
     const poll = window.setInterval(async () => {
@@ -181,6 +193,16 @@ export default function SystemDoctorModal({
               ["MEMORY CONFLICTS", operations.memory_conflicts],
               ["PROACTIVE", operations.proactive.enabled ? `ON · ${operations.proactive.daily_limit || 0}/DAY` : "OFF"],
             ].map(([label, value]) => <div key={String(label)} style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, background: "rgba(255,255,255,.025)" }}><div style={meta}>{label}</div><strong style={{ color: primary, fontFamily: "var(--font-mono)", fontSize: 16 }}>{value}</strong></div>)}
+          </section>
+        )}
+
+        {browserCompanion && (
+          <section aria-label="Browser companion" style={{ border: "1px solid rgba(255,255,255,.09)", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+            <div style={{ ...meta, marginBottom: 7 }}>BROWSER COMPANION · {browserCompanion.connected ? "CONNECTED" : browserCompanion.paired ? "PAIRED" : "NOT PAIRED"}</div>
+            <div style={{ color: "rgba(240,237,232,.7)", fontSize: 11 }}>Load the extension from <code>{browserCompanion.extension_path || "browser_extension"}</code>. It shares only the active tab after you press Send.</div>
+            {browserCompanion.token && <div style={{ ...meta, overflowWrap: "anywhere", marginTop: 7 }}>Pairing token: <code>{browserCompanion.token}</code></div>}
+            <button type="button" onClick={() => void browserAction("browser_companion_pair")} style={{ ...actionButton, color: primary, borderColor: `${primary}77`, marginTop: 8 }}>{browserCompanion.paired ? "Show pairing token" : "Pair extension"}</button>
+            {browserCompanion.paired && <button type="button" onClick={() => void browserAction("browser_companion_revoke")} style={{ ...actionButton, marginTop: 8, marginLeft: 7 }}>Revoke access</button>}
           </section>
         )}
 

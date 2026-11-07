@@ -6,9 +6,13 @@ def test_browser_companion_token_and_context_are_bounded(monkeypatch,tmp_path):
     monkeypatch.setattr(browser_companion,'PATH',tmp_path/'pair.json')
     token=browser_companion.pairing_token()
     assert browser_companion.authorized(token) and not browser_companion.authorized(token+'x')
-    result=browser_companion.sanitize_context({'url':'https://example.com','title':'x','text':'a'*20000})
+    result=browser_companion.store_context({'url':'https://example.com','title':'x','text':'a'*20000})
     assert len(result['text'])==browser_companion.MAX_TEXT
+    assert browser_companion.status()['connected'] is True
+    assert browser_companion.current_context()['url']=='https://example.com'
     assert token not in json.dumps(result)
+    browser_companion.revoke()
+    assert browser_companion.status()=={'paired':False,'connected':False,'last_received_at':None}
 
 
 def test_browser_companion_rejects_non_web_pages():
