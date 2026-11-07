@@ -21,6 +21,13 @@ def test_windows_transient_websocket_disconnect_cannot_quit_jarvis():
     assert 'auto_close_on_disconnect=(os.name != "nt")' in source
     assert 'self._apex_bridge._auto_close = os.name != "nt"' in source
 
+def test_windows_requires_real_browser_handshake_or_shows_classic():
+    source=(ROOT/'ui.py').read_text(encoding='utf-8')
+    assert 'bridge._had_ws_client' in source
+    assert 'QTimer.singleShot(10_000, _verify_windows_hud)' in source
+    assert 'Windows browser did not connect; switching to Classic HUD.' in source
+    assert 'self._win.showNormal()' in source
+
 def test_failed_embedded_hud_retries_then_falls_back_without_quitting():
     source=(ROOT/'ui.py').read_text(encoding='utf-8')
     assert 'setQuitOnLastWindowClosed(False)' in source

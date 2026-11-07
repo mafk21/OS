@@ -6365,10 +6365,41 @@ class JarvisUI:
                         if platform.system() == "Windows":
                             print("[APEX-HUD] Opening dedicated Windows HUD window.")
                         launch_app_window(hud_url)
-                # Stop all legacy paint/metric QTimers (~250 Hz combined) so the
-                # hidden PyQt6 avatar & canvas consume zero CPU / Python GIL.
-                for _tmr in self._win.findChildren(QTimer):
-                    _tmr.stop()
+                def _stop_legacy_timers() -> None:
+                    # Stop legacy paint/metric QTimers only after APEX proves it
+                    # can establish its WebSocket. Keeping them alive until then
+                    # makes the built-in Classic HUD a real automatic fallback.
+                    for _tmr in self._win.findChildren(QTimer):
+                        _tmr.stop()
+
+                if os.name == "nt" and not no_launch:
+                    def _verify_windows_hud() -> None:
+                        bridge = self._apex_bridge
+                        if bridge is not None and bridge._had_ws_client:
+                            print("[APEX-HUD] Windows browser handshake verified.")
+                            _stop_legacy_timers()
+                            return
+                        # A browser process starting is not proof that its page
+                        # loaded. GPU policy, endpoint security, or a broken
+                        # browser profile can prevent the WebSocket without a
+                        # Python error. Never strand a public user on a dead page.
+                        print("[APEX-HUD] Windows browser did not connect; switching to Classic HUD.")
+                        self._classic_mode = True
+                        if bridge is not None:
+                            bridge._auto_close = False
+                        self._win.showNormal()
+                        self._win.raise_()
+                        self._win.activateWindow()
+
+                    QTimer.singleShot(10_000, _verify_windows_hud)
+                elif embedded:
+                    # Embedded loadFinished owns connection/fallback reporting;
+                    # retain the existing low-overhead behavior off Windows.
+                    _stop_legacy_timers()
+                elif no_launch:
+                    # Headless/no-launch mode intentionally has no browser
+                    # handshake and must not unexpectedly show Classic.
+                    _stop_legacy_timers()
                 print(f"[APEX-HUD] Desktop HUD online -> {hud_url}")
             except Exception as exc:
                 print(f"[APEX-HUD] Falling back to classic UI: {exc}")
