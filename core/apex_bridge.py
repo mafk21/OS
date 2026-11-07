@@ -1043,6 +1043,21 @@ class ApexHudBridge:
                     "taste_profile": taste_manager.status(),
                 }
 
+        if action == "system_doctor":
+            operation = str(data.get("operation") or "run").strip().lower()
+            try:
+                from core.system_doctor import run_doctor, write_support_report
+                report = run_doctor()
+                result = {"ok": True, "doctor": report}
+                if operation == "report":
+                    result["report_path"] = str(write_support_report())
+                return result
+            except Exception as exc:
+                return {
+                    "ok": False,
+                    "error": f"System Doctor failed safely ({type(exc).__name__}).",
+                }
+
         if action == "desktop_shortcut":
             operation = str(data.get("operation") or "status").strip().lower()
             try:

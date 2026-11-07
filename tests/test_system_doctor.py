@@ -108,6 +108,19 @@ def test_memory_check_reports_filename_not_private_contents(monkeypatch, tmp_pat
     assert "broken-private-content" not in json.dumps(result.to_dict())
 
 
+def test_apex_bridge_exposes_doctor_on_demand(monkeypatch):
+    from core.apex_bridge import ApexHudBridge
+    monkeypatch.setattr(system_doctor, "run_doctor", lambda: {
+        "schema_version": 1, "overall": "ok", "counts": {"ok": 1, "warning": 0, "error": 0},
+        "installation": {"installation_id": "bridge-install"}, "results": [],
+    })
+
+    result = ApexHudBridge(None, port=0).handle_action({"action": "system_doctor"})
+
+    assert result["ok"] is True
+    assert result["doctor"]["installation"]["installation_id"] == "bridge-install"
+
+
 def test_api_key_check_never_discloses_key_prefixes(monkeypatch):
     import memory.config_manager as config
     gemini = "gemini-private-material"
