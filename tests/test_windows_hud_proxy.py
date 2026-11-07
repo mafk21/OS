@@ -16,6 +16,11 @@ def test_windows_uses_dedicated_browser_shell_not_unreliable_qt_webengine():
     assert 'use_embedded_hud = os.name != "nt"' in source
     assert 'setQuitOnLastWindowClosed(False)' in source
 
+def test_windows_transient_websocket_disconnect_cannot_quit_jarvis():
+    source=(ROOT/'ui.py').read_text(encoding='utf-8')
+    assert 'auto_close_on_disconnect=(os.name != "nt")' in source
+    assert 'self._apex_bridge._auto_close = os.name != "nt"' in source
+
 def test_failed_embedded_hud_retries_then_falls_back_without_quitting():
     source=(ROOT/'ui.py').read_text(encoding='utf-8')
     assert 'setQuitOnLastWindowClosed(False)' in source
