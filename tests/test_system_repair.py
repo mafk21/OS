@@ -79,6 +79,16 @@ def test_failed_shortcut_verification_rolls_back(monkeypatch, tmp_path):
     assert shortcut.read_text(encoding="utf-8") == "old target"
 
 
+def test_hud_port_repair_selects_and_verifies_loopback_port(monkeypatch):
+    monkeypatch.setenv("JARVIS_HUD_PORT", "invalid")
+
+    result = system_repair.execute_repair("hud_port")
+
+    assert result.ok and result.verified
+    assert 1 <= int(system_repair.os.environ["JARVIS_HUD_PORT"]) <= 65535
+    assert "next HUD start" in result.message
+
+
 def test_soul_restore_validates_backup_and_preserves_current(monkeypatch, tmp_path):
     from core.soul.models import SoulState, utc_now_iso
     memory = tmp_path / "memory"

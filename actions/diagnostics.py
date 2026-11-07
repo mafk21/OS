@@ -214,7 +214,7 @@ TOOL = {
             },
             "repair": {
                 "type": "STRING",
-                "description": "For action=repair: shortcut | permissions | dependencies | hud | soul_backup",
+                "description": "For action=repair: shortcut | permissions | dependencies | hud | hud_port | soul_backup",
             },
         },
     },

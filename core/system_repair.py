@@ -123,6 +123,30 @@ def _repair_dependencies() -> RepairResult:
                         else "The supported installer reported a dependency repair failure.")
 
 
+def _repair_hud_port() -> RepairResult:
+    import socket
+    previous = os.environ.get("JARVIS_HUD_PORT")
+    preferred = 8765
+    for port in range(preferred, preferred + 100):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind(("127.0.0.1", port))
+            os.environ["JARVIS_HUD_PORT"] = str(port)
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as verify:
+                verify.bind(("127.0.0.1", port))
+            return RepairResult("hud_port", True, True,
+                                f"Selected and verified HUD port {port} for the next HUD start.")
+        except OSError:
+            continue
+    if previous is None:
+        os.environ.pop("JARVIS_HUD_PORT", None)
+    else:
+        os.environ["JARVIS_HUD_PORT"] = previous
+    return RepairResult("hud_port", False, False,
+                        "No safe local HUD port was available; the previous setting was retained.",
+                        rolled_back=True)
+
+
 def _repair_hud() -> RepairResult:
     hud = ROOT / "apex_ui" / "static_hud"
     package = ROOT / "apex_ui" / "package-lock.json"
@@ -190,6 +214,7 @@ _REPAIRS: dict[str, tuple[str, str, Callable[[], RepairResult]]] = {
     "permissions": ("Repair JARVIS data permissions?", "Back up current modes, grant this user required local access, and verify it.", _repair_permissions),
     "dependencies": ("Repair JARVIS dependencies?", "Run only the repository's supported locked installer. This may download packages.", _repair_dependencies),
     "hud": ("Rebuild the APEX HUD?", "Back up existing HUD assets, run the locked npm build, verify it, and roll back on failure.", _repair_hud),
+    "hud_port": ("Select a safe HUD port?", "Find and verify an available loopback port for the next HUD start without closing other applications.", _repair_hud_port),
     "soul_backup": ("Restore Soul from validated backup?", "Preserve current state, validate the last-known-good backup, restore it, and verify it.", _repair_soul_backup),
 }
 
