@@ -105,3 +105,16 @@ def test_restart_helper_waits_then_launches(monkeypatch, tmp_path):
     assert result == 0
     assert launched[0][0] == ["python", "main.py"]
     assert launched[0][1]["cwd"] == str(tmp_path.resolve())
+
+
+def test_restart_helper_rejects_different_installation_identity(tmp_path):
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "installation.json").write_text('{"installation_id":"expected"}', encoding="utf-8")
+
+    result = restart_helper.main([
+        "--parent", "123", "--cwd", str(tmp_path),
+        "--installation-id", "different", "--", "python", "main.py"
+    ])
+
+    assert result == 4

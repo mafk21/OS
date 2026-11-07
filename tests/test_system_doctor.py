@@ -8,6 +8,8 @@ from core import system_doctor
 
 
 def test_installation_identity_is_stable_and_checkout_specific(monkeypatch, tmp_path):
+    from core import installation_registry
+    monkeypatch.setattr(installation_registry, "registry_path", lambda: tmp_path / "registry.json")
     root = tmp_path / "JARVIS current"
     root.mkdir()
     (root / "main.py").write_text("", encoding="utf-8")
@@ -18,7 +20,7 @@ def test_installation_identity_is_stable_and_checkout_specific(monkeypatch, tmp_
     second = system_doctor.installation_identity()
 
     assert first.installation_id == second.installation_id
-    assert len(first.installation_id) == 16
+    assert len(first.installation_id) == 36
     assert first.root == str(root.resolve())
     assert first.entrypoint == str((root / "main.py").resolve())
     assert first.revision == "abc123"

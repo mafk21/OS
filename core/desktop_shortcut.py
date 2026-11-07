@@ -139,8 +139,17 @@ def verify() -> dict[str, object]:
         return {"valid": False, "path": str(path), "reason": type(exc).__name__}
 
 
-def create() -> Path:
-    """Create or replace the current user's desktop shortcut."""
+def create(*, allow_inactive: bool = False) -> Path:
+    """Create or replace the shortcut for the explicitly active installation."""
+    if not allow_inactive:
+        from core.system_doctor import installation_identity
+        from core import installation_registry
+        identity = installation_identity()
+        lifecycle = installation_registry.status(identity.installation_id)
+        if not lifecycle["is_active"]:
+            raise RuntimeError(
+                "This JARVIS installation is not active; make it active before replacing the Desktop shortcut"
+            )
     desktop = desktop_directory()
     desktop.mkdir(parents=True, exist_ok=True)
     destination = shortcut_path()

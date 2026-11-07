@@ -1043,6 +1043,22 @@ class ApexHudBridge:
                     "taste_profile": taste_manager.status(),
                 }
 
+        if action == "installation_lifecycle":
+            from core.system_doctor import installation_identity
+            from core import installation_registry
+            identity = installation_identity()
+            operation = str(data.get("operation") or "status").strip().lower()
+            if operation == "make_active":
+                message = installation_registry.request_make_active(identity.installation_id)
+                return {"ok": True, "message": message, "lifecycle": installation_registry.status(identity.installation_id)}
+            if operation == "unregister":
+                requested_id = str(data.get("installation_id") or identity.installation_id)
+                known_ids = {str(row.get("installation_id")) for row in installation_registry.status(identity.installation_id)["installations"]}
+                target_id = requested_id if requested_id in known_ids else identity.installation_id
+                message = installation_registry.request_unregister(target_id)
+                return {"ok": True, "message": message, "lifecycle": installation_registry.status(identity.installation_id)}
+            return {"ok": True, "identity": identity.__dict__, "lifecycle": installation_registry.status(identity.installation_id)}
+
         if action == "system_doctor":
             operation = str(data.get("operation") or "run").strip().lower()
             try:

@@ -23,6 +23,10 @@ def test_apex_health_center_has_accessible_controls_and_redacted_export():
     assert "Export redacted report" in MODAL
     assert 'event.key === "Escape"' in MODAL
     assert "maxHeight" in MODAL and "overflow" in MODAL
+    assert "Make this installation active" in MODAL
+    assert "Unregister this metadata" in MODAL
+    assert "Unregister obsolete metadata" in MODAL
+    assert 'action: "installation_lifecycle"' in MODAL
 
 
 def test_repairs_are_staged_not_executed_by_frontend():

@@ -7,7 +7,6 @@ consume the same evidence.
 """
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import os
@@ -83,16 +82,35 @@ def installation_identity() -> InstallationIdentity:
     install_type = "packaged" if getattr(sys, "frozen", False) else (
         "git" if (root / ".git").exists() else "source"
     )
-    # The path is intentionally hashed, not exposed as a globally correlatable
-    # hardware identifier. Two checkouts on one machine get different IDs.
-    material = f"jarvis-installation-v1\0{os.path.normcase(str(root))}".encode("utf-8")
+    revision = _revision()
+    from core import installation_registry
+    record = installation_registry.ensure_current(
+        install_type=install_type, revision=revision, executable=str(executable), root=root
+    )
     return InstallationIdentity(
-        installation_id=hashlib.sha256(material).hexdigest()[:16],
+        installation_id=str(record["installation_id"]),
         root=str(root), executable=str(executable),
         entrypoint=str((root / "main.py").resolve()), install_type=install_type,
-        revision=_revision(), platform=platform.system() or "Unknown",
+        revision=revision, platform=platform.system() or "Unknown",
         python=platform.python_version(),
     )
+
+
+def _lifecycle_check() -> DoctorResult:
+    identity = installation_identity()
+    from core import installation_registry
+    lifecycle = installation_registry.status(identity.installation_id)
+    if not lifecycle["is_active"]:
+        return DoctorResult("installation_lifecycle", "warning",
+                            "This running installation is not the active JARVIS installation.",
+                            evidence=f"active={lifecycle['active_id']}; current={identity.installation_id}",
+                            remediation="Use Make this installation active before replacing app shortcuts.")
+    if lifecycle["other_count"]:
+        return DoctorResult("installation_lifecycle", "warning",
+                            "Other registered JARVIS installations exist on this device.",
+                            evidence=f"registered_others={lifecycle['other_count']}",
+                            remediation="Keep them registered for intentional side-by-side use, or unregister obsolete entries.")
+    return DoctorResult("installation_lifecycle", "ok", "This is the active registered JARVIS installation.")
 
 
 def _runtime_check() -> DoctorResult:
@@ -438,7 +456,7 @@ def _source_state_check() -> DoctorResult:
 
 
 _CHECKS: tuple[Callable[[], DoctorResult], ...] = (
-    _installation_check, _runtime_check, _dependencies_check, _storage_check,
+    _installation_check, _lifecycle_check, _runtime_check, _dependencies_check, _storage_check,
     _config_check, _provider_check, _permissions_check, _memory_check,
     _backup_check, _database_check, _audio_check, _voice_controls_check, _hud_check,
     _port_check, _browser_check, _shortcut_check, _source_state_check,

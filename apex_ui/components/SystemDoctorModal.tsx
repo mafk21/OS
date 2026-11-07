@@ -52,6 +52,26 @@ export default function SystemDoctorModal({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [repairResult, setRepairResult] = useState<{ repair: string; ok: boolean; verified: boolean; message: string; rolled_back: boolean } | null>(null);
+  const [lifecycle, setLifecycle] = useState<{ active_id: string; current_id: string; is_active: boolean; other_count: number; installations: { installation_id: string; root: string; revision: string; install_type: string }[] } | null>(null);
+
+  const loadLifecycle = useCallback(async () => {
+    try {
+      const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "installation_lifecycle", operation: "status" }) });
+      const data = await response.json();
+      if (data.lifecycle) setLifecycle(data.lifecycle);
+    } catch {}
+  }, []);
+
+  const lifecycleAction = useCallback(async (operation: "make_active" | "unregister", installationId?: string) => {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "installation_lifecycle", operation, installation_id: installationId }) });
+      const data = await response.json();
+      setMessage(data.message || data.error || "Lifecycle action was not staged.");
+      if (data.lifecycle) setLifecycle(data.lifecycle);
+    } catch { setMessage("Lifecycle request failed safely. Nothing was changed."); }
+    finally { setBusy(false); }
+  }, []);
 
   const request = useCallback(async (operation: "run" | "report" = "run") => {
     setBusy(true);
@@ -91,7 +111,7 @@ export default function SystemDoctorModal({
     }
   }, []);
 
-  useEffect(() => { void request(); }, [request]);
+  useEffect(() => { void request(); void loadLifecycle(); }, [request, loadLifecycle]);
   useEffect(() => {
     const poll = window.setInterval(async () => {
       try {
@@ -137,8 +157,28 @@ export default function SystemDoctorModal({
             <div style={{ ...meta, marginTop: 8, overflowWrap: "anywhere" }}>
               ID {report.installation.installation_id} · {report.installation.install_type} · {report.installation.revision}<br />
               Python {report.installation.python} · {report.installation.platform}<br />
-              {report.installation.root}
+              {report.installation.root}<br />
+              {lifecycle ? `${lifecycle.is_active ? "ACTIVE INSTALLATION" : "NOT ACTIVE"} · ${lifecycle.other_count} other registered` : "Loading lifecycle…"}
             </div>
+            {lifecycle && !lifecycle.is_active && (
+              <button type="button" disabled={busy} onClick={() => void lifecycleAction("make_active")} style={{ ...actionButton, borderColor: `${primary}77`, color: primary, marginTop: 9 }}>
+                Make this installation active
+              </button>
+            )}
+            {lifecycle && (
+              <button type="button" disabled={busy} onClick={() => void lifecycleAction("unregister", lifecycle.current_id)} style={{ ...actionButton, marginTop: 9, marginLeft: 7 }}>
+                Unregister this metadata
+              </button>
+            )}
+            {lifecycle && lifecycle.installations.filter((row) => row.installation_id !== lifecycle.current_id).map((row) => (
+              <div key={row.installation_id} style={{ ...meta, marginTop: 9, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.07)", overflowWrap: "anywhere" }}>
+                Registered: {row.install_type} · {row.revision} · {row.root}
+                {row.installation_id === lifecycle.active_id ? " · ACTIVE" : ""}
+                <button type="button" disabled={busy || row.installation_id === lifecycle.active_id} onClick={() => void lifecycleAction("unregister", row.installation_id)} style={{ ...actionButton, marginLeft: 7 }}>
+                  Unregister obsolete metadata
+                </button>
+              </div>
+            ))}
           </div>
         )}
 

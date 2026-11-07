@@ -29,10 +29,22 @@ def main(argv: list[str] | None = None) -> int:
         parent = int(args[parent_index + 1])
         cwd = Path(args[cwd_index + 1]).resolve()
         command = args[separator + 1:]
+        installation_id = ""
+        if "--installation-id" in args:
+            identity_index = args.index("--installation-id")
+            installation_id = args[identity_index + 1]
     except (ValueError, IndexError):
         return 2
     if not command or not cwd.is_dir():
         return 2
+    if installation_id:
+        try:
+            import json
+            marker = json.loads((cwd / "config" / "installation.json").read_text(encoding="utf-8"))
+            if marker.get("installation_id") != installation_id:
+                return 4
+        except (OSError, ValueError, json.JSONDecodeError):
+            return 4
 
     deadline = time.monotonic() + 30
     while _parent_alive(parent) and time.monotonic() < deadline:
