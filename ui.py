@@ -6286,6 +6286,10 @@ class JarvisUI:
                 )
                 hud_url = self._apex_bridge.start()
 
+                # APEX owns its shutdown lifecycle. A failed or closed browser
+                # surface must never make QApplication silently exit and return
+                # the PowerShell prompt while the local server is healthy.
+                self._app.setQuitOnLastWindowClosed(False)
                 embedded = False
                 if not no_launch:
                     try:
@@ -6305,6 +6309,31 @@ class JarvisUI:
 
                         self._apex_bridge._auto_close = False
                         web = QWebEngineView(self._win)
+                        load_attempts = {"count": 0, "fallback": False}
+
+                        def _hud_load_finished(ok: bool) -> None:
+                            if ok or load_attempts["fallback"]:
+                                if ok:
+                                    self._app.setQuitOnLastWindowClosed(True)
+                                    print("[APEX-HUD] Embedded browser connected.")
+                                return
+                            load_attempts["count"] += 1
+                            if load_attempts["count"] == 1:
+                                print("[APEX-HUD] Embedded browser missed first load; retrying...")
+                                QTimer.singleShot(250, web.reload)
+                                return
+                            # Qt WebEngine can be blocked independently by GPU,
+                            # sandbox, or enterprise policy. Keep JARVIS alive and
+                            # move to the dedicated no-proxy Chromium app instead.
+                            load_attempts["fallback"] = True
+                            print("[APEX-HUD] Embedded browser unavailable; opening dedicated HUD window.")
+                            self._embedded_hud = False
+                            self._apex_bridge._auto_close = True
+                            web.hide()
+                            self._win.hide()
+                            launch_app_window(hud_url)
+
+                        web.loadFinished.connect(_hud_load_finished)
                         web.setUrl(QUrl(hud_url))
                         self._win.setCentralWidget(web)
                         self._win.resize(1440, 920)
