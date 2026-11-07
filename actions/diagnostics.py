@@ -13,10 +13,14 @@ def _check_api_key() -> tuple[str, str]:
         ok = cm.get_openai_key() or ""
         parts = []
         if gk and len(gk) > 15:
-            parts.append(f"Gemini:{gk[:6]}…")
+            parts.append("Gemini configured")
         if ok and len(ok) > 15:
-            parts.append(f"OpenAI:{ok[:7]}…")
+            parts.append("OpenAI configured")
+        if cm.get_anthropic_key():
+            parts.append("Anthropic configured")
         if parts:
+            # Diagnostics must never disclose credential prefixes. Prefixes are
+            # still credential material and do not help users repair settings.
             return ("ok", " | ".join(parts))
         return ("missing", "—")
     except Exception as e:
@@ -136,6 +140,27 @@ _HINTS = {
 
 def diagnostics_check(parameters: dict, player=None, **_) -> str:
     action = str((parameters or {}).get("action", "full") or "full").strip().lower()
+    if action in {"system", "identity"}:
+        from core.system_doctor import run_doctor
+        report = run_doctor()
+        identity = report["installation"]
+        lines = [
+            f"JARVIS System Doctor — {str(report['overall']).upper()}",
+            f"  Installation: {identity['installation_id']} ({identity['install_type']}, {identity['revision']})",
+            f"  Runtime: Python {identity['python']} on {identity['platform']}",
+        ]
+        for item in report["results"]:
+            icon = "✓" if item["status"] == "ok" else ("!" if item["status"] == "warning" else "✗")
+            lines.append(f"  {icon} {item['check']}: {item['summary']}")
+            if item["remediation"]:
+                lines.append(f"    → {item['remediation']}")
+        out = "\n".join(lines)
+        if player and hasattr(player, "show_content"):
+            player.show_content("SYSTEM DOCTOR", out)
+        if player and hasattr(player, "write_log"):
+            player.write_log(f"[System Doctor] {report['counts']}")
+        return out
+
     selected = _GROUPS.get(action, tuple(_ALL_CHECKS.keys()))
 
     results = {}
@@ -167,15 +192,16 @@ TOOL = {
     "description": (
         "Diagnostics Health Window: checks API key, microphone, speaker, "
         "connectivity, disk storage, installed skills, camera, and local LLM "
-        "(Ollama) with actionable fix hints. Actions: full | audio | network | "
-        "storage | skills."
+        "(Ollama) with actionable fix hints. System Doctor also reports the exact "
+        "running installation and core product health without exposing credentials. "
+        "Actions: full | system | identity | audio | network | storage | skills."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "full | audio | network | storage | skills",
+                "description": "full | system | identity | audio | network | storage | skills",
             }
         },
     },
