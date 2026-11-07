@@ -11,6 +11,11 @@ def test_embedded_webengine_hud_bypasses_system_proxy():
     assert 'QNetworkProxy.ProxyType.NoProxy' in source
     assert 'QTWEBENGINE_CHROMIUM_FLAGS' in source
 
+def test_windows_uses_dedicated_browser_shell_not_unreliable_qt_webengine():
+    source=(ROOT/'ui.py').read_text(encoding='utf-8')
+    assert 'use_embedded_hud = os.name != "nt"' in source
+    assert 'setQuitOnLastWindowClosed(False)' in source
+
 def test_failed_embedded_hud_retries_then_falls_back_without_quitting():
     source=(ROOT/'ui.py').read_text(encoding='utf-8')
     assert 'setQuitOnLastWindowClosed(False)' in source

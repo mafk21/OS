@@ -6291,7 +6291,13 @@ class JarvisUI:
                 # the PowerShell prompt while the local server is healthy.
                 self._app.setQuitOnLastWindowClosed(False)
                 embedded = False
-                if not no_launch:
+                # Qt WebEngine is not a reliable application shell on Windows:
+                # GPU/sandbox/policy failures can close its only Qt window with
+                # no Python exception. Use the dedicated Edge/Chrome app shell
+                # there; it has explicit loopback/no-proxy flags and leaves Qt
+                # alive to own audio, overlays, and shutdown.
+                use_embedded_hud = os.name != "nt"
+                if not no_launch and use_embedded_hud:
                     try:
                         from PyQt6.QtCore import QUrl
                         from PyQt6.QtNetwork import QNetworkProxy
@@ -6351,6 +6357,8 @@ class JarvisUI:
                         self._win._overlay.hide()
                     self._win.hide()
                     if not no_launch:
+                        if platform.system() == "Windows":
+                            print("[APEX-HUD] Opening dedicated Windows HUD window.")
                         launch_app_window(hud_url)
                 # Stop all legacy paint/metric QTimers (~250 Hz combined) so the
                 # hidden PyQt6 avatar & canvas consume zero CPU / Python GIL.
