@@ -5,6 +5,45 @@ from typing import Any
 from memory import memory_manager as mm
 
 
+def inspect() -> list[dict[str, Any]]:
+    rows = []
+    for category, items in mm.load_memory().items():
+        if not isinstance(items, dict): continue
+        for key, entry in items.items():
+            if not isinstance(entry, dict): continue
+            rows.append({"category": category, "key": key, "value": entry.get("value"),
+                         "source": entry.get("source", "legacy"), "confidence": entry.get("confidence"),
+                         "status": entry.get("status", "active"), "pinned": bool(entry.get("pinned")),
+                         "expires_at": entry.get("expires_at"), "provenance": list(entry.get("provenance") or [])})
+    return rows
+
+
+def edit(category: str, key: str, value: str) -> str:
+    memory = mm.load_memory(); entry = (memory.get(category) or {}).get(key)
+    if not isinstance(entry, dict): return "Memory not found."
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    entry.update(value=str(value)[:mm.MAX_VALUE_LENGTH], source="explicit_user", confidence=1.0,
+                 explicit=True, status="active", updated_at=now)
+    entry.setdefault("provenance", []).append({"source": "explicit_user_edit", "observed_at": now})
+    mm.save_memory(memory); return f"Edited memory: {category}/{key}"
+
+
+def pin(category: str, key: str, pinned: bool = True) -> str:
+    memory = mm.load_memory(); entry = (memory.get(category) or {}).get(key)
+    if not isinstance(entry, dict): return "Memory not found."
+    entry["pinned"] = bool(pinned); mm.save_memory(memory)
+    return f"{'Pinned' if pinned else 'Unpinned'} memory: {category}/{key}"
+
+
+def export() -> dict[str, Any]:
+    return {"version": 1, "exported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "memories": inspect()}
+
+
+def delete(category: str, key: str) -> str:
+    return mm.forget(key, category)
+
+
 def conflicts() -> list[dict[str, Any]]:
     rows = []
     for category, items in mm.load_memory().items():

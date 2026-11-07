@@ -18,6 +18,9 @@ class ProactivePolicy:
     quiet_start: int = 23
     quiet_end: int = 7
     daily_limit: int = 6
+    allowed_topics: tuple[str, ...] = ()
+    blocked_topics: tuple[str, ...] = ()
+    minimum_urgency: str = "normal"
 
 
 def load() -> ProactivePolicy:
@@ -66,5 +69,11 @@ def record(now: datetime | None = None) -> None:
 def filter_context(memory: dict, monitors: list[str] | None, recent: list[str] | None,
                    policy: ProactivePolicy | None = None):
     p = policy or load()
-    return (memory if p.use_memory else {}, monitors if p.use_monitors else None,
+    scoped_monitors = monitors if p.use_monitors else None
+    if scoped_monitors:
+        blocked = {topic.casefold() for topic in p.blocked_topics}
+        allowed_topics = {topic.casefold() for topic in p.allowed_topics}
+        scoped_monitors = [topic for topic in scoped_monitors if topic.casefold() not in blocked and
+                           (not allowed_topics or topic.casefold() in allowed_topics)]
+    return (memory if p.use_memory else {}, scoped_monitors,
             recent if p.use_recent_conversation else None)

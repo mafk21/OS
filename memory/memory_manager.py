@@ -324,13 +324,13 @@ def _recursive_update(target: dict, updates: dict) -> bool:
                 "status": "active",
             }
             if isinstance(value, dict):
-                for meta in ("source", "confidence", "explicit", "expires_at"):
+                for meta in ("source", "confidence", "explicit", "expires_at", "sensitivity", "pinned"):
                     if meta in value:
                         entry[meta] = value[meta]
                 entry["provenance"][0]["source"] = str(entry.get("source") or "conversation")[:80]
             existing = target.get(key, {})
             if isinstance(existing, dict):
-                for meta in ("source", "confidence", "explicit"):
+                for meta in ("source", "confidence", "explicit", "expires_at", "sensitivity", "pinned"):
                     if meta not in entry and meta in existing:
                         entry[meta] = existing[meta]
             # Conflict resolution: same key, new value differs from stored.
@@ -338,14 +338,25 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             # silently overwritten; the latest value stays in "value".
             if (isinstance(existing, dict)
                     and existing.get("value") not in (None, new_val)):
+                incoming_explicit = bool(entry.get("explicit"))
+                existing_explicit = bool(existing.get("explicit"))
+                if existing_explicit and not incoming_explicit:
+                    contradictions = list(existing.get("contradictions") or [])[-4:]
+                    contradictions.append({"value": new_val, "source": entry.get("source", "conversation"),
+                                           "observed_at": entry["updated_at"]})
+                    existing["contradictions"] = contradictions
+                    target[key] = existing
+                    changed = True
+                    continue
                 history = existing.get("_prev") or []
                 history.append({"value": existing.get("value"),
                                 "updated": existing.get("updated", today)})
                 if len(history) > 5:
                     history = history[-5:]
                 entry["_prev"] = history
-                entry["status"] = "conflicted"
-                entry["confidence"] = min(float(entry.get("confidence", 0.75)), 0.5)
+                if not (incoming_explicit and not existing_explicit):
+                    entry["status"] = "conflicted"
+                    entry["confidence"] = min(float(entry.get("confidence", 0.75)), 0.5)
             if (not isinstance(existing, dict) or existing.get("value") != new_val
                     or existing.get("updated_at") != entry["updated_at"]):
                 if isinstance(existing, dict) and existing.get("_prev") and "_prev" not in entry:

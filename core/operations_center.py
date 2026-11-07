@@ -10,10 +10,13 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def snapshot() -> dict[str, Any]:
     task_states: Counter[str] = Counter()
+    timeline: list[dict[str, Any]] = []
     try:
         from core.long_tasks import get_long_task_manager
         for row in get_long_task_manager()._load():
-            task_states[str(row.get("status") or "unknown")] += 1
+            state = str(row.get("status") or "unknown")
+            task_states[state] += 1
+            timeline.append({"kind": "task", "state": state, "at": float(row.get("updated_at") or 0)})
     except Exception:
         task_states["unavailable"] += 1
     action_outcomes: Counter[str] = Counter()
@@ -21,7 +24,11 @@ def snapshot() -> dict[str, Any]:
     try:
         for line in audit.read_text(encoding="utf-8").splitlines()[-200:]:
             row = json.loads(line)
-            if row.get("stage") == "report": action_outcomes[str(row.get("outcome") or "unknown")] += 1
+            if row.get("stage") == "report":
+                outcome = str(row.get("outcome") or "unknown")
+                action_outcomes[outcome] += 1
+                timeline.append({"kind": "action", "action": str(row.get("action") or "")[:64],
+                                 "state": outcome, "at": float(row.get("timestamp") or 0)})
     except (OSError, ValueError):
         pass
     try:
@@ -41,6 +48,7 @@ def snapshot() -> dict[str, Any]:
         provider_health = {name: {"failures": count} for name, (count, _at) in _FAILURES.items()}
     except Exception:
         provider_health = {}
+    timeline.sort(key=lambda event: event["at"], reverse=True)
     return {"ok": True, "tasks": dict(task_states), "actions": dict(action_outcomes),
-            "memory_conflicts": conflict_count, "providers": provider_health,
+            "timeline": timeline[:100], "memory_conflicts": conflict_count, "providers": provider_health,
             "proactive": proactive_state, "privacy": "aggregate_metadata_only"}

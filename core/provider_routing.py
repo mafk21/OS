@@ -10,6 +10,9 @@ class ProviderRequest:
     data_class: str = "standard"  # standard | private | restricted
     capabilities: frozenset[str] = field(default_factory=frozenset)
     allow_cloud_fallback: bool = True
+    cost_priority: str = "balanced"  # balanced | lowest
+    latency_priority: str = "balanced"  # balanced | fastest
+    provider_override: str = ""
 
 _CAPABILITIES = {
     "gemini": {"text", "json", "vision", "search"},
@@ -44,13 +47,18 @@ def route(preference: str, request: ProviderRequest, available: Iterable[str]) -
         raise ValueError("unsupported provider data classification")
     if preference not in {"auto", "gemini", "anthropic", "openai", "local", "ollama", "lmstudio"}:
         preference = "auto"
-    preferred = "local" if preference in {"ollama", "lmstudio"} else preference
+    effective = request.provider_override or preference
+    preferred = "local" if effective in {"ollama", "lmstudio"} else effective
     if preferred != "auto":
         candidates = [preferred]
     elif request.data_class in {"private", "restricted"}:
         candidates = ["local"]
     else:
         candidates = ["gemini", "anthropic", "openai", "local"]
+    if preferred == "auto" and request.cost_priority == "lowest":
+        candidates = ["local", "gemini", "anthropic", "openai"]
+    elif preferred == "auto" and request.latency_priority == "fastest":
+        candidates = ["gemini", "local", "openai", "anthropic"]
     if not request.allow_cloud_fallback and candidates:
         candidates = candidates[:1]
     return [p for p in candidates if p in available_set and required <= _CAPABILITIES.get(p, set()) and not cooling(p)]
