@@ -158,12 +158,16 @@ def user_profile(memory: dict | None = None) -> dict:
     identity = memory.get("identity", {}) or {}
     profile: dict[str, str] = {}
     for field in _IDENTITY_FIELDS:
+        if isinstance(identity.get(field), dict) and identity[field].get("status") == "conflicted":
+            continue
         val = _entry_value(identity.get(field))
         if val:
             profile[field] = val
     about: dict[str, str] = {}
     for cat in ("relationships", "preferences", "projects"):
         for key, entry in (memory.get(cat, {}) or {}).items():
+            if isinstance(entry, dict) and entry.get("status") == "conflicted":
+                continue
             val = _entry_value(entry)
             if val:
                 about[f"{cat}/{key}"] = val
@@ -314,11 +318,16 @@ def _recursive_update(target: dict, updates: dict) -> bool:
             now = datetime.now().astimezone()
             today = now.strftime("%Y-%m-%d")
             new_val  = _truncate_value(str(value["value"] if isinstance(value, dict) else value).strip())
-            entry    = {"value": new_val, "updated": today, "updated_at": now.isoformat(timespec="seconds")}
+            entry    = {
+                "value": new_val, "updated": today, "updated_at": now.isoformat(timespec="seconds"),
+                "provenance": [{"source": "conversation", "observed_at": now.isoformat(timespec="seconds")}],
+                "status": "active",
+            }
             if isinstance(value, dict):
-                for meta in ("source", "confidence", "explicit"):
+                for meta in ("source", "confidence", "explicit", "expires_at"):
                     if meta in value:
                         entry[meta] = value[meta]
+                entry["provenance"][0]["source"] = str(entry.get("source") or "conversation")[:80]
             existing = target.get(key, {})
             if isinstance(existing, dict):
                 for meta in ("source", "confidence", "explicit"):
@@ -335,6 +344,8 @@ def _recursive_update(target: dict, updates: dict) -> bool:
                 if len(history) > 5:
                     history = history[-5:]
                 entry["_prev"] = history
+                entry["status"] = "conflicted"
+                entry["confidence"] = min(float(entry.get("confidence", 0.75)), 0.5)
             if (not isinstance(existing, dict) or existing.get("value") != new_val
                     or existing.get("updated_at") != entry["updated_at"]):
                 if isinstance(existing, dict) and existing.get("_prev") and "_prev" not in entry:
@@ -418,6 +429,8 @@ def format_memory_for_prompt(memory: dict | None) -> str:
     # 1. Identity - always, in full
     identity = memory.get("identity", {}) or {}
     for field in _IDENTITY_FIELDS:
+        if isinstance(identity.get(field), dict) and identity[field].get("status") == "conflicted":
+            continue
         val = _entry_value(identity.get(field))
         if not val:
             continue
@@ -431,7 +444,7 @@ def format_memory_for_prompt(memory: dict | None) -> str:
         else:
             core_lines.append(f"{field.title()}: {val}")
     for key, entry in identity.items():
-        if key in _IDENTITY_FIELDS:
+        if key in _IDENTITY_FIELDS or (isinstance(entry, dict) and entry.get("status") == "conflicted"):
             continue
         val = _entry_value(entry)
         if val:
