@@ -26,22 +26,28 @@ class ProactivePolicy:
 def load() -> ProactivePolicy:
     try:
         raw = json.loads(PATH.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict) or int(raw.get("version", 1)) > 1:
+            return ProactivePolicy(enabled=False)
         allowed = {k: raw[k] for k in asdict(ProactivePolicy()) if k in raw}
         return ProactivePolicy(**allowed)
-    except (OSError, ValueError, TypeError):
+    except FileNotFoundError:
         return ProactivePolicy()
+    except (OSError, ValueError, TypeError):
+        return ProactivePolicy(enabled=False)
 
 
 def save(policy: ProactivePolicy) -> None:
     PATH.parent.mkdir(parents=True, exist_ok=True)
     temp = PATH.with_suffix(".tmp")
-    temp.write_text(json.dumps(asdict(policy), indent=2), encoding="utf-8")
+    temp.write_text(json.dumps({"version": 1, **asdict(policy)}, indent=2), encoding="utf-8")
     os.replace(temp, PATH)
 
 
-def allowed(policy: ProactivePolicy | None = None, now: datetime | None = None) -> bool:
+def allowed(policy: ProactivePolicy | None = None, now: datetime | None = None, urgency: str = "normal") -> bool:
     p = policy or load(); current = now or datetime.now()
     if not p.enabled or p.daily_limit <= 0: return False
+    levels = {"low": 0, "normal": 1, "high": 2, "critical": 3}
+    if levels.get(str(urgency).lower(), 1) < levels.get(p.minimum_urgency, 1): return False
     try:
         usage = json.loads(USAGE_PATH.read_text(encoding="utf-8"))
         count = int(usage.get("count", 0)) if usage.get("date") == current.date().isoformat() else 0

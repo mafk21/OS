@@ -4,6 +4,15 @@ from core import provider_routing, proactive_permissions, reliability_evaluation
 from memory import memory_governance, memory_manager
 
 
+def test_provider_routing_preferences_are_durable(monkeypatch, tmp_path):
+    from core import provider_preferences
+    from memory import config_manager as cfg
+    monkeypatch.setattr(cfg, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(cfg, "CONFIG_FILE", tmp_path / "config.json")
+    assert provider_preferences.save("lowest", "fastest")["cost_priority"] == "lowest"
+    assert provider_preferences.get()["latency_priority"] == "fastest"
+
+
 def test_provider_cost_latency_and_user_override():
     available = {"gemini", "openai", "local"}
     low = provider_routing.ProviderRequest(cost_priority="lowest")

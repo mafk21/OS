@@ -206,7 +206,18 @@ def _local_call(contents, tier: str, config, timeout_ms: int):
 def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIMEOUT_MS, key: str = "", request_policy=None):
     """Route a model request with explicit capability/privacy policy and safe fallback."""
     from core.provider_routing import ProviderRequest, note_result, route
-    request = request_policy if isinstance(request_policy, ProviderRequest) else ProviderRequest()
+    if isinstance(request_policy, ProviderRequest):
+        request = request_policy
+    else:
+        try:
+            from core.provider_preferences import get as get_routing_preferences
+            routing_cfg = get_routing_preferences()
+            request = ProviderRequest(
+                cost_priority=routing_cfg["cost_priority"],
+                latency_priority=routing_cfg["latency_priority"],
+            )
+        except Exception:
+            request = ProviderRequest()
     preference = get_provider()
     available = {"gemini"}
     if _anthropic_available(): available.add("anthropic")

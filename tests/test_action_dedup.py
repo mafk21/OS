@@ -79,6 +79,23 @@ def test_uncertain_outcome_is_not_automatically_replayed(monkeypatch, tmp_path):
     assert "recently uncertain" in staged[0]
 
 
+def test_corrupt_or_keyless_store_blocks_instead_of_replaying(monkeypatch, tmp_path):
+    isolate(monkeypatch, tmp_path)
+    action_dedup.STORE_PATH.write_text("not-json", encoding="utf-8")
+    try:
+        action_dedup.inspect("pay", {"invoice": "42"})
+        raise AssertionError("corruption must fail closed")
+    except RuntimeError as exc:
+        assert "blocked" in str(exc)
+    action_dedup.STORE_PATH.write_text('{"version":1,"records":[]}', encoding="utf-8")
+    action_dedup.KEY_PATH.unlink(missing_ok=True)
+    try:
+        action_dedup.fingerprint("pay", {})
+        raise AssertionError("missing key with existing ledger must fail closed")
+    except RuntimeError as exc:
+        assert "blocked" in str(exc)
+
+
 def test_low_risk_read_only_actions_are_not_suppressed(monkeypatch, tmp_path):
     isolate(monkeypatch, tmp_path)
     calls = []

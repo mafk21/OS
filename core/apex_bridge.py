@@ -1494,6 +1494,45 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "provider_routing_get":
+            from core.provider_preferences import get
+            return {"ok": True, "routing": get()}
+
+        if action == "provider_routing_save":
+            from core.provider_preferences import save
+            try:
+                routing = save(str(data.get("cost_priority") or "balanced"),
+                               str(data.get("latency_priority") or "balanced"))
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            return {"ok": True, "routing": routing}
+
+        if action == "proactive_policy_get":
+            from dataclasses import asdict
+            from core.proactive_permissions import load
+            return {"ok": True, "policy": asdict(load())}
+
+        if action == "proactive_policy_save":
+            from core.proactive_permissions import ProactivePolicy, save
+            try:
+                policy = ProactivePolicy(
+                    enabled=bool(data.get("enabled", True)),
+                    use_memory=bool(data.get("use_memory", False)),
+                    use_monitors=bool(data.get("use_monitors", False)),
+                    use_recent_conversation=bool(data.get("use_recent_conversation", True)),
+                    quiet_start=max(0, min(23, int(data.get("quiet_start", 23)))),
+                    quiet_end=max(0, min(23, int(data.get("quiet_end", 7)))),
+                    daily_limit=max(0, min(48, int(data.get("daily_limit", 6)))),
+                    allowed_topics=tuple(str(v)[:80] for v in (data.get("allowed_topics") or [])[:30]),
+                    blocked_topics=tuple(str(v)[:80] for v in (data.get("blocked_topics") or [])[:30]),
+                    minimum_urgency=str(data.get("minimum_urgency") or "normal")
+                    if str(data.get("minimum_urgency") or "normal") in {"low", "normal", "high", "critical"} else "normal",
+                )
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "Invalid proactive policy."}
+            save(policy)
+            return {"ok": True, "message": "Proactive permissions updated."}
+
         if action == "brain_get":
             return {"ok": True, "brain": timeline.get_brain_snapshot()}
 
@@ -1534,6 +1573,29 @@ class ApexHudBridge:
             self._broadcast_threadsafe(self.snapshot())
             return {"ok": True, "brain": snap}
 
+        if action == "brain_pin_memory":
+            from memory import memory_governance
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            message = memory_governance.pin(cat, key, bool(data.get("pinned", True)))
+            return {"ok": not message.startswith("Memory not found"), "message": message,
+                    "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_resolve_conflict":
+            from memory import memory_governance
+            cat = str(data.get("category") or "notes").strip().lower()
+            key = str(data.get("key") or "").strip()
+            val = str(data.get("value") or "").strip()
+            if not val:
+                return {"ok": False, "error": "A resolved value is required."}
+            message = memory_governance.resolve(cat, key, val)
+            return {"ok": message.startswith("Resolved"), "message": message,
+                    "brain": timeline.get_brain_snapshot()}
+
+        if action == "brain_export_memories":
+            from memory import memory_governance
+            return {"ok": True, "export": memory_governance.export()}
+
         if action == "brain_forget_memory":
             cat = str(data.get("category") or "notes").strip().lower()
             key = str(data.get("key") or "").strip()
@@ -1543,10 +1605,16 @@ class ApexHudBridge:
             return {"ok": True, "brain": snap}
 
         if action == "brain_clear_memories":
-            mm.clear_all_memories()
-            snap = timeline.get_brain_snapshot()
-            self._broadcast_threadsafe(self.snapshot())
-            return {"ok": True, "brain": snap}
+            def _clear_memories():
+                message = mm.clear_all_memories()
+                self._broadcast_threadsafe(self.snapshot())
+                return message
+            pending = confirm_gate.request(
+                "brain-clear-all", "Clear all personal memories?",
+                "This permanently deletes every stored personal memory. Export first if you may need a copy.",
+                _clear_memories,
+            )
+            return {"ok": True, "pending_confirmation": True, "message": pending}
 
         if action == "brain_upload_file":
             fname = str(data.get("filename") or "note.md").strip()

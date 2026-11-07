@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 from datetime import date, datetime
 from threading import RLock
 from pathlib import Path
@@ -190,8 +191,15 @@ def load_memory() -> dict:
         try:
             data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
         except Exception as e:
-            print(f"[Memory] ⚠️ Load error: {e}")
-            return _empty_memory()
+            backup = MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".bak")
+            try:
+                data = json.loads(backup.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("backup is not an object")
+                print("[Memory] Restored the last valid memory snapshot after a load error.")
+            except Exception:
+                print(f"[Memory] ⚠️ Load error: {type(e).__name__}")
+                return _empty_memory()
     if not isinstance(data, dict):
         return _empty_memory()
     base = _empty_memory()
@@ -201,13 +209,31 @@ def load_memory() -> dict:
     # Never delete personal facts merely because time passed. Stale context is
     # ranked lower at recall/prompt time; forgetting remains an explicit user
     # action. Only unambiguous duplicates are compacted here.
+    removed_explicit: list[str] = []
+    now = datetime.now().astimezone()
+    for category, items in data.items():
+        if not isinstance(items, dict):
+            continue
+        for item_key, entry in list(items.items()):
+            expiry = entry.get("expires_at") if isinstance(entry, dict) else None
+            if not expiry:
+                continue
+            try:
+                deadline = datetime.fromisoformat(str(expiry).replace("Z", "+00:00"))
+                if deadline.tzinfo is None:
+                    deadline = deadline.replace(tzinfo=now.tzinfo)
+            except ValueError:
+                continue
+            if deadline <= now:
+                del items[item_key]
+                removed_explicit.append(f"{category}/{item_key}")
     removed_dups = dedup_memory(data)
-    if removed_dups:
+    if removed_dups or removed_explicit:
         try:
             save_memory(data)
         except Exception:
             pass
-        _notify_hygiene([], removed_dups)
+        _notify_hygiene(removed_explicit, removed_dups)
     return data
 
 def _all_entries(memory: dict) -> list[tuple]:
@@ -282,6 +308,12 @@ def _atomic_write(memory: dict) -> None:
         temp.chmod(0o600)
     except OSError:
         pass
+    if MEMORY_PATH.exists():
+        try:
+            # One last-known-good rollback point for metadata migrations and edits.
+            shutil.copy2(MEMORY_PATH, MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".bak"))
+        except OSError:
+            pass
     temp.replace(MEMORY_PATH)
 
 
@@ -635,6 +667,12 @@ def all_entries_for_ui() -> list[dict]:
                 "key":      key,
                 "value":    val,
                 "updated":  (entry.get("updated", "") if isinstance(entry, dict) else ""),
+                "source": (entry.get("source", "legacy") if isinstance(entry, dict) else "legacy"),
+                "confidence": (entry.get("confidence") if isinstance(entry, dict) else None),
+                "status": (entry.get("status", "active") if isinstance(entry, dict) else "legacy"),
+                "sensitivity": (entry.get("sensitivity", "personal") if isinstance(entry, dict) else "personal"),
+                "pinned": bool(entry.get("pinned", False)) if isinstance(entry, dict) else False,
+                "expires_at": (entry.get("expires_at") if isinstance(entry, dict) else None),
             })
     rows.sort(key=lambda r: (r["updated"] or "0000-00-00"), reverse=True)
     return rows

@@ -207,6 +207,12 @@ class SkillRegistry:
         return _read_capped(target, what=f"'{relpath}'")
 
     # -- authoring (the learning loop) ───────────────────────────────────────
+    def skill_dir(self, name: str) -> Path:
+        key = str(name or "").strip().lower()
+        if not _NAME_RE.match(key) or len(key) > 64:
+            raise ValueError("invalid skill name")
+        return self._dir / key
+
     def write(self, name, description, body, update: bool = False) -> str:
         """Create or replace a SKILL.md — the agent's self-authoring path.
 

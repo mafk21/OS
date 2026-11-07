@@ -45,6 +45,8 @@ def _key() -> bytes:
             return value
     except OSError:
         pass
+    if STORE_PATH.exists():
+        raise RuntimeError("action replay key is unavailable; consequential action blocked")
     value = os.urandom(32)
     temporary = KEY_PATH.with_suffix(".tmp")
     temporary.write_bytes(value)
@@ -66,8 +68,10 @@ def _load(now: float) -> list[dict[str, Any]]:
     try:
         raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
         rows = raw.get("records", []) if isinstance(raw, dict) else []
-    except (OSError, ValueError):
+    except FileNotFoundError:
         rows = []
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("action replay storage is unreadable; consequential action blocked") from exc
     return [row for row in rows if isinstance(row, dict) and now - float(row.get("at", 0)) <= WINDOW_SECONDS]
 
 
