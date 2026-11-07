@@ -6277,74 +6277,23 @@ class JarvisUI:
                 self._win._on_after_setup_cb = _after_api_key
         else:
             try:
-                from core.apex_bridge import ApexHudBridge, launch_app_window, _chromium_app_binaries
+                from core.apex_bridge import ApexHudBridge, launch_app_window
 
                 self._apex_bridge = ApexHudBridge(
                     self,
                     on_all_windows_closed=self._quit_from_hud,
-                    # Chromium can briefly connect and drop its WebSocket while
-                    # its app window is still starting on Windows. Treating that
-                    # transient as “all windows closed” was the actual clean
-                    # process exit seen in PowerShell. Windows lifecycle remains
-                    # owned by Qt/JARVIS instead of a browser socket.
-                    auto_close_on_disconnect=(os.name != "nt"),
+                    auto_close_on_disconnect=True,
                 )
                 hud_url = self._apex_bridge.start()
 
-                # APEX owns its shutdown lifecycle. A failed or closed browser
-                # surface must never make QApplication silently exit and return
-                # the PowerShell prompt while the local server is healthy.
-                self._app.setQuitOnLastWindowClosed(False)
                 embedded = False
-                # Qt WebEngine is not a reliable application shell on Windows:
-                # GPU/sandbox/policy failures can close its only Qt window with
-                # no Python exception. Use the dedicated Edge/Chrome app shell
-                # there; it has explicit loopback/no-proxy flags and leaves Qt
-                # alive to own audio, overlays, and shutdown.
-                use_embedded_hud = os.name != "nt"
-                if not no_launch and use_embedded_hud:
+                if not no_launch:
                     try:
                         from PyQt6.QtCore import QUrl
-                        from PyQt6.QtNetwork import QNetworkProxy
-                        # APEX is served exclusively over loopback. Explicitly
-                        # bypass Windows/enterprise proxy policy for embedded
-                        # Qt WebEngine, matching the external Chromium launcher.
-                        QNetworkProxy.setApplicationProxy(
-                            QNetworkProxy(QNetworkProxy.ProxyType.NoProxy)
-                        )
-                        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
-                            os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
-                            + " --no-proxy-server"
-                        ).strip()
                         from PyQt6.QtWebEngineWidgets import QWebEngineView
 
                         self._apex_bridge._auto_close = False
                         web = QWebEngineView(self._win)
-                        load_attempts = {"count": 0, "fallback": False}
-
-                        def _hud_load_finished(ok: bool) -> None:
-                            if ok or load_attempts["fallback"]:
-                                if ok:
-                                    self._app.setQuitOnLastWindowClosed(True)
-                                    print("[APEX-HUD] Embedded browser connected.")
-                                return
-                            load_attempts["count"] += 1
-                            if load_attempts["count"] == 1:
-                                print("[APEX-HUD] Embedded browser missed first load; retrying...")
-                                QTimer.singleShot(250, web.reload)
-                                return
-                            # Qt WebEngine can be blocked independently by GPU,
-                            # sandbox, or enterprise policy. Keep JARVIS alive and
-                            # move to the dedicated no-proxy Chromium app instead.
-                            load_attempts["fallback"] = True
-                            print("[APEX-HUD] Embedded browser unavailable; opening dedicated HUD window.")
-                            self._embedded_hud = False
-                            self._apex_bridge._auto_close = os.name != "nt"
-                            web.hide()
-                            self._win.hide()
-                            launch_app_window(hud_url)
-
-                        web.loadFinished.connect(_hud_load_finished)
                         web.setUrl(QUrl(hud_url))
                         self._win.setCentralWidget(web)
                         self._win.resize(1440, 920)
@@ -6362,51 +6311,11 @@ class JarvisUI:
                         self._win._overlay.hide()
                     self._win.hide()
                     if not no_launch:
-                        if platform.system() == "Windows":
-                            print("[APEX-HUD] Opening dedicated Windows HUD window.")
                         launch_app_window(hud_url)
-                def _stop_legacy_timers() -> None:
-                    # Stop legacy paint/metric QTimers only after APEX proves it
-                    # can establish its WebSocket. Keeping them alive until then
-                    # makes the built-in Classic HUD a real automatic fallback.
-                    for _tmr in self._win.findChildren(QTimer):
-                        _tmr.stop()
-
-                if os.name == "nt" and not no_launch:
-                    windows_launch = {"candidate": 0, "max": min(3, len(_chromium_app_binaries()))}
-
-                    def _verify_windows_hud() -> None:
-                        bridge = self._apex_bridge
-                        if bridge is not None and bridge._had_ws_client and len(bridge._clients) > 0:
-                            print("[APEX-HUD] Windows browser connection verified and active.")
-                            _stop_legacy_timers()
-                            return
-                        # Never substitute Mark One/Classic for APEX. Retry with
-                        # another isolated browser runtime; setup.py installs a
-                        # known Playwright Chromium specifically before managed
-                        # Edge/Chrome candidates.
-                        self._minimize_chromium_hud_windows()
-                        windows_launch["candidate"] += 1
-                        candidate = windows_launch["candidate"]
-                        if candidate < windows_launch["max"]:
-                            print(f"[APEX-HUD] Browser shell did not stay connected; trying candidate {candidate + 1}.")
-                            launch_app_window(hud_url, candidate_index=candidate)
-                            QTimer.singleShot(6_000, _verify_windows_hud)
-                            return
-                        # Final recovery uses the user's normal browser rather
-                        # than showing an unrelated legacy product.
-                        print("[APEX-HUD] App-mode browsers unavailable; opening APEX in the default browser.")
-                        launch_app_window(hud_url, candidate_index=10_000)
-
-                    QTimer.singleShot(6_000, _verify_windows_hud)
-                elif embedded:
-                    # Embedded loadFinished owns connection/fallback reporting;
-                    # retain the existing low-overhead behavior off Windows.
-                    _stop_legacy_timers()
-                elif no_launch:
-                    # Headless/no-launch mode intentionally has no browser
-                    # handshake and must not unexpectedly show Classic.
-                    _stop_legacy_timers()
+                # Stop all legacy paint/metric QTimers (~250 Hz combined) so the
+                # hidden PyQt6 avatar & canvas consume zero CPU / Python GIL.
+                for _tmr in self._win.findChildren(QTimer):
+                    _tmr.stop()
                 print(f"[APEX-HUD] Desktop HUD online -> {hud_url}")
             except Exception as exc:
                 print(f"[APEX-HUD] Falling back to classic UI: {exc}")
