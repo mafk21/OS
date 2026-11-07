@@ -6290,6 +6290,17 @@ class JarvisUI:
                 if not no_launch:
                     try:
                         from PyQt6.QtCore import QUrl
+                        from PyQt6.QtNetwork import QNetworkProxy
+                        # APEX is served exclusively over loopback. Explicitly
+                        # bypass Windows/enterprise proxy policy for embedded
+                        # Qt WebEngine, matching the external Chromium launcher.
+                        QNetworkProxy.setApplicationProxy(
+                            QNetworkProxy(QNetworkProxy.ProxyType.NoProxy)
+                        )
+                        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+                            os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+                            + " --no-proxy-server"
+                        ).strip()
                         from PyQt6.QtWebEngineWidgets import QWebEngineView
 
                         self._apex_bridge._auto_close = False
