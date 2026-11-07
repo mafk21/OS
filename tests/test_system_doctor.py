@@ -76,6 +76,38 @@ def test_system_doctor_is_available_through_existing_diagnostics_tool(monkeypatc
     assert "WARNING" in output
 
 
+def test_support_report_is_bounded_atomic_and_contains_no_credentials(monkeypatch, tmp_path):
+    secret = "never-write-this-provider-secret"
+    monkeypatch.setattr(system_doctor, "run_doctor", lambda: {
+        "schema_version": 1, "overall": "ok", "counts": {"ok": 1, "warning": 0, "error": 0},
+        "installation": {"installation_id": "safe-id"},
+        "results": [{"check": "provider", "status": "ok", "summary": "Configured",
+                     "evidence": "", "remediation": ""}],
+    })
+
+    path = system_doctor.write_support_report(tmp_path)
+    text = path.read_text(encoding="utf-8")
+
+    assert path == tmp_path / "system_doctor.json"
+    assert json.loads(text)["installation"]["installation_id"] == "safe-id"
+    assert secret not in text
+    assert not path.with_suffix(".json.tmp").exists()
+
+
+def test_memory_check_reports_filename_not_private_contents(monkeypatch, tmp_path):
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    (memory / "long_term.json").write_text('{"private": "value"}', encoding="utf-8")
+    (memory / "soul.json").write_text("broken-private-content", encoding="utf-8")
+    monkeypatch.setattr(system_doctor, "ROOT", tmp_path)
+
+    result = system_doctor._memory_check()
+
+    assert result.status == "error"
+    assert result.evidence == "soul.json"
+    assert "broken-private-content" not in json.dumps(result.to_dict())
+
+
 def test_api_key_check_never_discloses_key_prefixes(monkeypatch):
     import memory.config_manager as config
     gemini = "gemini-private-material"

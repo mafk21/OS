@@ -8,10 +8,12 @@ consume the same evidence.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -149,8 +151,98 @@ def _shortcut_check() -> DoctorResult:
                         remediation="Create one from Settings or ask JARVIS to add it.")
 
 
+def _dependencies_check() -> DoctorResult:
+    required = ("fastapi", "uvicorn", "httpx", "requests", "cryptography")
+    missing = [name for name in required if importlib.util.find_spec(name) is None]
+    if missing:
+        return DoctorResult(
+            "dependencies", "error", "Required runtime dependencies are missing.",
+            evidence=", ".join(missing),
+            remediation="Run the supported installer to repair application dependencies.",
+        )
+    return DoctorResult("dependencies", "ok", "Core runtime dependencies are importable.")
+
+
+def _hud_check() -> DoctorResult:
+    hud = ROOT / "apex_ui" / "static_hud" / "index.html"
+    if not hud.is_file() or hud.stat().st_size < 100:
+        return DoctorResult("hud", "error", "The built APEX HUD is missing or incomplete.",
+                            evidence=str(hud),
+                            remediation="Restore the release assets or rebuild apex_ui.")
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+    except OSError as exc:
+        return DoctorResult("hud", "error", "A local HUD socket cannot be opened.",
+                            evidence=type(exc).__name__,
+                            remediation="Check firewall policy and local networking permissions.")
+    return DoctorResult("hud", "ok", "APEX HUD assets and local socket binding are available.")
+
+
+def _browser_check() -> DoctorResult:
+    candidates = ("msedge", "microsoft-edge", "google-chrome", "chromium", "chromium-browser")
+    found = next((shutil.which(name) for name in candidates if shutil.which(name)), None)
+    if platform.system() == "Windows" and not found:
+        roots = [os.environ.get("PROGRAMFILES(X86)"), os.environ.get("PROGRAMFILES"), os.environ.get("LOCALAPPDATA")]
+        for root in filter(None, roots):
+            candidate = Path(root) / "Microsoft" / "Edge" / "Application" / "msedge.exe"
+            if candidate.is_file():
+                found = str(candidate)
+                break
+    if found:
+        return DoctorResult("browser", "ok", "A compatible HUD browser is available.", evidence=found)
+    return DoctorResult("browser", "warning", "No supported Chromium browser was detected.",
+                        remediation="Install Microsoft Edge, Chrome, or Chromium; Classic UI remains available.")
+
+
+def _memory_check() -> DoctorResult:
+    failures: list[str] = []
+    checked = 0
+    for name in ("long_term.json", "soul.json", "routines.json", "taste_profile.json", "accounts.json"):
+        path = ROOT / "memory" / name
+        if not path.exists():
+            continue
+        checked += 1
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, (dict, list)):
+                failures.append(name)
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            failures.append(name)
+    if failures:
+        return DoctorResult("memory", "error", "One or more memory stores are unreadable.",
+                            evidence=", ".join(failures),
+                            remediation="Preserve the files and restore a validated backup; do not overwrite them.")
+    parent = ROOT / "memory"
+    if not os.access(parent, os.W_OK):
+        return DoctorResult("memory", "error", "The memory directory is not writable.",
+                            evidence=str(parent), remediation="Restore write permission for this installation.")
+    return DoctorResult("memory", "ok", f"{checked} existing JSON memory store(s) are readable.")
+
+
+def _source_state_check() -> DoctorResult:
+    if not (ROOT / ".git").exists():
+        return DoctorResult("updates", "ok", "This packaged/source installation has no Git checkout state.")
+    try:
+        branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+        status = _git("status", "--porcelain", "--untracked-files=normal")
+    except (OSError, subprocess.SubprocessError) as exc:
+        return DoctorResult("updates", "warning", "Git installation state could not be inspected.",
+                            evidence=type(exc).__name__)
+    if branch.returncode or status.returncode:
+        return DoctorResult("updates", "warning", "Git installation state could not be inspected.")
+    if status.stdout.strip():
+        return DoctorResult("updates", "warning", "This checkout contains local changes.",
+                            evidence=f"branch={branch.stdout.strip()}",
+                            remediation="Back up or commit intentional work before applying updates.")
+    return DoctorResult("updates", "ok", "The Git checkout is clean.",
+                        evidence=f"branch={branch.stdout.strip()}; revision={_revision()}")
+
+
 _CHECKS: tuple[Callable[[], DoctorResult], ...] = (
-    _installation_check, _runtime_check, _storage_check, _config_check, _shortcut_check,
+    _installation_check, _runtime_check, _dependencies_check, _storage_check,
+    _config_check, _memory_check, _hud_check, _browser_check, _shortcut_check,
+    _source_state_check,
 )
 
 
@@ -175,3 +267,19 @@ def run_doctor(checks: Iterable[Callable[[], DoctorResult]] | None = None) -> di
         "installation": asdict(installation_identity()),
         "results": [item.to_dict() for item in results],
     }
+
+
+def write_support_report(directory: Path | None = None) -> Path:
+    """Write a bounded, credential-free report and return its exact path."""
+    report = run_doctor()
+    destination_dir = (directory or (ROOT / "config" / "diagnostics")).resolve()
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / "system_doctor.json"
+    payload = json.dumps(report, indent=2, ensure_ascii=False)
+    if len(payload.encode("utf-8")) > 128_000:
+        raise RuntimeError("System Doctor report exceeded its safe size limit")
+    temporary = destination.with_suffix(".json.tmp")
+    temporary.write_text(payload, encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    temporary.replace(destination)
+    return destination

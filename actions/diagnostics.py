@@ -140,8 +140,8 @@ _HINTS = {
 
 def diagnostics_check(parameters: dict, player=None, **_) -> str:
     action = str((parameters or {}).get("action", "full") or "full").strip().lower()
-    if action in {"system", "identity"}:
-        from core.system_doctor import run_doctor
+    if action in {"system", "identity", "report"}:
+        from core.system_doctor import run_doctor, write_support_report
         report = run_doctor()
         identity = report["installation"]
         lines = [
@@ -154,6 +154,11 @@ def diagnostics_check(parameters: dict, player=None, **_) -> str:
             lines.append(f"  {icon} {item['check']}: {item['summary']}")
             if item["remediation"]:
                 lines.append(f"    → {item['remediation']}")
+        if action == "report":
+            try:
+                lines.append(f"  Redacted report: {write_support_report()}")
+            except Exception as exc:
+                lines.append(f"  ✗ Report export failed safely ({type(exc).__name__}).")
         out = "\n".join(lines)
         if player and hasattr(player, "show_content"):
             player.show_content("SYSTEM DOCTOR", out)
@@ -194,14 +199,14 @@ TOOL = {
         "connectivity, disk storage, installed skills, camera, and local LLM "
         "(Ollama) with actionable fix hints. System Doctor also reports the exact "
         "running installation and core product health without exposing credentials. "
-        "Actions: full | system | identity | audio | network | storage | skills."
+        "Actions: full | system | identity | report | audio | network | storage | skills."
     ),
     "parameters": {
         "type": "OBJECT",
         "properties": {
             "action": {
                 "type": "STRING",
-                "description": "full | system | identity | audio | network | storage | skills",
+                "description": "full | system | identity | report | audio | network | storage | skills",
             }
         },
     },
