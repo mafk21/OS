@@ -11,4 +11,4 @@ def test_snapshot_is_aggregate_and_privacy_bounded(monkeypatch, tmp_path):
     assert snap["actions"] == {"unverified": 1}
     assert snap["privacy"] == "aggregate_metadata_only"
     assert private not in json.dumps(snap)
-    assert set(snap) == {"ok", "tasks", "actions", "timeline", "memory_conflicts", "providers", "proactive", "privacy"}
+    assert set(snap) == {"ok", "tasks", "actions", "timeline", "memory_conflicts", "providers", "local_voice", "owner_auth", "proactive", "privacy"}

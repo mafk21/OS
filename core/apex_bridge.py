@@ -1494,6 +1494,14 @@ class ApexHudBridge:
             self.hide_confirm()
             return {"ok": True}
 
+        if action == "browser_companion_pair":
+            from core.browser_companion import pairing_token
+            return {"ok": True, "token": pairing_token(), "extension_path": str((Path(__file__).resolve().parent.parent / "browser_extension").resolve())}
+
+        if action == "browser_companion_context":
+            context = getattr(self, "_browser_companion_context", None)
+            return {"ok": bool(context), "context": context or {}}
+
         if action == "provider_routing_get":
             from core.provider_preferences import get
             return {"ok": True, "routing": get()}
@@ -2132,6 +2140,22 @@ class ApexHudBridge:
         async def _brain_export():
             exp = await asyncio.to_thread(timeline.export_brain_json)
             return JSONResponse(exp)
+
+        @app.options("/api/hud/browser-companion/context")
+        async def _browser_companion_options():
+            return JSONResponse({}, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type,X-JARVIS-Token", "Access-Control-Allow-Methods": "POST,OPTIONS"})
+
+        @app.post("/api/hud/browser-companion/context")
+        async def _browser_companion_context(req: Request):
+            from core.browser_companion import authorized, sanitize_context
+            if not authorized(req.headers.get("x-jarvis-token", "")):
+                return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401, headers={"Access-Control-Allow-Origin": "*"})
+            try:
+                context = sanitize_context(await req.json())
+            except Exception:
+                return JSONResponse({"ok": False, "error": "invalid context"}, status_code=400, headers={"Access-Control-Allow-Origin": "*"})
+            self._browser_companion_context = context
+            return JSONResponse({"ok": True}, headers={"Access-Control-Allow-Origin": "*"})
 
         @app.get("/api/hud/activity")
         async def _activity_get():

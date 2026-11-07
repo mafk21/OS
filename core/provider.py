@@ -228,7 +228,8 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
     pinned = "local" if preference in {"local", "ollama", "lmstudio"} else preference
     if pinned != "auto": available.add(pinned)
     candidates = route(preference, request, available)
-    for provider in candidates:
+    route_started = time.monotonic()
+    for route_index, provider in enumerate(candidates):
         try:
             if provider == "gemini":
                 from core.gemini import call as gemini_call
@@ -241,6 +242,15 @@ def call(contents, tier: str = FAST, config=None, timeout_ms: int = DEFAULT_TIME
                 response = _local_call(contents, tier, config, timeout_ms)
             if response is not None and getattr(response, "text", ""):
                 note_result(provider, True)
+                # Response metadata is deliberately non-secret and lets every UI
+                # explain which brain answered and whether fallback occurred.
+                try:
+                    response.provider = provider
+                    response.route_latency_ms = round((time.monotonic() - route_started) * 1000)
+                    response.fallback_used = route_index > 0
+                    response.data_class = request.data_class
+                except Exception:
+                    pass
                 return response
             raise RuntimeError("provider returned an empty reply")
         except Exception:

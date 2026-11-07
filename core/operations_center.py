@@ -44,6 +44,16 @@ def snapshot() -> dict[str, Any]:
     except Exception:
         proactive_state = {"enabled": False, "unavailable": True}
     try:
+        from core.local_voice_profile import snapshot as voice_snapshot
+        local_voice = voice_snapshot()
+    except Exception:
+        local_voice = {"offline_ready": False}
+    try:
+        from core.owner_auth import available as owner_auth_available
+        owner_auth = {"available": owner_auth_available(), "stores_biometrics": False}
+    except Exception:
+        owner_auth = {"available": False, "stores_biometrics": False}
+    try:
         from core.provider_routing import _FAILURES
         provider_health = {name: {"failures": count} for name, (count, _at) in _FAILURES.items()}
     except Exception:
@@ -51,4 +61,5 @@ def snapshot() -> dict[str, Any]:
     timeline.sort(key=lambda event: event["at"], reverse=True)
     return {"ok": True, "tasks": dict(task_states), "actions": dict(action_outcomes),
             "timeline": timeline[:100], "memory_conflicts": conflict_count, "providers": provider_health,
+            "local_voice": local_voice, "owner_auth": owner_auth,
             "proactive": proactive_state, "privacy": "aggregate_metadata_only"}
